@@ -69,39 +69,39 @@ export const usePosStore = defineStore("pos", () => {
     async function login(username, password) {
         loading.value = true;
         try {
-            // TODO: REPLACE WITH REAL API
-            // const response = await apiPost("/auth/login", { username, password });
-            // const data = response.data;
+            // Call the real API endpoint
+            const response = await apiPost("/Auth/login", { username, password });
+            const data = response.data; // Response contains token, username, role
 
-            // Mock response
-            const mockUsers = {
-                manager: { id: 1, name: "أحمد المدير", username: "manager", role: "Manager" },
-                cashier: { id: 2, name: "محمد الكاشير", username: "cashier", role: "Cashier" },
+            const userData = {
+                id: data.username,
+                name: data.username,
+                username: data.username,
+                role: data.role // "Manager" or "Cashier"
             };
 
-            const found = mockUsers[username.toLowerCase()];
-            if (!found || password !== "1234") {
-                throw new Error("بيانات الدخول غير صحيحة");
-            }
-
-            user.value = found;
-            role.value = found.role;
-            localStorage.setItem("posUser", JSON.stringify(found));
-            localStorage.setItem("posRole", found.role);
-            localStorage.setItem("accessToken", "mock-token-" + found.id);
+            user.value = userData;
+            role.value = userData.role;
+            localStorage.setItem("posUser", JSON.stringify(userData));
+            localStorage.setItem("posRole", userData.role);
+            localStorage.setItem("accessToken", data.token);
 
             // Sync with base and auth stores
             try {
                 const baseStore = useBaseStore();
-                baseStore.setUser(found);
+                baseStore.setUser(userData);
 
                 const authStore = useAuthStore();
-                authStore.login({ token: "mock-token-" + found.id, userName: found.name });
+                authStore.login({ token: data.token, userName: userData.name });
             } catch (e) {
                 console.error("Failed to sync auth stores", e);
             }
 
-            return found;
+            return userData;
+        } catch (err) {
+            console.error("Login failed:", err);
+            const errorMsg = err.response?.data?.message || err.message || "بيانات الدخول غير صحيحة";
+            throw new Error(errorMsg);
         } finally {
             loading.value = false;
         }

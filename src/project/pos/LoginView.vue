@@ -52,14 +52,6 @@ const handleLogin = async () => {
                 <p class="login-subtitle">سجّل دخولك للمتابعة</p>
             </div>
 
-            <!-- Demo credentials hint -->
-            <div class="login-hint">
-                <AlertCircle :size="14" />
-                <span>
-                    مدير: <strong>manager</strong> / كاشير: <strong>cashier</strong> — كلمة المرور: <strong>1234</strong>
-                </span>
-            </div>
-
             <!-- Form -->
             <form @submit.prevent="handleLogin" class="login-form">
                 <div class="form-field">
