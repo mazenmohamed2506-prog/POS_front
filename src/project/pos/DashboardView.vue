@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted } from "vue";
 import { usePosStore } from "@/stores/pos/posStore";
+import { useDashboardStore } from "@/stores/pos/dashboardStore";
 import {
     LayoutDashboard,
     TrendingUp,
@@ -16,84 +17,30 @@ import {
 } from "lucide-vue-next";
 
 const posStore = usePosStore();
+const dashboardStore = useDashboardStore();
 
 onMounted(() => {
-    posStore.fetchProducts();
-    posStore.fetchInventory();
-    posStore.fetchOrders();
+    dashboardStore.fetchStats();
+    posStore.fetchSettings();
 });
 
 // ── Summary Cards ──
-const totalProducts = computed(() => posStore.products.length);
-
-const totalSales = computed(() =>
-    posStore.orders.filter((o) => o.type === "sale").reduce((sum, o) => sum + o.total, 0)
-);
-
-const salesCount = computed(() =>
-    posStore.orders.filter((o) => o.type === "sale").length
-);
-
-const returnsCount = computed(() =>
-    posStore.orders.filter((o) => o.type === "return").length
-);
-
-const totalReturns = computed(() =>
-    posStore.orders.filter((o) => o.type === "return").reduce((sum, o) => sum + o.total, 0)
-);
-
-const netSales = computed(() => totalSales.value - totalReturns.value);
-
-const purchasesTotal = computed(() =>
-    posStore.purchases.reduce((sum, p) => sum + p.total, 0)
-);
-
-const lowStockItems = computed(() =>
-    posStore.inventory.filter((i) => i.shelfStock <= 5)
-);
-
-const outOfStockItems = computed(() =>
-    posStore.inventory.filter((i) => i.shelfStock === 0)
-);
-
-const cashSales = computed(() =>
-    posStore.orders.filter((o) => o.type === "sale" && o.paymentMethod === "cash")
-);
-
-const cardSales = computed(() =>
-    posStore.orders.filter((o) => o.type === "sale" && o.paymentMethod === "card")
-);
-
-const cashTotal = computed(() =>
-    cashSales.value.reduce((sum, o) => sum + o.total, 0)
-);
-
-const cardTotal = computed(() =>
-    cardSales.value.reduce((sum, o) => sum + o.total, 0)
-);
-
-// Recent orders (last 5)
-const recentOrders = computed(() =>
-    posStore.orders.slice(0, 5)
-);
-
-// Top selling products (from orders)
-const topProducts = computed(() => {
-    const productMap = new Map();
-    posStore.orders
-        .filter((o) => o.type === "sale")
-        .forEach((order) => {
-            order.items.forEach((item) => {
-                const existing = productMap.get(item.name) || { name: item.name, qty: 0, revenue: 0 };
-                existing.qty += item.qty;
-                existing.revenue += item.price * item.qty;
-                productMap.set(item.name, existing);
-            });
-        });
-    return Array.from(productMap.values())
-        .sort((a, b) => b.revenue - a.revenue)
-        .slice(0, 5);
-});
+const totalProducts = computed(() => dashboardStore.stats.totalProducts);
+const totalSales = computed(() => dashboardStore.stats.cashSalesTotal + dashboardStore.stats.cardSalesTotal);
+const salesCount = computed(() => dashboardStore.stats.salesCount);
+const returnsCount = computed(() => dashboardStore.stats.returnsCount);
+const totalReturns = computed(() => dashboardStore.stats.totalReturns);
+const netSales = computed(() => dashboardStore.stats.netSales);
+const purchasesTotal = computed(() => dashboardStore.stats.purchasesTotal);
+const purchasesCount = computed(() => dashboardStore.stats.purchasesCount);
+const lowStockItems = computed(() => dashboardStore.stats.lowStockItems);
+const outOfStockCount = computed(() => dashboardStore.stats.outOfStockCount);
+const cashTotal = computed(() => dashboardStore.stats.cashSalesTotal);
+const cashSalesCount = computed(() => dashboardStore.stats.cashSalesCount);
+const cardTotal = computed(() => dashboardStore.stats.cardSalesTotal);
+const cardSalesCount = computed(() => dashboardStore.stats.cardSalesCount);
+const recentOrders = computed(() => dashboardStore.stats.recentOrders);
+const topProducts = computed(() => dashboardStore.stats.topProducts);
 
 const formatCurrency = (val) => {
     return new Intl.NumberFormat("ar-EG", {
@@ -118,10 +65,12 @@ const formatDate = (dateStr) => {
         <!-- Header -->
         <div class="dashboard-header">
             <div class="flex items-center gap-3">
-                <LayoutDashboard :size="28" class="text-primary-500" />
+                <div class="header-icon-wrap">
+                    <LayoutDashboard :size="28" class="text-primary-500" />
+                </div>
                 <div>
                     <h1 class="dashboard-title">لوحة التحكم</h1>
-                    <p class="dashboard-subtitle">نظرة عامة على أداء المتجر</p>
+                    <p class="dashboard-subtitle">نظرة عامة على أداء المتجر في الوقت الفعلي</p>
                 </div>
             </div>
         </div>
@@ -136,8 +85,8 @@ const formatDate = (dateStr) => {
                 <div class="kpi-info">
                     <span class="kpi-label">صافي المبيعات</span>
                     <span class="kpi-value">{{ formatCurrency(netSales) }}</span>
-                    <span class="kpi-sub">
-                        <ArrowUpRight :size="14" class="text-green-500" />
+                    <span class="kpi-sub text-green-600 dark:text-green-400">
+                        <ArrowUpRight :size="14" class="inline" />
                         {{ salesCount }} عملية بيع
                     </span>
                 </div>
@@ -151,8 +100,8 @@ const formatDate = (dateStr) => {
                 <div class="kpi-info">
                     <span class="kpi-label">المشتريات</span>
                     <span class="kpi-value">{{ formatCurrency(purchasesTotal) }}</span>
-                    <span class="kpi-sub">
-                        {{ posStore.purchases.length }} فاتورة
+                    <span class="kpi-sub text-blue-600 dark:text-blue-400">
+                        {{ purchasesCount }} فاتورة مستلمة
                     </span>
                 </div>
             </div>
@@ -165,9 +114,9 @@ const formatDate = (dateStr) => {
                 <div class="kpi-info">
                     <span class="kpi-label">المرتجعات</span>
                     <span class="kpi-value">{{ formatCurrency(totalReturns) }}</span>
-                    <span class="kpi-sub">
-                        <ArrowDownRight :size="14" class="text-amber-500" />
-                        {{ returnsCount }} عملية
+                    <span class="kpi-sub text-amber-600 dark:text-amber-400">
+                        <ArrowDownRight :size="14" class="inline" />
+                        {{ returnsCount }} عملية ارجاع
                     </span>
                 </div>
             </div>
@@ -180,9 +129,9 @@ const formatDate = (dateStr) => {
                 <div class="kpi-info">
                     <span class="kpi-label">المنتجات</span>
                     <span class="kpi-value">{{ totalProducts }}</span>
-                    <span class="kpi-sub">
-                        <AlertTriangle v-if="outOfStockItems.length > 0" :size="14" class="text-red-500" />
-                        {{ outOfStockItems.length }} نفذ من الرف
+                    <span class="kpi-sub" :class="outOfStockCount > 0 ? 'text-red-500 font-semibold' : 'text-purple-600 dark:text-purple-400'">
+                        <AlertTriangle v-if="outOfStockCount > 0" :size="14" class="inline me-1" />
+                        {{ outOfStockCount }} منتج نفذ من الرف
                     </span>
                 </div>
             </div>
@@ -202,25 +151,29 @@ const formatDate = (dateStr) => {
                             <div
                                 class="payment-bar-fill payment-bar-cash"
                                 :style="{ width: totalSales > 0 ? `${(cashTotal / totalSales) * 100}%` : '50%' }"
+                                title="نقدي"
                             ></div>
                             <div
                                 class="payment-bar-fill payment-bar-card"
                                 :style="{ width: totalSales > 0 ? `${(cardTotal / totalSales) * 100}%` : '50%' }"
+                                title="بطاقة"
                             ></div>
                         </div>
                     </div>
                     <div class="payment-legend">
-                        <div class="payment-legend-item">
-                            <Banknote :size="16" class="text-green-600" />
+                        <div class="payment-legend-item payment-legend-cash">
+                            <div class="legend-color-dot bg-green-500"></div>
+                            <Banknote :size="16" class="text-green-600 dark:text-green-400" />
                             <span class="payment-legend-label">نقدي</span>
                             <span class="payment-legend-value">{{ formatCurrency(cashTotal) }}</span>
-                            <span class="payment-legend-count">({{ cashSales.length }})</span>
+                            <span class="payment-legend-count">({{ cashSalesCount }})</span>
                         </div>
-                        <div class="payment-legend-item">
-                            <CreditCard :size="16" class="text-blue-600" />
+                        <div class="payment-legend-item payment-legend-card">
+                            <div class="legend-color-dot bg-blue-500"></div>
+                            <CreditCard :size="16" class="text-blue-600 dark:text-blue-400" />
                             <span class="payment-legend-label">بطاقة</span>
                             <span class="payment-legend-value">{{ formatCurrency(cardTotal) }}</span>
-                            <span class="payment-legend-count">({{ cardSales.length }})</span>
+                            <span class="payment-legend-count">({{ cardSalesCount }})</span>
                         </div>
                     </div>
                 </div>
@@ -233,12 +186,13 @@ const formatDate = (dateStr) => {
                     تنبيهات المخزون المنخفض
                 </h3>
                 <div v-if="lowStockItems.length === 0" class="empty-state">
-                    لا توجد منتجات منخفضة المخزون ✓
+                    <CheckCircle :size="32" class="text-green-500 mb-2 mx-auto" />
+                    <div>لا توجد منتجات منخفضة المخزون حالياً</div>
                 </div>
                 <div v-else class="stock-alert-list">
                     <div
                         v-for="item in lowStockItems"
-                        :key="item.id"
+                        :key="item.productId"
                         class="stock-alert-item"
                         :class="{ 'stock-alert-critical': item.shelfStock === 0 }"
                     >
@@ -247,7 +201,7 @@ const formatDate = (dateStr) => {
                             <span class="stock-alert-sku">{{ item.sku }}</span>
                         </div>
                         <div class="stock-alert-counts">
-                            <span class="stock-alert-shelf" :class="item.shelfStock === 0 ? 'text-red-600' : 'text-amber-600'">
+                            <span class="stock-alert-shelf" :class="item.shelfStock === 0 ? 'text-red-500' : 'text-amber-500'">
                                 الرف: {{ item.shelfStock }}
                             </span>
                             <span class="stock-alert-warehouse">
@@ -265,10 +219,10 @@ const formatDate = (dateStr) => {
             <div class="dashboard-card">
                 <h3 class="card-title">
                     <ShoppingBag :size="18" class="text-primary-500" />
-                    آخر العمليات
+                    آخر العمليات والطلبات
                 </h3>
                 <div v-if="recentOrders.length === 0" class="empty-state">
-                    لا توجد عمليات بعد
+                    لا توجد عمليات مسجلة بعد
                 </div>
                 <div v-else class="recent-orders-list">
                     <div
@@ -297,10 +251,10 @@ const formatDate = (dateStr) => {
             <div class="dashboard-card">
                 <h3 class="card-title">
                     <TrendingUp :size="18" class="text-primary-500" />
-                    الأكثر مبيعاً
+                    المنتجات الأكثر مبيعاً
                 </h3>
                 <div v-if="topProducts.length === 0" class="empty-state">
-                    لا توجد بيانات مبيعات بعد
+                    لا توجد بيانات مبيعات متوفرة
                 </div>
                 <div v-else class="top-products-list">
                     <div
@@ -308,7 +262,7 @@ const formatDate = (dateStr) => {
                         :key="prod.name"
                         class="top-product-item"
                     >
-                        <span class="top-product-rank">#{{ idx + 1 }}</span>
+                        <span class="top-product-rank" :class="`rank-${idx + 1}`">#{{ idx + 1 }}</span>
                         <div class="top-product-info">
                             <span class="top-product-name">{{ prod.name }}</span>
                             <span class="top-product-qty">{{ prod.qty }} وحدة مباعة</span>
@@ -326,9 +280,10 @@ const formatDate = (dateStr) => {
     padding: 1.5rem;
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: 1.5rem;
     max-width: 1400px;
     margin: 0 auto;
+    width: 100%;
 }
 
 /* Header */
@@ -336,6 +291,23 @@ const formatDate = (dateStr) => {
     display: flex;
     align-items: center;
     justify-content: space-between;
+}
+
+.header-icon-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 3.25rem;
+    height: 3.25rem;
+    border-radius: 1rem;
+    background: var(--p-surface-0);
+    border: 1px solid var(--p-surface-200);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.dark .header-icon-wrap {
+    background: var(--p-surface-900);
+    border-color: var(--p-surface-800);
 }
 
 .dashboard-title {
@@ -352,84 +324,86 @@ const formatDate = (dateStr) => {
 .dashboard-subtitle {
     font-size: 0.875rem;
     color: var(--p-surface-500);
-    margin: 0;
+    margin: 0.125rem 0 0;
 }
 
 /* KPI Grid */
 .kpi-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 1rem;
+    gap: 1.25rem;
 }
 
 .kpi-card {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    padding: 1.25rem;
-    border-radius: 0.75rem;
+    gap: 1.25rem;
+    padding: 1.5rem;
+    border-radius: 1rem;
     background: var(--p-surface-0);
     border: 1px solid var(--p-surface-200);
-    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .dark .kpi-card {
     background: var(--p-surface-900);
     border-color: var(--p-surface-800);
+    box-shadow: none;
 }
 
 .kpi-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    transform: translateY(-3px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
 .kpi-icon-wrap {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 3rem;
-    height: 3rem;
+    width: 3.25rem;
+    height: 3.25rem;
     border-radius: 0.75rem;
     flex-shrink: 0;
 }
 
 .kpi-icon-green {
-    background: #dcfce7;
+    background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
     color: #15803d;
 }
 
 .dark .kpi-icon-green {
-    background: rgba(34, 197, 94, 0.15);
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(34, 197, 94, 0.3) 100%);
     color: #4ade80;
 }
 
 .kpi-icon-blue {
-    background: #dbeafe;
+    background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
     color: #1d4ed8;
 }
 
 .dark .kpi-icon-blue {
-    background: rgba(59, 130, 246, 0.15);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.3) 100%);
     color: #60a5fa;
 }
 
 .kpi-icon-amber {
-    background: #fef3c7;
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
     color: #b45309;
 }
 
 .dark .kpi-icon-amber {
-    background: rgba(245, 158, 11, 0.15);
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(245, 158, 11, 0.3) 100%);
     color: #fbbf24;
 }
 
 .kpi-icon-purple {
-    background: #f3e8ff;
+    background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
     color: #7c3aed;
 }
 
 .dark .kpi-icon-purple {
-    background: rgba(124, 58, 237, 0.15);
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.15) 0%, rgba(124, 58, 237, 0.3) 100%);
     color: #a78bfa;
 }
 
@@ -447,7 +421,7 @@ const formatDate = (dateStr) => {
 }
 
 .kpi-value {
-    font-size: 1.375rem;
+    font-size: 1.5rem;
     font-weight: 800;
     color: var(--p-surface-900);
     margin: 0.125rem 0;
@@ -462,37 +436,39 @@ const formatDate = (dateStr) => {
     align-items: center;
     gap: 0.25rem;
     font-size: 0.75rem;
-    color: var(--p-surface-500);
+    font-weight: 500;
 }
 
 /* Dashboard Row */
 .dashboard-row {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 1.25rem;
 }
 
 /* Dashboard Card */
 .dashboard-card {
     background: var(--p-surface-0);
     border: 1px solid var(--p-surface-200);
-    border-radius: 0.75rem;
-    padding: 1.25rem;
+    border-radius: 1rem;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
 }
 
 .dark .dashboard-card {
     background: var(--p-surface-900);
     border-color: var(--p-surface-800);
+    box-shadow: none;
 }
 
 .card-title {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-size: 1rem;
-    font-weight: 700;
+    font-size: 1.05rem;
+    font-weight: 800;
     color: var(--p-surface-800);
-    margin: 0 0 1rem;
+    margin: 0 0 1.25rem;
 }
 
 .dark .card-title {
@@ -501,26 +477,32 @@ const formatDate = (dateStr) => {
 
 .empty-state {
     text-align: center;
-    padding: 2rem 1rem;
+    padding: 3rem 1.5rem;
     color: var(--p-surface-400);
     font-size: 0.9rem;
+    border: 2px dashed var(--p-surface-200);
+    border-radius: 0.75rem;
+}
+
+.dark .empty-state {
+    border-color: var(--p-surface-800);
 }
 
 /* Payment Breakdown */
 .payment-breakdown {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 1.25rem;
 }
 
 .payment-bar-wrap {
-    padding: 0.25rem 0;
+    padding: 0.5rem 0;
 }
 
 .payment-bar {
     display: flex;
-    height: 1rem;
-    border-radius: 0.5rem;
+    height: 1.25rem;
+    border-radius: 9999px;
     overflow: hidden;
     background: var(--p-surface-100);
 }
@@ -530,34 +512,48 @@ const formatDate = (dateStr) => {
 }
 
 .payment-bar-fill {
-    transition: width 0.5s ease;
+    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .payment-bar-cash {
-    background: linear-gradient(90deg, #22c55e, #16a34a);
+    background: linear-gradient(90deg, #10b981, #059669);
 }
 
 .payment-bar-card {
-    background: linear-gradient(90deg, #3b82f6, #2563eb);
+    background: linear-gradient(90deg, #3b82f6, #1d4ed8);
 }
 
 .payment-legend {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 1rem;
 }
 
 .payment-legend-item {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border-radius: 0.75rem;
+    background: var(--p-surface-50);
+    border: 1px solid var(--p-surface-100);
+}
+
+.dark .payment-legend-item {
+    background: var(--p-surface-950);
+    border-color: var(--p-surface-800);
+}
+
+.legend-color-dot {
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 9999px;
 }
 
 .payment-legend-label {
     font-size: 0.875rem;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--p-surface-700);
-    min-width: 3rem;
 }
 
 .dark .payment-legend-label {
@@ -565,8 +561,8 @@ const formatDate = (dateStr) => {
 }
 
 .payment-legend-value {
-    font-size: 0.9375rem;
-    font-weight: 700;
+    font-size: 0.95rem;
+    font-weight: 800;
     color: var(--p-surface-900);
     margin-inline-start: auto;
 }
@@ -577,31 +573,42 @@ const formatDate = (dateStr) => {
 
 .payment-legend-count {
     font-size: 0.75rem;
-    color: var(--p-surface-400);
+    font-weight: 500;
+    color: var(--p-surface-450);
 }
 
 /* Stock Alerts */
 .stock-alert-list {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    max-height: 280px;
+    gap: 0.75rem;
+    max-height: 300px;
     overflow-y: auto;
+    padding-inline-end: 0.25rem;
 }
 
 .stock-alert-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.625rem 0.75rem;
-    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.75rem;
     background: var(--p-surface-50);
-    border: 1px solid var(--p-surface-100);
+    border: 1px solid var(--p-surface-200);
+    transition: background-color 0.15s;
 }
 
 .dark .stock-alert-item {
     background: var(--p-surface-950);
     border-color: var(--p-surface-800);
+}
+
+.stock-alert-item:hover {
+    background: var(--p-surface-100);
+}
+
+.dark .stock-alert-item:hover {
+    background: var(--p-surface-800);
 }
 
 .stock-alert-critical {
@@ -614,6 +621,14 @@ const formatDate = (dateStr) => {
     background: rgba(239, 68, 68, 0.08);
 }
 
+.stock-alert-critical:hover {
+    background: #fee2e2;
+}
+
+.dark .stock-alert-critical:hover {
+    background: rgba(239, 68, 68, 0.12);
+}
+
 .stock-alert-info {
     display: flex;
     flex-direction: column;
@@ -621,7 +636,7 @@ const formatDate = (dateStr) => {
 
 .stock-alert-name {
     font-size: 0.875rem;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--p-surface-800);
 }
 
@@ -630,7 +645,7 @@ const formatDate = (dateStr) => {
 }
 
 .stock-alert-sku {
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     color: var(--p-surface-400);
 }
 
@@ -644,7 +659,7 @@ const formatDate = (dateStr) => {
 .stock-alert-shelf,
 .stock-alert-warehouse {
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 750;
 }
 
 .stock-alert-warehouse {
@@ -655,22 +670,33 @@ const formatDate = (dateStr) => {
 .recent-orders-list {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.75rem;
+    max-height: 300px;
+    overflow-y: auto;
 }
 
 .recent-order-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.625rem 0.75rem;
-    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.75rem;
     background: var(--p-surface-50);
-    border: 1px solid var(--p-surface-100);
+    border: 1px solid var(--p-surface-200);
+    transition: background-color 0.15s;
 }
 
 .dark .recent-order-item {
     background: var(--p-surface-950);
     border-color: var(--p-surface-800);
+}
+
+.recent-order-item:hover {
+    background: var(--p-surface-100);
+}
+
+.dark .recent-order-item:hover {
+    background: var(--p-surface-800);
 }
 
 .recent-order-info {
@@ -680,7 +706,7 @@ const formatDate = (dateStr) => {
 
 .recent-order-number {
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 750;
     color: var(--p-surface-800);
 }
 
@@ -689,7 +715,7 @@ const formatDate = (dateStr) => {
 }
 
 .recent-order-date {
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     color: var(--p-surface-400);
 }
 
@@ -700,15 +726,15 @@ const formatDate = (dateStr) => {
 }
 
 .recent-order-type {
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     font-weight: 700;
-    padding: 0.125rem 0.5rem;
+    padding: 0.2rem 0.625rem;
     border-radius: 9999px;
 }
 
 .type-sale {
     background: #dcfce7;
-    color: #166534;
+    color: #15803d;
 }
 
 .dark .type-sale {
@@ -718,7 +744,7 @@ const formatDate = (dateStr) => {
 
 .type-return {
     background: #fef3c7;
-    color: #92400e;
+    color: #b45309;
 }
 
 .dark .type-return {
@@ -727,7 +753,7 @@ const formatDate = (dateStr) => {
 }
 
 .recent-order-total {
-    font-size: 0.9375rem;
+    font-size: 0.95rem;
     font-weight: 800;
     color: var(--p-surface-900);
 }
@@ -740,17 +766,20 @@ const formatDate = (dateStr) => {
 .top-products-list {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.75rem;
+    max-height: 300px;
+    overflow-y: auto;
 }
 
 .top-product-item {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    padding: 0.625rem 0.75rem;
-    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.75rem;
     background: var(--p-surface-50);
-    border: 1px solid var(--p-surface-100);
+    border: 1px solid var(--p-surface-200);
+    transition: background-color 0.15s;
 }
 
 .dark .top-product-item {
@@ -758,11 +787,60 @@ const formatDate = (dateStr) => {
     border-color: var(--p-surface-800);
 }
 
+.top-product-item:hover {
+    background: var(--p-surface-100);
+}
+
+.dark .top-product-item:hover {
+    background: var(--p-surface-800);
+}
+
 .top-product-rank {
     font-size: 0.875rem;
     font-weight: 800;
-    color: var(--p-primary-500);
     min-width: 2rem;
+    height: 2rem;
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--p-surface-200);
+    color: var(--p-surface-700);
+}
+
+.dark .top-product-rank {
+    background: var(--p-surface-850);
+    color: var(--p-surface-300);
+}
+
+.top-product-rank.rank-1 {
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.dark .top-product-rank.rank-1 {
+    background: rgba(245, 158, 11, 0.25);
+    color: #fbbf24;
+}
+
+.top-product-rank.rank-2 {
+    background: #e2e8f0;
+    color: #475569;
+}
+
+.dark .top-product-rank.rank-2 {
+    background: rgba(148, 163, 184, 0.2);
+    color: #cbd5e1;
+}
+
+.top-product-rank.rank-3 {
+    background: #ffedd5;
+    color: #ea580c;
+}
+
+.dark .top-product-rank.rank-3 {
+    background: rgba(234, 88, 12, 0.2);
+    color: #ff9d66;
 }
 
 .top-product-info {
@@ -773,7 +851,7 @@ const formatDate = (dateStr) => {
 
 .top-product-name {
     font-size: 0.875rem;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--p-surface-800);
 }
 
@@ -782,12 +860,12 @@ const formatDate = (dateStr) => {
 }
 
 .top-product-qty {
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     color: var(--p-surface-400);
 }
 
 .top-product-revenue {
-    font-size: 0.9375rem;
+    font-size: 0.95rem;
     font-weight: 800;
     color: var(--p-surface-900);
 }

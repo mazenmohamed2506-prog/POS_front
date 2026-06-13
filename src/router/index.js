@@ -67,6 +67,12 @@ const router = createRouter({
                     meta: { roles: ["Manager"] },
                 },
                 {
+                    path: "orders",
+                    name: "Orders",
+                    component: () => import("@/project/pos/OrdersView.vue"),
+                    meta: { roles: ["Manager"] },
+                },
+                {
                     path: "shifts",
                     name: "Shifts",
                     component: () => import("@/project/pos/ShiftView.vue"),
@@ -76,6 +82,18 @@ const router = createRouter({
                     path: "settings",
                     name: "Settings",
                     component: () => import("@/project/pos/SettingsView.vue"),
+                    meta: { roles: ["Manager"] },
+                },
+                {
+                    path: "users",
+                    name: "Users",
+                    component: () => import("@/project/pos/UsersView.vue"),
+                    meta: { roles: ["Manager"] },
+                },
+                {
+                    path: "pages",
+                    name: "Pages",
+                    component: () => import("@/project/pos/PagesView.vue"),
                     meta: { roles: ["Manager"] },
                 },
             ],

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, nextTick, computed } from "vue";
 import { usePosStore } from "@/stores/pos/posStore";
-import { Barcode, Trash2, Plus, Minus, CreditCard, Banknote, ShoppingCart, XCircle, Search, RotateCcw, Receipt, ChevronLeft } from "lucide-vue-next";
+import { Barcode, Trash2, Plus, Minus, CreditCard, Banknote, ShoppingCart, XCircle, Search, RotateCcw, Receipt } from "lucide-vue-next";
 
 const posStore = ref(null);
 posStore.value = usePosStore();
@@ -182,13 +182,15 @@ const getStockClass = (stock) => {
             <!-- Cart Header -->
             <div class="pos-cart-header">
                 <div class="flex items-center gap-2">
-                    <ShoppingCart :size="20" class="text-primary-500" />
-                    <h2 class="text-lg font-bold text-surface-800 dark:text-surface-100">
-                        السلة
+                    <div class="cart-icon-wrap bg-primary-50 dark:bg-primary-950/20 text-primary-500">
+                        <ShoppingCart :size="18" />
+                    </div>
+                    <h2 class="text-md font-bold text-surface-800 dark:text-surface-100">
+                        سلة البيع الحالية
                     </h2>
                     <span
                         v-if="posStore.cartItemCount > 0"
-                        class="bg-primary-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center"
+                        class="bg-primary-500 text-white text-xs font-bold rounded-full min-w-5 h-5 px-1.5 flex items-center justify-center"
                     >
                         {{ posStore.cartItemCount }}
                     </span>
@@ -199,8 +201,8 @@ const getStockClass = (stock) => {
                     @click="posStore.clearCart()"
                     title="مسح السلة"
                 >
-                    <XCircle :size="18" />
-                    <span>مسح</span>
+                    <XCircle :size="16" />
+                    <span>تفريغ</span>
                 </button>
             </div>
 
@@ -215,39 +217,39 @@ const getStockClass = (stock) => {
                 >
                     <Column header="#" style="width: 40px">
                         <template #body="{ index }">
-                            <span class="text-surface-400 text-sm">{{ index + 1 }}</span>
+                            <span class="text-surface-400 text-xs font-mono">{{ index + 1 }}</span>
                         </template>
                     </Column>
-                    <Column field="name" header="المنتج" style="min-width: 140px">
+                    <Column field="name" header="المنتج" style="min-width: 130px">
                         <template #body="{ data }">
                             <div>
-                                <div class="font-semibold text-surface-800 dark:text-surface-100 line-clamp-1">{{ data.name }}</div>
-                                <div class="text-xs text-surface-400">{{ data.sku }}</div>
+                                <div class="font-bold text-surface-800 dark:text-surface-100 line-clamp-1 leading-tight">{{ data.name }}</div>
+                                <div class="text-xs font-mono text-surface-400 mt-0.5">{{ data.sku }}</div>
                             </div>
                         </template>
                     </Column>
                     <Column header="السعر" style="width: 80px">
                         <template #body="{ data }">
-                            <span class="font-medium text-sm">{{ formatCurrency(data.price) }}</span>
+                            <span class="font-medium text-xs">{{ formatCurrency(data.price) }}</span>
                         </template>
                     </Column>
-                    <Column header="الكمية" style="width: 110px">
+                    <Column header="الكمية" style="width: 100px">
                         <template #body="{ data }">
                             <div class="qty-controls">
                                 <button class="qty-btn" @click="posStore.updateCartQty(data.id, data.qty - 1)">
-                                    <Minus :size="12" />
+                                    <Minus :size="10" />
                                 </button>
-                                <span class="qty-value">{{ data.qty }}</span>
+                                <span class="qty-value font-bold text-xs">{{ data.qty }}</span>
                                 <button class="qty-btn" @click="posStore.updateCartQty(data.id, data.qty + 1)">
-                                    <Plus :size="12" />
+                                    <Plus :size="10" />
                                 </button>
                             </div>
                         </template>
                     </Column>
-                    <Column style="width: 40px">
+                    <Column style="width: 40px; text-align: center">
                         <template #body="{ data }">
                             <button class="remove-btn" @click="posStore.removeFromCart(data.id)" title="حذف">
-                                <Trash2 :size="15" />
+                                <Trash2 :size="14" />
                             </button>
                         </template>
                     </Column>
@@ -259,16 +261,16 @@ const getStockClass = (stock) => {
                 <div class="pos-summary-rows">
                     <div class="pos-summary-row">
                         <span>المجموع الفرعي</span>
-                        <span>{{ formatCurrency(posStore.cartSubtotal) }}</span>
+                        <span class="font-medium text-surface-700 dark:text-surface-300">{{ formatCurrency(posStore.cartSubtotal) }}</span>
                     </div>
                     <div class="pos-summary-row">
                         <span>الضريبة ({{ (posStore.taxRate * 100).toFixed(0) }}%)</span>
-                        <span>{{ formatCurrency(posStore.cartTax) }}</span>
+                        <span class="font-medium text-surface-700 dark:text-surface-300">{{ formatCurrency(posStore.cartTax) }}</span>
                     </div>
                     <div class="pos-summary-divider"></div>
                     <div class="pos-summary-row pos-summary-total">
                         <span>الإجمالي</span>
-                        <span>{{ formatCurrency(posStore.cartTotal) }}</span>
+                        <span class="font-black text-primary-600 dark:text-primary-450">{{ formatCurrency(posStore.cartTotal) }}</span>
                     </div>
                 </div>
 
@@ -279,7 +281,7 @@ const getStockClass = (stock) => {
                         :disabled="posStore.cart.length === 0 || posStore.loading || !posStore.isShiftOpen"
                         @click="handleCheckout('cash')"
                     >
-                        <Banknote :size="20" />
+                        <Banknote :size="18" />
                         <span>دفع نقدي</span>
                     </button>
                     <button
@@ -287,7 +289,7 @@ const getStockClass = (stock) => {
                         :disabled="posStore.cart.length === 0 || posStore.loading || !posStore.isShiftOpen"
                         @click="handleCheckout('card')"
                     >
-                        <CreditCard :size="20" />
+                        <CreditCard :size="18" />
                         <span>بطاقة</span>
                     </button>
                 </div>
@@ -308,16 +310,16 @@ const getStockClass = (stock) => {
                     :class="{ 'pos-mode-active': posMode === 'sell' }"
                     @click="posMode = 'sell'"
                 >
-                    <ShoppingCart :size="18" />
-                    <span>البيع</span>
+                    <ShoppingCart :size="16" />
+                    <span>شاشة البيع</span>
                 </button>
                 <button
                     class="pos-mode-btn pos-mode-btn-return"
                     :class="{ 'pos-mode-active-return': posMode === 'returns' }"
                     @click="posMode = 'returns'"
                 >
-                    <RotateCcw :size="18" />
-                    <span>المرتجعات</span>
+                    <RotateCcw :size="16" />
+                    <span>معالجة المرتجعات</span>
                 </button>
             </div>
 
@@ -327,29 +329,31 @@ const getStockClass = (stock) => {
                 <div class="pos-search-bar">
                     <form @submit.prevent="handleScan" class="flex-1">
                         <div class="relative w-full">
-                            <Barcode :size="18" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400 dark:text-surface-500" />
+                            <Barcode :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400 dark:text-surface-500" />
                             <InputText
                                 ref="barcodeInputRef"
                                 v-model="barcodeInput"
-                                placeholder="امسح الباركود..."
-                                class="ps-10"
+                                placeholder="امسح الباركود الصنف..."
+                                class="ps-9"
                                 autocomplete="off"
+                                size="small"
                                 fluid
                             />
                         </div>
                     </form>
                     <div class="relative flex-1">
-                        <Search :size="18" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400 dark:text-surface-500" />
+                        <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400 dark:text-surface-500" />
                         <InputText
                             v-model="searchQuery"
                             placeholder="ابحث باسم المنتج أو الرمز..."
-                            class="ps-10"
+                            class="ps-9"
                             autocomplete="off"
+                            size="small"
                             fluid
                         />
                     </div>
                 </div>
-                <p v-if="lastScannedError" class="text-red-500 text-sm px-4 mt-1">{{ lastScannedError }}</p>
+                <p v-if="lastScannedError" class="text-red-500 text-xs px-4 mt-2 font-bold">{{ lastScannedError }}</p>
 
                 <!-- Categories Tabs -->
                 <div class="pos-categories-tabs">
@@ -383,7 +387,7 @@ const getStockClass = (stock) => {
                             <div class="product-card-body">
                                 <span class="product-card-cat">{{ prod.category }}</span>
                                 <h4 class="product-card-title">{{ prod.name }}</h4>
-                                <span class="product-card-sku">{{ prod.sku }}</span>
+                                <span class="product-card-sku font-mono">{{ prod.sku }}</span>
                                 
                                 <div class="product-card-footer mt-auto">
                                     <span class="product-card-price">{{ formatCurrency(prod.price) }}</span>
@@ -391,7 +395,7 @@ const getStockClass = (stock) => {
                                         class="product-card-stock"
                                         :class="getStockClass(getShelfStock(prod.id))"
                                     >
-                                        {{ getShelfStock(prod.id) > 0 ? `الرف: ${getShelfStock(prod.id)}` : 'نفذ من الرف' }}
+                                        {{ getShelfStock(prod.id) > 0 ? `الرف: ${getShelfStock(prod.id)}` : 'نفذ' }}
                                     </span>
                                 </div>
                             </div>
@@ -405,12 +409,13 @@ const getStockClass = (stock) => {
                 <!-- Search Orders -->
                 <div class="pos-search-bar">
                     <div class="relative flex-1">
-                        <Search :size="18" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400 dark:text-surface-500" />
+                        <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400 dark:text-surface-500" />
                         <InputText
                             v-model="orderSearchQuery"
                             placeholder="ابحث برقم الفاتورة..."
-                            class="ps-10"
+                            class="ps-9"
                             autocomplete="off"
+                            size="small"
                             fluid
                         />
                     </div>
@@ -419,7 +424,7 @@ const getStockClass = (stock) => {
                 <!-- Invoices List -->
                 <div class="returns-list-wrap">
                     <div v-if="filteredSaleOrders.length === 0" class="pos-empty-grid">
-                        لا توجد فواتير بيع
+                        لا توجد فواتير بيع مسجلة بالبيانات
                     </div>
                     <div v-else class="returns-invoice-list">
                         <div
@@ -431,7 +436,7 @@ const getStockClass = (stock) => {
                             <div class="return-invoice-header">
                                 <div class="return-invoice-number">
                                     <Receipt :size="16" class="text-primary-500" />
-                                    <span>{{ order.orderNumber }}</span>
+                                    <span class="font-mono">{{ order.orderNumber }}</span>
                                 </div>
                                 <span class="return-invoice-date">{{ formatDate(order.date) }}</span>
                             </div>
@@ -445,17 +450,17 @@ const getStockClass = (stock) => {
                                         {{ item.name }} × {{ item.qty }}
                                     </span>
                                     <span v-if="order.items.length > 3" class="return-invoice-item-chip return-invoice-more">
-                                        +{{ order.items.length - 3 }} المزيد
+                                        +{{ order.items.length - 3 }} صنف
                                     </span>
                                 </div>
                                 <div class="return-invoice-footer">
-                                    <span class="return-invoice-cashier">{{ order.cashier || '—' }}</span>
-                                    <span class="return-invoice-total">{{ formatCurrency(order.total) }}</span>
+                                    <span class="return-invoice-cashier">الكاشير: {{ order.cashier || '—' }}</span>
+                                    <span class="return-invoice-total font-mono">{{ formatCurrency(order.total) }}</span>
                                 </div>
                             </div>
                             <div class="return-invoice-action">
                                 <RotateCcw :size="14" />
-                                <span>ارجاع أصناف</span>
+                                <span>اختيار أصناف للإرجاع</span>
                             </div>
                         </div>
                     </div>
@@ -466,14 +471,15 @@ const getStockClass = (stock) => {
         <!-- ═══ RETURN DIALOG ═══ -->
         <Dialog
             v-model:visible="showReturnDialog"
-            header="معالجة مرتجع"
+            header="معالجة مرتجع الفاتورة"
             :style="{ width: '560px' }"
             modal
+            dismissableMask
         >
             <div class="return-dialog-content" v-if="selectedOrder">
                 <div class="return-dialog-order-info">
                     <Receipt :size="16" class="text-primary-500" />
-                    <span>فاتورة رقم: <strong>{{ selectedOrder.orderNumber }}</strong></span>
+                    <span>فاتورة رقم: <strong class="font-mono text-surface-900 dark:text-surface-50">{{ selectedOrder.orderNumber }}</strong></span>
                     <span class="return-dialog-order-date">{{ formatDate(selectedOrder.date) }}</span>
                 </div>
 
@@ -486,11 +492,11 @@ const getStockClass = (stock) => {
                         <div class="return-dialog-item-info">
                             <span class="return-dialog-item-name">{{ item.name }}</span>
                             <span class="return-dialog-item-meta">
-                                السعر: {{ formatCurrency(item.price) }} · الكمية الأصلية: {{ item.qty }}
+                                سعر الوحدة: {{ formatCurrency(item.price) }} · الكمية الأصلية بالطلب: {{ item.qty }}
                             </span>
                         </div>
                         <div class="return-dialog-item-qty">
-                            <label class="return-qty-label">كمية المرتجع</label>
+                            <label class="return-qty-label">الكمية المستردة</label>
                             <InputNumber
                                 v-model="item.returnQty"
                                 :min="0"
@@ -504,22 +510,22 @@ const getStockClass = (stock) => {
                     </div>
                 </div>
 
-                <div class="return-dialog-summary" v-if="returnDialogTotal > 0">
-                    <span>إجمالي المبلغ المسترد:</span>
-                    <span class="return-dialog-summary-total">{{ formatCurrency(returnDialogTotal) }}</span>
+                <div class="return-dialog-summary mt-2" v-if="returnDialogTotal > 0">
+                    <span>إجمالي القيمة المستردة للعميل:</span>
+                    <span class="return-dialog-summary-total font-mono">{{ formatCurrency(returnDialogTotal) }}</span>
                 </div>
             </div>
             <template #footer>
-                <Button label="إلغاء" text @click="showReturnDialog = false" />
-                <Button
-                    label="تنفيذ المرتجع"
-                    severity="warn"
-                    @click="handleReturn"
-                    :loading="posStore.loading"
-                    :disabled="returnDialogTotal === 0"
-                >
-                    <template #icon><RotateCcw :size="14" /></template>
-                </Button>
+                <div class="flex gap-2 justify-end w-full">
+                    <Button label="إلغاء" outlined severity="secondary" @click="showReturnDialog = false" />
+                    <Button
+                        label="تأكيد المرتجع"
+                        severity="warn"
+                        @click="handleReturn"
+                        :loading="posStore.loading"
+                        :disabled="returnDialogTotal === 0"
+                    />
+                </div>
             </template>
         </Dialog>
     </div>
@@ -551,7 +557,7 @@ const getStockClass = (stock) => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.75rem 1rem;
+    padding: 0.875rem 1.25rem;
     border-bottom: 1px solid var(--p-surface-200);
     flex-shrink: 0;
 }
@@ -560,12 +566,21 @@ const getStockClass = (stock) => {
     border-color: var(--p-surface-800);
 }
 
+.cart-icon-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.5rem;
+}
+
 .pos-clear-btn {
     display: flex;
     align-items: center;
     gap: 0.25rem;
     font-size: 0.8rem;
-    padding: 0.2rem 0.5rem;
+    padding: 0.25rem 0.625rem;
     border-radius: 0.375rem;
     border: 1px solid #fecaca;
     background: #fef2f2;
@@ -577,6 +592,7 @@ const getStockClass = (stock) => {
 .dark .pos-clear-btn {
     background: rgba(239, 68, 68, 0.1);
     border-color: rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
 }
 
 .pos-clear-btn:hover {
@@ -604,7 +620,7 @@ const getStockClass = (stock) => {
     justify-content: center;
     width: 1.5rem;
     height: 1.5rem;
-    border-radius: 0.25rem;
+    border-radius: 0.375rem;
     border: 1px solid var(--p-surface-300);
     background: var(--p-surface-0);
     color: var(--p-surface-600);
@@ -624,20 +640,24 @@ const getStockClass = (stock) => {
     color: var(--p-primary-600);
 }
 
+.dark .qty-btn:hover {
+    background: rgba(99, 102, 241, 0.15);
+    border-color: rgba(99, 102, 241, 0.3);
+    color: var(--p-primary-400);
+}
+
 .qty-value {
     min-width: 1.5rem;
     text-align: center;
-    font-weight: 750;
-    font-size: 0.875rem;
 }
 
 .remove-btn {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 1.75rem;
     height: 1.75rem;
-    border-radius: 0.25rem;
+    border-radius: 0.375rem;
     border: none;
     background: transparent;
     color: var(--p-surface-400);
@@ -651,7 +671,7 @@ const getStockClass = (stock) => {
 }
 
 .pos-summary-block {
-    padding: 1rem;
+    padding: 1.25rem;
     background: var(--p-surface-50);
     border-top: 1px solid var(--p-surface-200);
     flex-shrink: 0;
@@ -676,12 +696,12 @@ const getStockClass = (stock) => {
 }
 
 .dark .pos-summary-row {
-    color: var(--p-surface-400);
+    color: var(--p-surface-450);
 }
 
 .pos-summary-divider {
     border-top: 2px dashed var(--p-surface-300);
-    margin: 0.25rem 0;
+    margin: 0.375rem 0;
 }
 
 .dark .pos-summary-divider {
@@ -689,8 +709,8 @@ const getStockClass = (stock) => {
 }
 
 .pos-summary-total {
-    font-size: 1.15rem;
-    font-weight: 800;
+    font-size: 1.25rem;
+    font-weight: 900;
     color: var(--p-surface-900);
 }
 
@@ -701,7 +721,7 @@ const getStockClass = (stock) => {
 .pos-payment-actions {
     display: flex;
     gap: 0.5rem;
-    margin-top: 0.75rem;
+    margin-top: 0.875rem;
 }
 
 .pos-pay-btn {
@@ -709,12 +729,12 @@ const getStockClass = (stock) => {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.375rem;
-    padding: 0.75rem;
+    gap: 0.5rem;
+    padding: 0.875rem;
     border-radius: 0.5rem;
     border: 2px solid transparent;
     font-size: 0.9rem;
-    font-weight: 700;
+    font-weight: 750;
     cursor: pointer;
     transition: all 0.2s;
 }
@@ -738,7 +758,7 @@ const getStockClass = (stock) => {
 .dark .pos-pay-cash {
     background: rgba(34, 197, 94, 0.15);
     color: #4ade80;
-    border-color: rgba(34, 197, 94, 0.3);
+    border-color: rgba(34, 197, 94, 0.25);
 }
 
 .pos-pay-card {
@@ -755,15 +775,15 @@ const getStockClass = (stock) => {
 .dark .pos-pay-card {
     background: rgba(59, 130, 246, 0.15);
     color: #60a5fa;
-    border-color: rgba(59, 130, 246, 0.3);
+    border-color: rgba(59, 130, 246, 0.25);
 }
 
 .pos-shift-warning {
     margin-top: 0.75rem;
-    padding: 0.5rem;
+    padding: 0.625rem;
     border-radius: 0.375rem;
     font-size: 0.8rem;
-    font-weight: 600;
+    font-weight: 700;
     background: #fef3c7;
     color: #92400e;
     border: 1px solid #fcd34d;
@@ -771,9 +791,9 @@ const getStockClass = (stock) => {
 }
 
 .dark .pos-shift-warning {
-    background: rgba(245, 158, 11, 0.15);
+    background: rgba(245, 158, 11, 0.12);
     color: #fbbf24;
-    border-color: rgba(245, 158, 11, 0.3);
+    border-color: rgba(245, 158, 11, 0.25);
 }
 
 /* ── Right Panel (Catalog Grid) ── */
@@ -791,7 +811,7 @@ const getStockClass = (stock) => {
 .pos-search-bar {
     display: flex;
     gap: 0.75rem;
-    padding: 0.75rem 1rem;
+    padding: 1rem 1.25rem;
     background: var(--p-surface-0);
     border-bottom: 1px solid var(--p-surface-200);
     flex-shrink: 0;
@@ -805,7 +825,7 @@ const getStockClass = (stock) => {
 .pos-categories-tabs {
     display: flex;
     gap: 0.5rem;
-    padding: 0.5rem 1rem;
+    padding: 0.625rem 1.25rem;
     overflow-x: auto;
     background: var(--p-surface-0);
     border-bottom: 1px solid var(--p-surface-200);
@@ -827,13 +847,13 @@ const getStockClass = (stock) => {
 }
 
 .category-tab-btn {
-    padding: 0.375rem 0.875rem;
+    padding: 0.375rem 1rem;
     border-radius: 9999px;
     border: 1px solid var(--p-surface-300);
     background: var(--p-surface-0);
     color: var(--p-surface-700);
-    font-size: 0.875rem;
-    font-weight: 600;
+    font-size: 0.8125rem;
+    font-weight: 700;
     cursor: pointer;
     white-space: nowrap;
     transition: all 0.15s ease-in-out;
@@ -863,7 +883,7 @@ const getStockClass = (stock) => {
 .pos-grid-wrap {
     flex: 1;
     overflow-y: auto;
-    padding: 1rem;
+    padding: 1.25rem;
 }
 
 .pos-empty-grid {
@@ -873,38 +893,41 @@ const getStockClass = (stock) => {
     height: 60%;
     color: var(--p-surface-400);
     font-size: 1rem;
+    font-weight: 500;
 }
 
 .pos-product-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 1rem;
 }
 
 .product-card {
     background: var(--p-surface-0);
     border: 1px solid var(--p-surface-200);
-    border-radius: 0.5rem;
+    border-radius: 0.75rem;
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0, 0, 0.2, 1);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     user-select: none;
     display: flex;
     flex-direction: column;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 
 .dark .product-card {
     background: var(--p-surface-900);
     border-color: var(--p-surface-800);
+    box-shadow: none;
 }
 
 .product-card:not(.disabled-card):hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    border-color: var(--p-primary-300);
+    transform: translateY(-3px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+    border-color: var(--p-primary-400);
 }
 
 .product-card.disabled-card {
-    opacity: 0.6;
+    opacity: 0.55;
     cursor: not-allowed;
     background: var(--p-surface-100);
 }
@@ -914,30 +937,31 @@ const getStockClass = (stock) => {
 }
 
 .product-card-body {
-    padding: 0.75rem;
+    padding: 0.875rem;
     display: flex;
     flex-direction: column;
     height: 100%;
 }
 
 .product-card-cat {
-    font-size: 0.7rem;
-    font-weight: 700;
+    font-size: 0.725rem;
+    font-weight: 800;
     color: var(--p-primary-500);
     text-transform: uppercase;
 }
 
 .product-card-title {
     font-size: 0.9rem;
-    font-weight: 700;
+    font-weight: 750;
     color: var(--p-surface-800);
-    margin: 0.25rem 0;
+    margin: 0.375rem 0;
     line-clamp: 2;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    height: 2.4rem;
+    height: 2.5rem;
+    line-height: 1.3;
 }
 
 .dark .product-card-title {
@@ -945,7 +969,7 @@ const getStockClass = (stock) => {
 }
 
 .product-card-sku {
-    font-size: 0.7rem;
+    font-size: 0.725rem;
     color: var(--p-surface-400);
     margin-bottom: 0.5rem;
 }
@@ -955,7 +979,7 @@ const getStockClass = (stock) => {
     justify-content: space-between;
     align-items: center;
     border-top: 1px solid var(--p-surface-100);
-    padding-top: 0.5rem;
+    padding-top: 0.625rem;
 }
 
 .dark .product-card-footer {
@@ -963,8 +987,8 @@ const getStockClass = (stock) => {
 }
 
 .product-card-price {
-    font-size: 0.9375rem;
-    font-weight: 800;
+    font-size: 0.95rem;
+    font-weight: 850;
     color: var(--p-surface-900);
 }
 
@@ -973,10 +997,10 @@ const getStockClass = (stock) => {
 }
 
 .product-card-stock {
-    font-size: 0.75rem;
-    font-weight: 700;
-    padding: 0.125rem 0.375rem;
-    border-radius: 0.25rem;
+    font-size: 0.725rem;
+    font-weight: 800;
+    padding: 0.2rem 0.5rem;
+    border-radius: 0.375rem;
 }
 
 .stock-ok {
@@ -985,7 +1009,7 @@ const getStockClass = (stock) => {
 }
 
 .dark .stock-ok {
-    background: rgba(34, 197, 94, 0.15);
+    background: rgba(34, 197, 94, 0.12);
     color: #4ade80;
 }
 
@@ -995,7 +1019,7 @@ const getStockClass = (stock) => {
 }
 
 .dark .stock-low {
-    background: rgba(245, 158, 11, 0.15);
+    background: rgba(245, 158, 11, 0.12);
     color: #fbbf24;
 }
 
@@ -1005,7 +1029,7 @@ const getStockClass = (stock) => {
 }
 
 .dark .stock-out {
-    background: rgba(239, 68, 68, 0.15);
+    background: rgba(239, 68, 68, 0.12);
     color: #f87171;
 }
 
@@ -1025,11 +1049,11 @@ const getStockClass = (stock) => {
     }
 }
 
-/* ═══ Mode Toggle Bar ═══ */
+/* ── Mode Toggle Bar ── */
 .pos-mode-bar {
     display: flex;
-    gap: 0;
-    padding: 0.5rem 1rem;
+    gap: 0.5rem;
+    padding: 0.75rem 1.25rem;
     background: var(--p-surface-0);
     border-bottom: 1px solid var(--p-surface-200);
     flex-shrink: 0;
@@ -1046,24 +1070,15 @@ const getStockClass = (stock) => {
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    padding: 0.625rem 1rem;
-    border: 2px solid var(--p-surface-200);
+    padding: 0.75rem;
+    border: 1px solid var(--p-surface-200);
+    border-radius: 0.5rem;
     background: var(--p-surface-50);
     color: var(--p-surface-500);
-    font-size: 0.9rem;
-    font-weight: 700;
+    font-size: 0.875rem;
+    font-weight: 750;
     cursor: pointer;
     transition: all 0.2s;
-}
-
-.pos-mode-btn:first-child {
-    border-radius: 0.5rem 0 0 0.5rem;
-    border-inline-end: 1px solid var(--p-surface-200);
-}
-
-.pos-mode-btn:last-child {
-    border-radius: 0 0.5rem 0.5rem 0;
-    border-inline-start: 1px solid var(--p-surface-200);
 }
 
 .dark .pos-mode-btn {
@@ -1074,10 +1089,12 @@ const getStockClass = (stock) => {
 
 .pos-mode-btn:hover {
     background: var(--p-surface-100);
+    color: var(--p-surface-700);
 }
 
 .dark .pos-mode-btn:hover {
-    background: var(--p-surface-800);
+    background: var(--p-surface-850);
+    color: var(--p-surface-200);
 }
 
 .pos-mode-active {
@@ -1092,52 +1109,54 @@ const getStockClass = (stock) => {
     border-color: #f59e0b !important;
 }
 
-/* ═══ Returns Invoice List ═══ */
+/* ── Returns Invoice List ── */
 .returns-list-wrap {
     flex: 1;
     overflow-y: auto;
-    padding: 1rem;
+    padding: 1.25rem;
 }
 
 .returns-invoice-list {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.875rem;
 }
 
 .return-invoice-card {
     background: var(--p-surface-0);
     border: 1px solid var(--p-surface-200);
-    border-radius: 0.75rem;
+    border-radius: 1rem;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
 }
 
 .dark .return-invoice-card {
     background: var(--p-surface-900);
     border-color: var(--p-surface-800);
+    box-shadow: none;
 }
 
 .return-invoice-card:hover {
     border-color: #f59e0b;
-    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.12);
-    transform: translateY(-1px);
+    box-shadow: 0 8px 16px rgba(245, 158, 11, 0.08);
+    transform: translateY(-2px);
 }
 
 .return-invoice-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.75rem 1rem 0.5rem;
+    padding: 1rem 1.25rem 0.625rem;
 }
 
 .return-invoice-number {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-size: 0.9rem;
-    font-weight: 700;
+    font-size: 0.95rem;
+    font-weight: 800;
     color: var(--p-surface-800);
 }
 
@@ -1151,24 +1170,24 @@ const getStockClass = (stock) => {
 }
 
 .return-invoice-body {
-    padding: 0 1rem 0.5rem;
+    padding: 0 1.25rem 0.75rem;
 }
 
 .return-invoice-items-list {
     display: flex;
     flex-wrap: wrap;
     gap: 0.375rem;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.625rem;
 }
 
 .return-invoice-item-chip {
     display: inline-block;
-    padding: 0.125rem 0.5rem;
+    padding: 0.2rem 0.625rem;
     border-radius: 9999px;
     background: var(--p-surface-100);
     color: var(--p-surface-600);
     font-size: 0.75rem;
-    font-weight: 600;
+    font-weight: 700;
 }
 
 .dark .return-invoice-item-chip {
@@ -1190,16 +1209,22 @@ const getStockClass = (stock) => {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    border-top: 1px solid var(--p-surface-100);
+    padding-top: 0.5rem;
+}
+
+.dark .return-invoice-footer {
+    border-color: var(--p-surface-800);
 }
 
 .return-invoice-cashier {
     font-size: 0.75rem;
-    color: var(--p-surface-400);
+    color: var(--p-surface-450);
 }
 
 .return-invoice-total {
-    font-size: 1rem;
-    font-weight: 800;
+    font-size: 1.05rem;
+    font-weight: 850;
     color: var(--p-surface-900);
 }
 
@@ -1212,34 +1237,43 @@ const getStockClass = (stock) => {
     align-items: center;
     justify-content: center;
     gap: 0.375rem;
-    padding: 0.5rem;
+    padding: 0.625rem;
     background: #fef3c7;
     color: #92400e;
-    font-size: 0.8rem;
-    font-weight: 700;
+    font-size: 0.8125rem;
+    font-weight: 800;
     border-top: 1px solid #fde68a;
+    transition: background-color 0.15s;
 }
 
 .dark .return-invoice-action {
-    background: rgba(245, 158, 11, 0.12);
+    background: rgba(245, 158, 11, 0.1);
     color: #fbbf24;
     border-color: rgba(245, 158, 11, 0.2);
 }
 
-/* ═══ Return Dialog ═══ */
+.return-invoice-card:hover .return-invoice-action {
+    background: #fde68a;
+}
+
+.dark .return-invoice-card:hover .return-invoice-action {
+    background: rgba(245, 158, 11, 0.18);
+}
+
+/* ── Return Dialog ── */
 .return-dialog-content {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 1.25rem;
 }
 
 .return-dialog-order-info {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.75rem;
+    padding: 0.875rem 1rem;
     background: var(--p-surface-50);
-    border-radius: 0.5rem;
+    border-radius: 0.75rem;
     border: 1px solid var(--p-surface-200);
     font-size: 0.9rem;
     color: var(--p-surface-700);
@@ -1247,22 +1281,23 @@ const getStockClass = (stock) => {
 
 .dark .return-dialog-order-info {
     background: var(--p-surface-950);
-    border-color: var(--p-surface-800);
+    border-color: var(--p-surface-850);
     color: var(--p-surface-300);
 }
 
 .return-dialog-order-date {
     margin-inline-start: auto;
     font-size: 0.75rem;
-    color: var(--p-surface-400);
+    color: var(--p-surface-450);
 }
 
 .return-dialog-items {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.75rem;
     max-height: 320px;
     overflow-y: auto;
+    padding-inline-end: 0.25rem;
 }
 
 .return-dialog-item {
@@ -1270,15 +1305,15 @@ const getStockClass = (stock) => {
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    padding: 0.75rem;
-    border-radius: 0.5rem;
+    padding: 0.875rem 1rem;
+    border-radius: 0.75rem;
     background: var(--p-surface-50);
-    border: 1px solid var(--p-surface-100);
+    border: 1px solid var(--p-surface-200);
 }
 
 .dark .return-dialog-item {
     background: var(--p-surface-950);
-    border-color: var(--p-surface-800);
+    border-color: var(--p-surface-850);
 }
 
 .return-dialog-item-info {
@@ -1289,7 +1324,7 @@ const getStockClass = (stock) => {
 
 .return-dialog-item-name {
     font-size: 0.9rem;
-    font-weight: 700;
+    font-weight: 750;
     color: var(--p-surface-800);
 }
 
@@ -1299,7 +1334,7 @@ const getStockClass = (stock) => {
 
 .return-dialog-item-meta {
     font-size: 0.75rem;
-    color: var(--p-surface-400);
+    color: var(--p-surface-450);
     margin-top: 0.125rem;
 }
 
@@ -1313,7 +1348,7 @@ const getStockClass = (stock) => {
 
 .return-qty-label {
     font-size: 0.7rem;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--p-surface-500);
 }
 
@@ -1321,23 +1356,22 @@ const getStockClass = (stock) => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.75rem 1rem;
-    border-radius: 0.5rem;
+    padding: 0.875rem 1.25rem;
+    border-radius: 0.75rem;
     background: #fef3c7;
     border: 1px solid #fde68a;
-    font-size: 0.9rem;
-    font-weight: 700;
+    font-size: 0.95rem;
+    font-weight: 800;
     color: #92400e;
 }
 
 .dark .return-dialog-summary {
     background: rgba(245, 158, 11, 0.12);
-    border-color: rgba(245, 158, 11, 0.25);
+    border-color: rgba(245, 158, 11, 0.2);
     color: #fbbf24;
 }
 
 .return-dialog-summary-total {
-    font-size: 1.125rem;
-    font-weight: 800;
+    font-size: 1.15rem;
 }
 </style>

@@ -2,8 +2,8 @@
 import { useRouter } from "vue-router";
 const router = useRouter();
 
-const goHome = () => {
-    router.push({ name: "Landing" });
+const goToLogin = () => {
+    router.push({ name: "login" });
 };
 </script>
 
@@ -13,8 +13,8 @@ const goHome = () => {
             <h1 class="error-code">404</h1>
             <h2 class="error-title">عفواً، هذه الصفحة غير موجودة</h2>
             <p class="error-desc">الصفحة التي تبحث عنها غير موجودة أو تم نقلها.</p>
-            <button class="home-btn" @click="goHome">
-                العودة للصفحة الرئيسية
+            <button class="home-btn" @click="goToLogin">
+                العودة لتسجيل الدخول
             </button>
         </div>
     </div>

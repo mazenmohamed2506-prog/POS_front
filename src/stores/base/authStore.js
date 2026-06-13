@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { useBaseStore } from "./baseStore";
+import { apiGet } from "@/utilities/fetchApi";
 
 export const useAuthStore = defineStore("auth", () => {
     // ── State ──
@@ -46,11 +47,13 @@ export const useAuthStore = defineStore("auth", () => {
     }
 
     async function getUserPages() {
-        // TODO: Fetch user's allowed pages from your API
-        // Example:
-        // const response = await apiGet("/api/user/pages");
-        // userPages.value = response.data;
-        userPages.value = [];
+        try {
+            const response = await apiGet("/Pages");
+            userPages.value = response.data || [];
+        } catch (err) {
+            console.error("Failed to fetch user pages:", err);
+            userPages.value = [];
+        }
     }
 
     return {
@@ -61,3 +64,4 @@ export const useAuthStore = defineStore("auth", () => {
         getUserPages,
     };
 });
+
