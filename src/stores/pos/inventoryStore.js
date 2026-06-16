@@ -16,29 +16,37 @@ export const useInventoryStore = defineStore("inventory", () => {
         
         rawInventory.forEach(item => {
             const pId = item.productId;
-            if (!grouped[pId]) {
-                grouped[pId] = {
-                    id: pId, // Using productId as unique id
+            const batchNum = item.batchNumber || '';
+            const key = `${pId}_${batchNum}`;
+            
+            if (!grouped[key]) {
+                grouped[key] = {
+                    id: key,
                     productId: pId,
                     productName: item.productName || '',
                     sku: `PROD-${pId}`,
+                    batchNumber: batchNum || '—',
                     shelfStock: 0,
                     warehouseStock: 0,
+                    shelfStockId: null,
+                    warehouseStockId: null,
                     unit: "قطعة",
                 };
             }
             
             if (item.location === "StoreShelf") {
-                grouped[pId].shelfStock += item.quantity;
+                grouped[key].shelfStock += item.quantity;
+                grouped[key].shelfStockId = item.id;
             } else if (item.location === "BackWarehouse") {
-                grouped[pId].warehouseStock += item.quantity;
+                grouped[key].warehouseStock += item.quantity;
+                grouped[key].warehouseStockId = item.id;
             }
             
             // Try to match SKU or Unit from productStore if available
             const matchedProduct = productsList.find(p => p.id === pId);
             if (matchedProduct) {
-                grouped[pId].sku = matchedProduct.sku || grouped[pId].sku;
-                grouped[pId].unit = matchedProduct.units?.[0]?.name || grouped[pId].unit;
+                grouped[key].sku = matchedProduct.sku || grouped[key].sku;
+                grouped[key].unit = matchedProduct.units?.[0]?.name || grouped[key].unit;
             }
         });
         
@@ -131,7 +139,7 @@ export const useInventoryStore = defineStore("inventory", () => {
         }
     }
 
-    async function transferStock(productId, qty, fromLocation = "BackWarehouse", toLocation = "StoreShelf") {
+    async function transferStock(productId, qty, fromLocation = "BackWarehouse", toLocation = "StoreShelf", inventoryStockId = null) {
         loading.value = true;
         error.value = null;
         try {
@@ -139,7 +147,8 @@ export const useInventoryStore = defineStore("inventory", () => {
                 productId: productId,
                 quantity: qty,
                 fromLocation: fromLocation,
-                toLocation: toLocation
+                toLocation: toLocation,
+                inventoryStockId: inventoryStockId
             };
             
             await apiPost("/Inventory/transfer", payload, false);

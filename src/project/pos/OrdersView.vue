@@ -133,9 +133,10 @@ const getPaymentLabel = (method) => {
                 emptyMessage="لا توجد فواتير بيع مطابقة"
                 stripedRows
                 removableSort
+                scrollable
                 class="orders-table"
             >
-                <Column field="orderNumber" header="رقم الفاتورة" sortable style="width: 170px">
+                <Column field="orderNumber" header="رقم الفاتورة" sortable style="min-width: 170px">
                     <template #body="{ data }">
                         <span class="order-number-cell font-mono">{{ data.orderNumber }}</span>
                     </template>
@@ -145,29 +146,29 @@ const getPaymentLabel = (method) => {
                         <span class="text-sm font-medium">{{ formatDate(data.date) }}</span>
                     </template>
                 </Column>
-                <Column field="subtotal" header="المجموع الفرعي" sortable style="width: 130px">
+                <Column field="subtotal" header="المجموع الفرعي" sortable style="min-width: 130px">
                     <template #body="{ data }">
                         <span class="text-sm">{{ formatCurrency(data.subtotal) }}</span>
                     </template>
                 </Column>
-                <Column field="discount" header="الخصم" sortable style="width: 110px">
+                <Column field="discount" header="الخصم" sortable style="min-width: 110px">
                     <template #body="{ data }">
                         <span :class="data.discount > 0 ? 'text-red-500 font-bold' : 'text-surface-400'">
                             {{ data.discount > 0 ? formatCurrency(data.discount) : '—' }}
                         </span>
                     </template>
                 </Column>
-                <Column field="tax" header="الضريبة" sortable style="width: 110px">
+                <Column field="tax" header="الضريبة" sortable style="min-width: 110px">
                     <template #body="{ data }">
                         <span class="text-sm">{{ formatCurrency(data.tax) }}</span>
                     </template>
                 </Column>
-                <Column field="total" header="الإجمالي النهائي" sortable style="width: 145px">
+                <Column field="total" header="الإجمالي النهائي" sortable style="min-width: 145px">
                     <template #body="{ data }">
                         <span class="order-total-cell font-bold text-surface-900 dark:text-surface-50">{{ formatCurrency(data.total) }}</span>
                     </template>
                 </Column>
-                <Column field="paymentMethod" header="طريقة الدفع" sortable style="width: 130px">
+                <Column field="paymentMethod" header="طريقة الدفع" sortable style="min-width: 130px">
                     <template #body="{ data }">
                         <Tag
                             :value="getPaymentLabel(data.paymentMethod)"
@@ -176,7 +177,7 @@ const getPaymentLabel = (method) => {
                         />
                     </template>
                 </Column>
-                <Column field="status" header="الحالة" sortable style="width: 110px">
+                <Column field="status" header="الحالة" sortable style="min-width: 110px">
                     <template #body="{ data }">
                         <Tag
                             :value="getStatusLabel(data.status)"
@@ -185,12 +186,12 @@ const getPaymentLabel = (method) => {
                         />
                     </template>
                 </Column>
-                <Column field="cashier" header="الكاشير" sortable style="width: 130px">
+                <Column field="cashier" header="الكاشير" sortable style="min-width: 130px">
                     <template #body="{ data }">
                         <span class="text-sm text-surface-600 dark:text-surface-400">{{ data.cashier }}</span>
                     </template>
                 </Column>
-                <Column header="عرض" style="width: 80px; text-align: center">
+                <Column header="عرض" style="min-width: 80px; text-align: center">
                     <template #body="{ data }">
                         <button
                             class="order-view-btn"
@@ -249,30 +250,30 @@ const getPaymentLabel = (method) => {
                 <div class="order-detail-section" v-if="selectedOrder.items && selectedOrder.items.length > 0">
                     <h3 class="section-title">أصناف الطلب</h3>
                     <div class="border border-surface-200 dark:border-surface-800 rounded-lg overflow-hidden mt-2">
-                        <DataTable :value="selectedOrder.items" size="small" class="order-detail-items-table">
+                        <DataTable :value="selectedOrder.items" size="small" scrollable class="order-detail-items-table">
                             <Column field="name" header="المنتج" style="min-width: 180px">
                                 <template #body="{ data }">
                                     <span class="font-bold text-surface-800 dark:text-surface-100">{{ data.name }}</span>
                                 </template>
                             </Column>
-                            <Column field="qty" header="الكمية" style="width: 80px">
+                            <Column field="qty" header="الكمية" style="min-width: 80px">
                                 <template #body="{ data }">
                                     <span class="font-bold text-surface-700 dark:text-surface-300">{{ data.qty }}</span>
                                 </template>
                             </Column>
-                            <Column field="price" header="السعر" style="width: 100px">
+                            <Column field="price" header="السعر" style="min-width: 100px">
                                 <template #body="{ data }">
                                     <span class="text-sm">{{ formatCurrency(data.price) }}</span>
                                 </template>
                             </Column>
-                            <Column field="discount" header="الخصم" style="width: 90px">
+                            <Column field="discount" header="الخصم" style="min-width: 90px">
                                 <template #body="{ data }">
                                     <span :class="data.discount > 0 ? 'text-red-500 font-bold' : 'text-surface-400'">
                                         {{ data.discount > 0 ? formatCurrency(data.discount) : '—' }}
                                     </span>
                                 </template>
                             </Column>
-                            <Column header="الإجمالي" style="width: 120px">
+                            <Column header="الإجمالي" style="min-width: 120px">
                                 <template #body="{ data }">
                                     <span class="font-black text-surface-900 dark:text-surface-100">
                                         {{ formatCurrency(data.total || (data.price * data.qty - (data.discount || 0))) }}
@@ -323,6 +324,13 @@ const getPaymentLabel = (method) => {
     max-width: 1400px;
     margin: 0 auto;
     width: 100%;
+}
+
+@media (max-width: 768px) {
+    .orders-page {
+        padding: 0.75rem;
+        gap: 1rem;
+    }
 }
 
 /* Header */

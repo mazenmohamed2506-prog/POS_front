@@ -20,7 +20,8 @@ const filteredInventory = computed(() => {
     if (!q) return inventoryStore.inventory;
     return inventoryStore.inventory.filter((item) =>
         (item.productName && item.productName.toLowerCase().includes(q)) ||
-        (item.sku && item.sku.toLowerCase().includes(q))
+        (item.sku && item.sku.toLowerCase().includes(q)) ||
+        (item.batchNumber && item.batchNumber.toLowerCase().includes(q))
     );
 });
 
@@ -36,8 +37,11 @@ const handleTransfer = async () => {
 
     const from = transferDirection.value === "toShelf" ? "BackWarehouse" : "StoreShelf";
     const to = transferDirection.value === "toShelf" ? "StoreShelf" : "BackWarehouse";
+    const stockId = transferDirection.value === "toShelf"
+        ? transferItem.value.warehouseStockId
+        : transferItem.value.shelfStockId;
 
-    await inventoryStore.transferStock(transferItem.value.productId, transferQty.value, from, to);
+    await inventoryStore.transferStock(transferItem.value.productId, transferQty.value, from, to, stockId);
     showTransferDialog.value = false;
 };
 
@@ -102,6 +106,7 @@ const getStockLabel = (stock) => {
                 emptyMessage="لا توجد بيانات مخزون مطابقة"
                 stripedRows
                 removableSort
+                scrollable
                 class="inventory-table"
             >
                 <Column field="productName" header="المنتج" sortable style="min-width: 220px">
@@ -109,17 +114,22 @@ const getStockLabel = (stock) => {
                         <span class="font-bold text-surface-800 dark:text-surface-100">{{ data.productName }}</span>
                     </template>
                 </Column>
-                <Column field="sku" header="رمز المنتج" sortable style="width: 140px">
+                <Column field="sku" header="رمز المنتج" sortable style="min-width: 130px">
                     <template #body="{ data }">
                         <span class="text-sm font-semibold font-mono text-surface-650 dark:text-surface-350">{{ data.sku }}</span>
                     </template>
                 </Column>
-                <Column field="unit" header="الوحدة" style="width: 110px">
+                <Column field="batchNumber" header="رقم الدفعة" sortable style="min-width: 130px">
+                    <template #body="{ data }">
+                        <span class="text-sm font-semibold font-mono text-surface-650 dark:text-surface-350">{{ data.batchNumber }}</span>
+                    </template>
+                </Column>
+                <Column field="unit" header="الوحدة" style="min-width: 110px">
                     <template #body="{ data }">
                         <span class="text-sm text-surface-500">{{ data.unit || '—' }}</span>
                     </template>
                 </Column>
-                <Column field="shelfStock" header="مخزون الرف" sortable style="width: 150px">
+                <Column field="shelfStock" header="مخزون الرف" sortable style="min-width: 150px">
                     <template #body="{ data }">
                         <Tag
                             :value="getStockLabel(data.shelfStock)"
@@ -128,19 +138,19 @@ const getStockLabel = (stock) => {
                         />
                     </template>
                 </Column>
-                <Column field="warehouseStock" header="مخزون المستودع" sortable style="width: 160px">
+                <Column field="warehouseStock" header="مخزون المستودع" sortable style="min-width: 160px">
                     <template #body="{ data }">
                         <span class="font-bold text-surface-800 dark:text-surface-100">{{ data.warehouseStock }} وحدة</span>
                     </template>
                 </Column>
-                <Column header="إجمالي المخزون" style="width: 140px">
+                <Column header="إجمالي المخزون" style="min-width: 140px">
                     <template #body="{ data }">
                         <span class="font-black text-primary-600 dark:text-primary-450">
                             {{ data.shelfStock + data.warehouseStock }} وحدة
                         </span>
                     </template>
                 </Column>
-                <Column header="عمليات النقل" style="width: 220px; text-align: center">
+                <Column header="عمليات النقل" style="min-width: 220px; text-align: center">
                     <template #body="{ data }">
                         <div class="flex gap-2 justify-center">
                             <Button
@@ -216,12 +226,21 @@ const getStockLabel = (stock) => {
     width: 100%;
 }
 
+@media (max-width: 768px) {
+    .inventory-page {
+        padding: 0.75rem;
+        gap: 1rem;
+    }
+}
+
 /* Header */
 .inventory-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     width: 100%;
+    flex-wrap: wrap;
+    gap: 1rem;
 }
 
 .header-icon-wrap {

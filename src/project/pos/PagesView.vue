@@ -117,6 +117,7 @@ const saveAssign = async () => {
                 emptyMessage="لا توجد صفحات مطابقة"
                 stripedRows
                 removableSort
+                scrollable
                 class="pages-table"
             >
                 <Column field="id" header="#" sortable style="width: 90px">
@@ -237,12 +238,21 @@ const saveAssign = async () => {
     width: 100%;
 }
 
+@media (max-width: 768px) {
+    .pages-page {
+        padding: 0.75rem;
+        gap: 1rem;
+    }
+}
+
 /* Header */
 .pages-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     width: 100%;
+    flex-wrap: wrap;
+    gap: 1rem;
 }
 
 .header-icon-wrap {

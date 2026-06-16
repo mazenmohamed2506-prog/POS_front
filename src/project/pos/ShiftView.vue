@@ -298,6 +298,7 @@ onMounted(() => {
                             emptyMessage="لا توجد ورديات سابقة"
                             stripedRows
                             removableSort
+                            scrollable
                             class="shifts-table"
                         >
                             <Column field="cashier" header="الكاشير" sortable style="min-width: 130px" />
@@ -329,7 +330,7 @@ onMounted(() => {
                                     </span>
                                 </template>
                             </Column>
-                            <Column field="status" header="الحالة" sortable style="width: 110px">
+                            <Column field="status" header="الحالة" sortable style="min-width: 110px">
                                 <template #body="{ data }">
                                     <Tag
                                         :value="data.status === 'Open' ? 'مفتوحة' : 'مغلقة'"
@@ -337,7 +338,7 @@ onMounted(() => {
                                     />
                                 </template>
                             </Column>
-                            <Column header="عرض" style="width: 80px; text-align: center">
+                            <Column header="عرض" style="min-width: 80px; text-align: center">
                                 <template #body="{ data }">
                                     <button
                                         class="shift-view-btn"
@@ -453,11 +454,20 @@ onMounted(() => {
     width: 100%;
 }
 
+@media (max-width: 768px) {
+    .shift-page {
+        padding: 0.75rem;
+        gap: 1rem;
+    }
+}
+
 .shift-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     width: 100%;
+    flex-wrap: wrap;
+    gap: 1rem;
 }
 
 .shift-header-title {

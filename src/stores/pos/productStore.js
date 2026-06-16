@@ -14,7 +14,7 @@ export const useProductStore = defineStore("product", () => {
     function mapApiProductToFrontend(apiProd) {
         const units = apiProd.productUnits || [];
         const baseUnit = units.find(u => u.conversionFactor === 1) || units[0] || {};
-        
+
         return {
             id: apiProd.id,
             name: apiProd.name,
@@ -23,7 +23,9 @@ export const useProductStore = defineStore("product", () => {
             category: apiProd.categoryName || 'عام',
             categoryId: apiProd.categoryId,
             price: baseUnit.price || 0,
-            cost: apiProd.cost || 0, // Fallback since C# model doesn't have Cost
+            cost: baseUnit.costPrice || 0,
+            sellingPrice: baseUnit.sellingPrice || baseUnit.price || 0,
+            costPrice: baseUnit.costPrice || 0,
             trackExpiration: apiProd.trackExpiration ?? false,
             trackSerialNumber: apiProd.trackSerialNumber ?? false,
             isActive: apiProd.isActive ?? true,
@@ -32,7 +34,9 @@ export const useProductStore = defineStore("product", () => {
                 name: u.unitName,
                 barcode: u.barcode,
                 factor: u.conversionFactor,
-                price: u.price
+                price: u.price,
+                sellingPrice: u.sellingPrice || u.price || 0,
+                costPrice: u.costPrice || 0
             }))
         };
     }
@@ -52,7 +56,7 @@ export const useProductStore = defineStore("product", () => {
         try {
             // Fetch categories first to have up to date mapping
             await fetchCategories();
-            
+
             const response = await apiGet("/Products");
             const rawProducts = response.data || [];
             products.value = rawProducts.map(mapApiProductToFrontend);
@@ -74,7 +78,7 @@ export const useProductStore = defineStore("product", () => {
         if (cat) {
             return cat.id;
         }
-        
+
         try {
             // Create category if it doesn't exist (disableToast = true)
             const response = await apiPost("/Categories", { name: trimmedName }, false);
@@ -86,7 +90,7 @@ export const useProductStore = defineStore("product", () => {
         } catch (err) {
             console.error("Failed to create category dynamically:", err);
         }
-        
+
         // Fallback to 1 if we can't resolve/create
         return 1;
     }
@@ -96,23 +100,31 @@ export const useProductStore = defineStore("product", () => {
         error.value = null;
         try {
             const categoryId = await getOrCreateCategoryId(product.category);
-            
+
             // Map units
             const productUnits = (product.units && product.units.length > 0)
-                ? product.units.map(u => ({
-                    unitName: u.name || "قطعة",
-                    barcode: u.barcode || product.barcode,
-                    price: u.price || (u.factor ? product.price * u.factor : product.price),
-                    conversionFactor: u.factor || 1
-                  }))
+                ? product.units.map(u => {
+                    const sPrice = u.sellingPrice || u.price || (u.factor ? (product.sellingPrice || product.price) * u.factor : (product.sellingPrice || product.price));
+                    const cPrice = u.costPrice || u.cost || (u.factor ? (product.costPrice || product.cost) * u.factor : (product.costPrice || product.cost));
+                    return {
+                        unitName: u.name || "قطعة",
+                        barcode: u.barcode || product.barcode,
+                        price: sPrice,
+                        sellingPrice: sPrice,
+                        costPrice: cPrice,
+                        conversionFactor: u.factor || 1
+                    };
+                })
                 : [
                     {
                         unitName: "قطعة",
                         barcode: product.barcode,
-                        price: product.price,
+                        price: product.sellingPrice || product.price || 0,
+                        sellingPrice: product.sellingPrice || product.price || 0,
+                        costPrice: product.costPrice || product.cost || 0,
                         conversionFactor: 1
                     }
-                  ];
+                ];
 
             const payload = {
                 name: product.name,
@@ -145,21 +157,38 @@ export const useProductStore = defineStore("product", () => {
 
             // Sync units
             let productUnits = [];
+            const baseSellingPrice = product.price ?? product.sellingPrice ?? 0;
+            const baseCostPrice = product.cost ?? product.costPrice ?? 0;
+
             if (product.units && product.units.length > 0) {
-                productUnits = product.units.map((u, idx) => ({
-                    id: u.id || 0,
-                    unitName: u.name || "قطعة",
-                    barcode: idx === 0 ? (product.barcode || u.barcode) : u.barcode,
-                    price: idx === 0 ? (product.price || u.price) : (u.price || (product.price * (u.factor || 1))),
-                    conversionFactor: u.factor || 1
-                }));
+                productUnits = product.units.map((u, idx) => {
+                    const uSellingPrice = idx === 0
+                        ? (product.price ?? product.sellingPrice ?? u.sellingPrice ?? u.price ?? 0)
+                        : (u.sellingPrice ?? u.price ?? (baseSellingPrice * (u.factor || 1)));
+
+                    const uCostPrice = idx === 0
+                        ? (product.cost ?? product.costPrice ?? u.costPrice ?? u.cost ?? 0)
+                        : (u.costPrice ?? u.cost ?? (baseCostPrice * (u.factor || 1)));
+
+                    return {
+                        id: u.id || 0,
+                        unitName: u.name || "قطعة",
+                        barcode: idx === 0 ? (product.barcode || u.barcode) : u.barcode,
+                        price: uSellingPrice,
+                        sellingPrice: uSellingPrice,
+                        costPrice: uCostPrice,
+                        conversionFactor: u.factor || 1
+                    };
+                });
             } else {
                 productUnits = [
                     {
                         id: 0,
                         unitName: "قطعة",
                         barcode: product.barcode,
-                        price: product.price,
+                        price: baseSellingPrice,
+                        sellingPrice: baseSellingPrice,
+                        costPrice: baseCostPrice,
                         conversionFactor: 1
                     }
                 ];

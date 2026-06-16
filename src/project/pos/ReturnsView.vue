@@ -100,14 +100,15 @@ const filteredOrders = computed(() => {
                 emptyMessage="لا توجد طلبات بيع مطابقة"
                 stripedRows
                 removableSort
+                scrollable
                 class="returns-table"
             >
-                <Column field="orderNumber" header="رقم الطلب" sortable style="width: 170px">
+                <Column field="orderNumber" header="رقم الطلب" sortable style="min-width: 170px">
                     <template #body="{ data }">
                         <span class="order-number-cell font-mono">{{ data.orderNumber }}</span>
                     </template>
                 </Column>
-                <Column field="type" header="النوع" style="width: 120px">
+                <Column field="type" header="النوع" style="min-width: 120px">
                     <template #body="{ data }">
                         <Tag
                             :value="data.type === 'sale' ? 'بيع' : 'مرتجع'"
@@ -121,19 +122,19 @@ const filteredOrders = computed(() => {
                         <span class="text-sm font-medium">{{ formatDate(data.date) }}</span>
                     </template>
                 </Column>
-                <Column header="عدد الأصناف" style="width: 130px">
+                <Column header="عدد الأصناف" style="min-width: 130px">
                     <template #body="{ data }">
                         <span class="text-sm font-semibold text-surface-600 dark:text-surface-400">
                             {{ data.items?.length || 0 }} صنف
                         </span>
                     </template>
                 </Column>
-                <Column field="total" header="الإجمالي" sortable style="width: 140px">
+                <Column field="total" header="الإجمالي" sortable style="min-width: 140px">
                     <template #body="{ data }">
                         <span class="font-bold text-surface-900 dark:text-surface-50">{{ formatCurrency(data.total) }}</span>
                     </template>
                 </Column>
-                <Column field="paymentMethod" header="طريقة الدفع" style="width: 145px">
+                <Column field="paymentMethod" header="طريقة الدفع" style="min-width: 145px">
                     <template #body="{ data }">
                         <Tag
                             :value="data.paymentMethod === 'cash' ? 'نقدي' : data.paymentMethod === 'card' ? 'بطاقة' : data.paymentMethod || '—'"
@@ -142,7 +143,7 @@ const filteredOrders = computed(() => {
                         />
                     </template>
                 </Column>
-                <Column header="إجراء" style="width: 120px; text-align: center">
+                <Column header="إجراء" style="min-width: 120px; text-align: center">
                     <template #body="{ data }">
                         <div class="flex justify-center">
                             <Button
@@ -226,12 +227,21 @@ const filteredOrders = computed(() => {
     width: 100%;
 }
 
+@media (max-width: 768px) {
+    .returns-page {
+        padding: 0.75rem;
+        gap: 1rem;
+    }
+}
+
 /* Header */
 .returns-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     width: 100%;
+    flex-wrap: wrap;
+    gap: 1rem;
 }
 
 .header-icon-wrap {

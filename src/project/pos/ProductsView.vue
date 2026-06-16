@@ -13,7 +13,9 @@ const productForm = ref({
     barcode: "",
     category: "",
     price: 0,
+    sellingPrice: 0,
     cost: 0,
+    costPrice: 0,
     units: [],
 });
 
@@ -25,7 +27,17 @@ onMounted(() => {
 
 const openNewProduct = () => {
     editingProduct.value = null;
-    productForm.value = { name: "", sku: "", barcode: "", category: "", price: 0, cost: 0, units: [] };
+    productForm.value = { 
+        name: "", 
+        sku: "", 
+        barcode: "", 
+        category: "", 
+        price: 0, 
+        sellingPrice: 0, 
+        cost: 0, 
+        costPrice: 0, 
+        units: [] 
+    };
     showProductDialog.value = true;
 };
 
@@ -99,6 +111,7 @@ const deleteProduct = async (product) => {
                 emptyMessage="لا توجد منتجات مطابقة للبحث"
                 stripedRows
                 removableSort
+                scrollable
                 class="products-table"
             >
                 <Column field="name" header="اسم المنتج" sortable style="min-width: 220px">
@@ -106,39 +119,40 @@ const deleteProduct = async (product) => {
                         <span class="font-bold text-surface-800 dark:text-surface-100">{{ data.name }}</span>
                     </template>
                 </Column>
-                <Column field="sku" header="رمز المنتج" sortable style="width: 140px">
+                <Column field="sku" header="رمز المنتج" sortable style="min-width: 140px">
                     <template #body="{ data }">
                         <span class="text-sm font-semibold font-mono text-surface-600 dark:text-surface-400">{{ data.sku }}</span>
                     </template>
                 </Column>
-                <Column field="barcode" header="الباركود" style="width: 160px">
+                <Column field="barcode" header="الباركود" style="min-width: 160px">
                     <template #body="{ data }">
                         <span class="text-sm text-surface-600 dark:text-surface-400">{{ data.barcode || '—' }}</span>
                     </template>
                 </Column>
-                <Column field="category" header="الفئة" sortable style="width: 130px">
+                <Column field="category" header="الفئة" sortable style="min-width: 130px">
                     <template #body="{ data }">
                         <Tag :value="data.category" severity="info" class="font-medium" />
                     </template>
                 </Column>
-                <Column field="price" header="سعر البيع" sortable style="width: 130px">
+                 <Column field="costPrice" header="سعر الشراء" sortable style="min-width: 130px">
                     <template #body="{ data }">
-                        <span class="font-black text-primary-600 dark:text-primary-450">{{ data.price?.toFixed(2) }} EGP</span>
+                        <span class="font-black text-primary-600 dark:text-primary-450">{{ data.costPrice?.toFixed(2) }} EGP</span>
                     </template>
                 </Column>
-                <Column field="cost" header="سعر الشراء" sortable style="width: 130px">
+                <Column field="sellingPrice" header="سعر البيع" sortable style="min-width: 130px">
                     <template #body="{ data }">
-                        <span class="font-semibold text-surface-600 dark:text-surface-400">{{ data.cost?.toFixed(2) }} EGP</span>
+                        <span class="font-black text-primary-600 dark:text-primary-450">{{ data.sellingPrice?.toFixed(2) }} EGP</span>
                     </template>
                 </Column>
-                <Column header="الوحدات" style="width: 120px">
+
+                <Column header="الوحدات" style="min-width: 120px">
                     <template #body="{ data }">
                         <span class="text-sm font-medium text-surface-500">
                             {{ data.units?.length || 0 }} وحدة
                         </span>
                     </template>
                 </Column>
-                <Column header="إجراءات" style="width: 100px; text-align: center">
+                <Column header="إجراءات" style="min-width: 100px; text-align: center">
                     <template #body="{ data }">
                         <div class="flex gap-1 justify-center">
                             <button class="action-edit-btn" @click="openEditProduct(data)" title="تعديل">
@@ -212,12 +226,21 @@ const deleteProduct = async (product) => {
     width: 100%;
 }
 
+@media (max-width: 768px) {
+    .products-page {
+        padding: 0.75rem;
+        gap: 1rem;
+    }
+}
+
 /* Header */
 .products-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     width: 100%;
+    flex-wrap: wrap;
+    gap: 1rem;
 }
 
 .header-icon-wrap {

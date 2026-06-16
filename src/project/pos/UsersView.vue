@@ -109,9 +109,10 @@ const confirmDelete = async (user) => {
                 emptyMessage="لا يوجد مستخدمين مطابِقين"
                 stripedRows
                 removableSort
+                scrollable
                 class="users-table"
             >
-                <Column field="id" header="#" sortable style="width: 90px">
+                <Column field="id" header="#" sortable style="min-width: 90px">
                     <template #body="{ data }">
                         <span class="font-mono text-surface-400">{{ data.id }}</span>
                     </template>
@@ -121,7 +122,7 @@ const confirmDelete = async (user) => {
                         <span class="font-bold text-surface-800 dark:text-surface-100">{{ data.username }}</span>
                     </template>
                 </Column>
-                <Column field="role" header="الصلاحية" sortable style="width: 160px">
+                <Column field="role" header="الصلاحية" sortable style="min-width: 160px">
                     <template #body="{ data }">
                         <Tag
                             :value="data.role === 'Manager' ? 'مدير' : 'كاشير'"
@@ -130,7 +131,7 @@ const confirmDelete = async (user) => {
                         />
                     </template>
                 </Column>
-                <Column field="isActive" header="الحالة" style="width: 140px">
+                <Column field="isActive" header="الحالة" style="min-width: 140px">
                     <template #body="{ data }">
                         <Tag
                             :value="data.isActive ? 'نشط' : 'غير نشط'"
@@ -139,7 +140,7 @@ const confirmDelete = async (user) => {
                         />
                     </template>
                 </Column>
-                <Column header="إجراءات" style="width: 120px; text-align: center">
+                <Column header="إجراءات" style="min-width: 120px; text-align: center">
                     <template #body="{ data }">
                         <div class="flex gap-1 justify-center">
                             <button class="action-edit-btn" @click="openEditUser(data)" title="تعديل">
@@ -206,12 +207,21 @@ const confirmDelete = async (user) => {
     width: 100%;
 }
 
+@media (max-width: 768px) {
+    .users-page {
+        padding: 0.75rem;
+        gap: 1rem;
+    }
+}
+
 /* Header */
 .users-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     width: 100%;
+    flex-wrap: wrap;
+    gap: 1rem;
 }
 
 .header-icon-wrap {

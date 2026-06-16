@@ -122,9 +122,10 @@ const formatCurrency = (val) => {
                 emptyMessage="لا توجد فواتير مشتريات مطابقة"
                 stripedRows
                 removableSort
+                scrollable
                 class="purchases-table"
             >
-                <Column field="invoiceNumber" header="رقم الفاتورة" sortable style="width: 170px">
+                <Column field="invoiceNumber" header="رقم الفاتورة" sortable style="min-width: 170px">
                     <template #body="{ data }">
                         <span class="purchase-inv-number font-mono">{{ data.invoiceNumber }}</span>
                     </template>
@@ -134,27 +135,27 @@ const formatCurrency = (val) => {
                         <span class="font-semibold text-surface-800 dark:text-surface-100">{{ data.supplier }}</span>
                     </template>
                 </Column>
-                <Column field="date" header="التاريخ" sortable style="width: 200px">
+                <Column field="date" header="التاريخ" sortable style="min-width: 200px">
                     <template #body="{ data }">
                         <span class="text-sm font-medium">{{ formatDate(data.date) }}</span>
                     </template>
                 </Column>
-                <Column header="عدد الأصناف" style="width: 130px">
+                <Column header="عدد الأصناف" style="min-width: 130px">
                     <template #body="{ data }">
                         <Tag :value="`${data.items?.length || 0} صنف`" severity="info" class="font-medium" />
                     </template>
                 </Column>
-                <Column field="total" header="الإجمالي" sortable style="width: 160px">
+                <Column field="total" header="الإجمالي" sortable style="min-width: 160px">
                     <template #body="{ data }">
                         <span class="purchase-total-cell font-bold text-surface-900 dark:text-surface-50">{{ formatCurrency(data.total) }}</span>
                     </template>
                 </Column>
-                <Column field="status" header="الحالة" style="width: 120px">
+                <Column field="status" header="الحالة" style="min-width: 120px">
                     <template #body="{ data }">
                         <Tag :value="data.status === 'received' ? 'مستلم' : data.status" severity="success" class="font-medium" />
                     </template>
                 </Column>
-                <Column header="عرض" style="width: 90px; text-align: center">
+                <Column header="عرض" style="min-width: 90px; text-align: center">
                     <template #body="{ data }">
                         <button class="purchase-view-btn" @click="viewDetails(data)" title="عرض التفاصيل">
                             <Eye :size="15" />
@@ -197,8 +198,8 @@ const formatCurrency = (val) => {
                 <div class="purchase-detail-section" v-if="selectedPurchase.items && selectedPurchase.items.length > 0">
                     <h3 class="section-title">أصناف الفاتورة</h3>
                     <div class="border border-surface-200 dark:border-surface-800 rounded-lg overflow-hidden mt-2">
-                        <DataTable :value="selectedPurchase.items" size="small" class="purchase-detail-items-table">
-                            <Column header="#" style="width: 50px">
+                        <DataTable :value="selectedPurchase.items" size="small" scrollable class="purchase-detail-items-table">
+                            <Column header="#" style="min-width: 50px">
                                 <template #body="{ index }">
                                     <span class="text-surface-450 text-xs">{{ index + 1 }}</span>
                                 </template>
@@ -211,17 +212,17 @@ const formatCurrency = (val) => {
                                     </div>
                                 </template>
                             </Column>
-                            <Column field="qty" header="الكمية" style="width: 90px">
+                            <Column field="qty" header="الكمية" style="min-width: 90px">
                                 <template #body="{ data }">
                                     <span class="font-bold text-surface-700 dark:text-surface-300">{{ data.qty }}</span>
                                 </template>
                             </Column>
-                            <Column field="cost" header="سعر التكلفة" style="width: 120px">
+                            <Column field="cost" header="سعر التكلفة" style="min-width: 120px">
                                 <template #body="{ data }">
                                     <span class="text-sm">{{ formatCurrency(data.cost) }}</span>
                                 </template>
                             </Column>
-                            <Column header="الإجمالي" style="width: 130px">
+                            <Column header="الإجمالي" style="min-width: 130px">
                                 <template #body="{ data }">
                                     <span class="font-black text-surface-900 dark:text-surface-100">{{ formatCurrency(data.qty * data.cost) }}</span>
                                 </template>
@@ -327,12 +328,21 @@ const formatCurrency = (val) => {
     width: 100%;
 }
 
+@media (max-width: 768px) {
+    .purchases-page {
+        padding: 0.75rem;
+        gap: 1rem;
+    }
+}
+
 /* Header */
 .purchases-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     width: 100%;
+    flex-wrap: wrap;
+    gap: 1rem;
 }
 
 .header-icon-wrap {

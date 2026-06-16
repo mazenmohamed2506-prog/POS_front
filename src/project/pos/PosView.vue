@@ -44,8 +44,8 @@ const categories = computed(() => {
 
 // Helper to get shelf stock from inventory state
 const getShelfStock = (productId) => {
-    const item = posStore.value.inventory.find((i) => i.productId === productId);
-    return item ? item.shelfStock : 0;
+    const items = posStore.value.inventory.filter((i) => i.productId === productId);
+    return items.reduce((sum, item) => sum + item.shelfStock, 0);
 };
 
 // Filtered products list based on category & text search
@@ -540,7 +540,7 @@ const getStockClass = (stock) => {
 
 /* ── Left Panel (Cart & Payment) ── */
 .pos-left-panel {
-    width: 420px;
+    width: clamp(340px, 25vw, 460px);
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
@@ -1033,7 +1033,7 @@ const getStockClass = (stock) => {
     color: #f87171;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
     .pos-container {
         flex-direction: column;
         overflow-y: auto;
