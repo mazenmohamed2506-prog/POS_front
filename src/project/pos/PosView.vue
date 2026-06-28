@@ -1,14 +1,15 @@
 <script setup>
 import { ref, onMounted, nextTick, computed } from "vue";
 import { usePosStore } from "@/stores/pos/posStore";
-import { Barcode, Trash2, Plus, Minus, CreditCard, Banknote, ShoppingCart, XCircle, Search, RotateCcw, Receipt } from "lucide-vue-next";
+import { useToastStore } from "@/stores/base/toastStore";
+import { Barcode, Trash2, Plus, Minus, CreditCard, Banknote, ShoppingCart, XCircle, Search, RotateCcw, Receipt, Package } from "lucide-vue-next";
 
 const posStore = ref(null);
 posStore.value = usePosStore();
+const toastStore = useToastStore();
 
 const barcodeInput = ref("");
 const barcodeInputRef = ref(null);
-const lastScannedError = ref("");
 
 // Category and search query
 const selectedCategory = ref("الكل");
@@ -22,6 +23,8 @@ const orderSearchQuery = ref("");
 const showReturnDialog = ref(false);
 const selectedOrder = ref(null);
 const returnItems = ref([]);
+
+const shakingCardId = ref(null);
 
 // Focus barcode input on mount and after actions
 const focusBarcode = async () => {
@@ -77,11 +80,18 @@ const filteredSaleOrders = computed(() => {
 // Click card handler
 const handleProductClick = (product) => {
     if (!posStore.value.isShiftOpen) {
-        alert("يجب فتح وردية أولاً من صفحة الورديات (Shifts) لتتمكن من إجراء المبيعات وإضافة المنتجات!");
+        toastStore.addWarningToast("يجب فتح وردية أولاً من صفحة الورديات لتتمكن من إجراء المبيعات وإضافة المنتجات!");
         return;
     }
     const stock = getShelfStock(product.id);
-    if (stock <= 0) return; // Block adding if out of stock
+    if (stock <= 0) {
+        toastStore.addWarningToast("المنتج غير متوفر على الرف");
+        shakingCardId.value = product.id;
+        setTimeout(() => {
+            if (shakingCardId.value === product.id) shakingCardId.value = null;
+        }, 400);
+        return;
+    }
     posStore.value.addToCart(product);
     focusBarcode();
 };
@@ -91,19 +101,18 @@ const handleScan = async () => {
     const code = barcodeInput.value.trim();
     if (!code) return;
 
-    lastScannedError.value = "";
     try {
         const product = await posStore.value.scanBarcode(code);
         if (product) {
             const stock = getShelfStock(product.id);
             if (stock <= 0) {
-                lastScannedError.value = "المنتج غير متوفر على الرف";
+                toastStore.addWarningToast("المنتج غير متوفر على الرف");
             } else {
                 posStore.value.addToCart(product);
             }
         }
     } catch (err) {
-        lastScannedError.value = "المنتج غير موجود";
+        toastStore.addErrorToast("المنتج غير موجود");
     }
     barcodeInput.value = "";
     focusBarcode();
@@ -178,7 +187,7 @@ const getStockClass = (stock) => {
 <template>
     <div class="pos-container">
         <!-- ═══ LEFT PANEL: Cart & Checkout ═══ -->
-        <div class="pos-left-panel">
+        <div class="pos-cart-panel">
             <!-- Cart Header -->
             <div class="pos-cart-header">
                 <div class="flex items-center gap-2">
@@ -228,28 +237,40 @@ const getStockClass = (stock) => {
                             </div>
                         </template>
                     </Column>
-                    <Column header="السعر" style="width: 80px">
+                    <Column header="السعر" style="min-width: 80px; flex: 1">
                         <template #body="{ data }">
-                            <span class="font-medium text-xs">{{ formatCurrency(data.price) }}</span>
+                            <span class="font-medium text-sm">{{ formatCurrency(data.price) }}</span>
                         </template>
                     </Column>
-                    <Column header="الكمية" style="width: 100px">
+                    <Column header="الكمية" style="min-width: 120px">
                         <template #body="{ data }">
                             <div class="qty-controls">
                                 <button class="qty-btn" @click="posStore.updateCartQty(data.id, data.qty - 1)">
-                                    <Minus :size="10" />
+                                    <Minus :size="16" />
                                 </button>
-                                <span class="qty-value font-bold text-xs">{{ data.qty }}</span>
+                                <span class="qty-value font-bold text-sm">{{ data.qty }}</span>
                                 <button class="qty-btn" @click="posStore.updateCartQty(data.id, data.qty + 1)">
-                                    <Plus :size="10" />
+                                    <Plus :size="16" />
                                 </button>
                             </div>
                         </template>
                     </Column>
-                    <Column style="width: 40px; text-align: center">
+                    <Column header="الصافي" style="min-width: 100px; flex: 1">
+                        <template #body="{ data }">
+                            <div class="item-net-cell">
+                                <template v-if="data.itemDiscount > 0">
+                                    <span class="item-net-subtotal text-sm text-surface-400">{{ formatCurrency(data.price * data.qty) }}</span>
+                                    <span class="item-net-discount text-sm text-red-500 font-bold">-{{ formatCurrency(data.itemDiscount * data.qty) }}</span>
+                                    <span class="item-net-total font-bold text-sm text-surface-800 dark:text-surface-100">{{ formatCurrency((data.price - data.itemDiscount) * data.qty) }}</span>
+                                </template>
+                                <span v-else class="font-bold text-sm text-surface-800 dark:text-surface-100">{{ formatCurrency(data.price * data.qty) }}</span>
+                            </div>
+                        </template>
+                    </Column>
+                    <Column style="width: 50px; text-align: center">
                         <template #body="{ data }">
                             <button class="remove-btn" @click="posStore.removeFromCart(data.id)" title="حذف">
-                                <Trash2 :size="14" />
+                                <Trash2 :size="18" />
                             </button>
                         </template>
                     </Column>
@@ -257,11 +278,15 @@ const getStockClass = (stock) => {
             </div>
 
             <!-- Summary Block sticky at bottom -->
-            <div class="pos-summary-block">
+            <div class="pos-summary-block glass border-t border-surface-200 dark:border-surface-800">
                 <div class="pos-summary-rows">
                     <div class="pos-summary-row">
                         <span>المجموع الفرعي</span>
                         <span class="font-medium text-surface-700 dark:text-surface-300">{{ formatCurrency(posStore.cartSubtotal) }}</span>
+                    </div>
+                    <div class="pos-summary-row" v-if="posStore.cartItemDiscountTotal > 0">
+                        <span class="text-red-500">خصم الأصناف</span>
+                        <span class="font-bold text-red-500">-{{ formatCurrency(posStore.cartItemDiscountTotal) }}</span>
                     </div>
                     <div class="pos-summary-row">
                         <span>الضريبة ({{ (posStore.taxRate * 100).toFixed(0) }}%)</span>
@@ -302,9 +327,9 @@ const getStockClass = (stock) => {
         </div>
 
         <!-- ═══ RIGHT PANEL: Mode Toggle + Content ═══ -->
-        <div class="pos-right-panel">
+        <div class="pos-catalog-panel">
             <!-- Mode Toggle Bar -->
-            <div class="pos-mode-bar">
+            <div class="pos-mode-bar glass shadow-sm z-10 relative">
                 <button
                     class="pos-mode-btn"
                     :class="{ 'pos-mode-active': posMode === 'sell' }"
@@ -326,7 +351,7 @@ const getStockClass = (stock) => {
             <!-- ═══ SELL MODE ═══ -->
             <template v-if="posMode === 'sell'">
                 <!-- Search & scan topbar -->
-                <div class="pos-search-bar">
+                <div class="pos-search-bar glass shadow-sm z-10 relative">
                     <form @submit.prevent="handleScan" class="flex-1">
                         <div class="relative w-full">
                             <Barcode :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400 dark:text-surface-500" />
@@ -353,10 +378,9 @@ const getStockClass = (stock) => {
                         />
                     </div>
                 </div>
-                <p v-if="lastScannedError" class="text-red-500 text-xs px-4 mt-2 font-bold">{{ lastScannedError }}</p>
 
                 <!-- Categories Tabs -->
-                <div class="pos-categories-tabs">
+                <div class="pos-categories-tabs glass z-10 relative">
                     <button
                         v-for="cat in categories"
                         :key="cat"
@@ -369,38 +393,42 @@ const getStockClass = (stock) => {
                 </div>
 
                 <!-- Products Grid -->
-                <div class="pos-grid-wrap">
-                    <div v-if="filteredProducts.length === 0" class="pos-empty-grid">
-                        لا توجد منتجات مطابقة لخيارات التصفية
-                    </div>
-                    <div v-else class="pos-product-grid">
-                        <div
-                            v-for="prod in filteredProducts"
-                            :key="prod.id"
-                            class="product-card"
-                            :class="{
-                                'disabled-card': getShelfStock(prod.id) === 0 || !posStore.isShiftOpen,
-                                'out-of-stock': getShelfStock(prod.id) === 0
-                            }"
-                            @click="handleProductClick(prod)"
-                        >
-                            <div class="product-card-body">
-                                <span class="product-card-cat">{{ prod.category }}</span>
-                                <h4 class="product-card-title">{{ prod.name }}</h4>
-                                <span class="product-card-sku font-mono">{{ prod.sku }}</span>
-                                
-                                <div class="product-card-footer mt-auto">
-                                    <span class="product-card-price">{{ formatCurrency(prod.price) }}</span>
-                                    <span
-                                        class="product-card-stock"
-                                        :class="getStockClass(getShelfStock(prod.id))"
-                                    >
-                                        {{ getShelfStock(prod.id) > 0 ? `الرف: ${getShelfStock(prod.id)}` : 'نفذ' }}
-                                    </span>
+                <div class="pos-grid-wrap relative">
+                    <Transition name="fade" mode="out-in">
+                        <div v-if="filteredProducts.length === 0" class="pos-empty-grid animate-fade-in-up">
+                            <Package :size="48" class="text-surface-300 mb-3" />
+                            <span>لا توجد منتجات مطابقة لخيارات التصفية</span>
+                        </div>
+                        <TransitionGroup v-else name="grid" tag="div" class="pos-product-grid">
+                            <div
+                                v-for="prod in filteredProducts"
+                                :key="prod.id"
+                                class="product-card hover:-translate-y-1 hover:shadow-xl transition-all duration-300"
+                                :class="{
+                                    'disabled-card': getShelfStock(prod.id) === 0 || !posStore.isShiftOpen,
+                                    'out-of-stock': getShelfStock(prod.id) === 0,
+                                    'shake': shakingCardId === prod.id
+                                }"
+                                @click="handleProductClick(prod)"
+                            >
+                                <div class="product-card-body">
+                                    <span class="product-card-cat">{{ prod.category }}</span>
+                                    <h4 class="product-card-title">{{ prod.name }}</h4>
+                                    <span class="product-card-sku font-mono">{{ prod.sku }}</span>
+                                    
+                                    <div class="product-card-footer mt-auto">
+                                        <span class="product-card-price">{{ formatCurrency(prod.price) }}</span>
+                                        <span
+                                            class="product-card-stock"
+                                            :class="getStockClass(getShelfStock(prod.id))"
+                                        >
+                                            {{ getShelfStock(prod.id) > 0 ? `الرف: ${getShelfStock(prod.id)}` : 'نفذ' }}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
+                        </TransitionGroup>
+                    </Transition>
                 </div>
             </template>
 
@@ -422,48 +450,51 @@ const getStockClass = (stock) => {
                 </div>
 
                 <!-- Invoices List -->
-                <div class="returns-list-wrap">
-                    <div v-if="filteredSaleOrders.length === 0" class="pos-empty-grid">
-                        لا توجد فواتير بيع مسجلة بالبيانات
-                    </div>
-                    <div v-else class="returns-invoice-list">
-                        <div
-                            v-for="order in filteredSaleOrders"
-                            :key="order.id"
-                            class="return-invoice-card"
-                            @click="openReturnDialog(order)"
-                        >
-                            <div class="return-invoice-header">
-                                <div class="return-invoice-number">
-                                    <Receipt :size="16" class="text-primary-500" />
-                                    <span class="font-mono">{{ order.orderNumber }}</span>
-                                </div>
-                                <span class="return-invoice-date">{{ formatDate(order.date) }}</span>
-                            </div>
-                            <div class="return-invoice-body">
-                                <div class="return-invoice-items-list">
-                                    <span
-                                        v-for="(item, idx) in order.items.slice(0, 3)"
-                                        :key="idx"
-                                        class="return-invoice-item-chip"
-                                    >
-                                        {{ item.name }} × {{ item.qty }}
-                                    </span>
-                                    <span v-if="order.items.length > 3" class="return-invoice-item-chip return-invoice-more">
-                                        +{{ order.items.length - 3 }} صنف
-                                    </span>
-                                </div>
-                                <div class="return-invoice-footer">
-                                    <span class="return-invoice-cashier">الكاشير: {{ order.cashier || '—' }}</span>
-                                    <span class="return-invoice-total font-mono">{{ formatCurrency(order.total) }}</span>
-                                </div>
-                            </div>
-                            <div class="return-invoice-action">
-                                <RotateCcw :size="14" />
-                                <span>اختيار أصناف للإرجاع</span>
-                            </div>
+                <div class="returns-list-wrap relative">
+                    <Transition name="fade" mode="out-in">
+                        <div v-if="filteredSaleOrders.length === 0" class="pos-empty-grid animate-fade-in-up">
+                            <Receipt :size="48" class="text-surface-300 mb-3" />
+                            <span>لا توجد فواتير بيع مسجلة بالبيانات</span>
                         </div>
-                    </div>
+                        <TransitionGroup v-else name="grid" tag="div" class="returns-invoice-list">
+                            <div
+                                v-for="order in filteredSaleOrders"
+                                :key="order.id"
+                                class="return-invoice-card hover:-translate-y-1 hover:shadow-xl transition-all duration-300"
+                                @click="openReturnDialog(order)"
+                            >
+                                <div class="return-invoice-header">
+                                    <div class="return-invoice-number">
+                                        <Receipt :size="16" class="text-primary-500" />
+                                        <span class="font-mono">{{ order.orderNumber }}</span>
+                                    </div>
+                                    <span class="return-invoice-date">{{ formatDate(order.date) }}</span>
+                                </div>
+                                <div class="return-invoice-body">
+                                    <div class="return-invoice-items-list">
+                                        <span
+                                            v-for="(item, idx) in order.items.slice(0, 3)"
+                                            :key="idx"
+                                            class="return-invoice-item-chip"
+                                        >
+                                            {{ item.name }} × {{ item.qty }}
+                                        </span>
+                                        <span v-if="order.items.length > 3" class="return-invoice-item-chip return-invoice-more">
+                                            +{{ order.items.length - 3 }} صنف
+                                        </span>
+                                    </div>
+                                    <div class="return-invoice-footer">
+                                        <span class="return-invoice-cashier">الكاشير: {{ order.cashier || '—' }}</span>
+                                        <span class="return-invoice-total font-mono">{{ formatCurrency(order.total) }}</span>
+                                    </div>
+                                </div>
+                                <div class="return-invoice-action">
+                                    <RotateCcw :size="14" />
+                                    <span>اختيار أصناف للإرجاع</span>
+                                </div>
+                            </div>
+                        </TransitionGroup>
+                    </Transition>
                 </div>
             </template>
         </div>
@@ -539,7 +570,7 @@ const getStockClass = (stock) => {
 }
 
 /* ── Left Panel (Cart & Payment) ── */
-.pos-left-panel {
+.pos-cart-panel {
     width: clamp(340px, 25vw, 460px);
     flex-shrink: 0;
     display: flex;
@@ -548,7 +579,7 @@ const getStockClass = (stock) => {
     border-inline-end: 1px solid var(--p-surface-200);
 }
 
-.dark .pos-left-panel {
+.dark .pos-cart-panel {
     background: var(--p-surface-900);
     border-color: var(--p-surface-800);
 }
@@ -608,6 +639,27 @@ const getStockClass = (stock) => {
     height: 100%;
 }
 
+/* ── Item Net Cell ── */
+.item-net-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    line-height: 1.2;
+}
+
+.item-net-subtotal {
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+
+.item-net-discount {
+    font-size: 0.7rem;
+}
+
+.item-net-total {
+    font-size: 0.8rem;
+}
+
 .qty-controls {
     display: flex;
     align-items: center;
@@ -618,8 +670,8 @@ const getStockClass = (stock) => {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 1.5rem;
-    height: 1.5rem;
+    width: 2.5rem;
+    height: 2.5rem;
     border-radius: 0.375rem;
     border: 1px solid var(--p-surface-300);
     background: var(--p-surface-0);
@@ -655,8 +707,8 @@ const getStockClass = (stock) => {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.75rem;
-    height: 1.75rem;
+    width: 2.5rem;
+    height: 2.5rem;
     border-radius: 0.375rem;
     border: none;
     background: transparent;
@@ -797,14 +849,14 @@ const getStockClass = (stock) => {
 }
 
 /* ── Right Panel (Catalog Grid) ── */
-.pos-right-panel {
+.pos-catalog-panel {
     flex: 1;
     display: flex;
     flex-direction: column;
     background: var(--p-surface-50);
 }
 
-.dark .pos-right-panel {
+.dark .pos-catalog-panel {
     background: var(--p-surface-950);
 }
 
@@ -830,6 +882,8 @@ const getStockClass = (stock) => {
     background: var(--p-surface-0);
     border-bottom: 1px solid var(--p-surface-200);
     flex-shrink: 0;
+    mask-image: linear-gradient(to left, transparent, black 5%, black 95%, transparent);
+    -webkit-mask-image: linear-gradient(to left, transparent, black 5%, black 95%, transparent);
 }
 
 .dark .pos-categories-tabs {
@@ -1038,15 +1092,28 @@ const getStockClass = (stock) => {
         flex-direction: column;
         overflow-y: auto;
     }
-    .pos-left-panel {
+    .pos-cart-panel {
         width: 100%;
         height: 400px;
         border-inline-end: none;
         border-bottom: 1px solid var(--p-surface-200);
     }
-    .pos-right-panel {
+    .pos-catalog-panel {
         height: auto;
     }
+}
+
+/* ── Shake Animation ── */
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    50% { transform: translateX(4px); }
+    75% { transform: translateX(-4px); }
+}
+
+.shake {
+    animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+    border-color: #ef4444 !important;
 }
 
 /* ── Mode Toggle Bar ── */

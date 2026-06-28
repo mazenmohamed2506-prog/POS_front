@@ -1,9 +1,13 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import { usePurchaseStore } from "@/stores/pos/purchaseStore";
+import { useProductStore } from "@/stores/pos/productStore";
+import { useSupplierStore } from "@/stores/pos/supplierStore";
 import { Receipt, Plus, Trash2, Eye, Search } from "lucide-vue-next";
 
 const purchaseStore = usePurchaseStore();
+const productStore = useProductStore();
+const supplierStore = useSupplierStore();
 
 const showPurchaseDialog = ref(false);
 const showDetailDialog = ref(false);
@@ -12,11 +16,13 @@ const searchQuery = ref("");
 
 const purchaseForm = ref({
     supplier: "",
-    items: [{ productId: null, productName: "", qty: 1, cost: 0 }],
+    items: [{ productId: null, qty: 1, cost: 0, batchNumber: "", expirationDate: null }],
 });
 
 onMounted(() => {
     purchaseStore.fetchPurchases();
+    productStore.fetchProducts();
+    supplierStore.fetchSuppliers();
 });
 
 const filteredPurchases = computed(() => {
@@ -33,7 +39,7 @@ const purchaseTotal = computed(() =>
 );
 
 const addPurchaseLine = () => {
-    purchaseForm.value.items.push({ productId: null, productName: "", qty: 1, cost: 0 });
+    purchaseForm.value.items.push({ productId: null, qty: 1, cost: 0, batchNumber: "", expirationDate: null });
 };
 
 const removePurchaseLine = (idx) => {
@@ -43,16 +49,34 @@ const removePurchaseLine = (idx) => {
 const openNewPurchase = () => {
     purchaseForm.value = {
         supplier: "",
-        items: [{ productId: null, productName: "", qty: 1, cost: 0 }],
+        items: [{ productId: null, qty: 1, cost: 0, batchNumber: "", expirationDate: null }],
     };
     showPurchaseDialog.value = true;
 };
 
 const savePurchase = async () => {
-    await purchaseStore.addPurchase(
-        { supplier: purchaseForm.value.supplier },
-        purchaseForm.value.items
-    );
+    // format items to match API schema
+    const itemsPayload = purchaseForm.value.items.map(item => {
+        let expDate = null;
+        if (item.expirationDate) {
+            const d = new Date(item.expirationDate);
+            expDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T00:00:00Z`;
+        }
+        return {
+            productId: item.productId,
+            quantity: item.qty,
+            costPrice: item.cost,
+            batchNumber: item.batchNumber || null,
+            expirationDate: expDate
+        };
+    });
+
+    const payload = {
+        supplierName: purchaseForm.value.supplier || "مورد عام",
+        items: itemsPayload
+    };
+
+    await purchaseStore.addPurchase(payload);
     showPurchaseDialog.value = false;
 };
 
@@ -265,7 +289,15 @@ const formatCurrency = (val) => {
             <div class="purchase-dialog-form">
                 <div class="form-field">
                     <label class="required">اسم المورد</label>
-                    <InputText v-model="purchaseForm.supplier" fluid placeholder="أدخل اسم المورد" />
+                    <Select
+                        v-model="purchaseForm.supplier"
+                        :options="supplierStore.suppliers"
+                        optionLabel="name"
+                        optionValue="name"
+                        filter
+                        fluid
+                        placeholder="اختر المورد"
+                    />
                 </div>
 
                 <!-- Item Lines -->
@@ -275,29 +307,58 @@ const formatCurrency = (val) => {
                         <div
                             v-for="(item, idx) in purchaseForm.items"
                             :key="idx"
-                            class="purchase-line-row"
+                            class="purchase-line-card"
                         >
-                            <div class="flex-1 min-w-[200px]">
-                                <InputText v-model="item.productName" fluid placeholder="اسم الصنف / المنتج" />
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="font-bold text-sm">صنف #{{ idx + 1 }}</span>
+                                <button
+                                    class="purchase-line-delete-btn !w-6 !h-6"
+                                    @click="removePurchaseLine(idx)"
+                                    :disabled="purchaseForm.items.length <= 1"
+                                    title="حذف السطر"
+                                >
+                                    <Trash2 :size="12" />
+                                </button>
                             </div>
-                            <div class="w-24">
-                                <InputNumber v-model="item.qty" :min="1" fluid placeholder="الكمية" />
+                            
+                            <div class="grid grid-cols-12 gap-3 mb-3">
+                                <div class="col-span-12 md:col-span-6">
+                                    <label class="text-xs font-bold text-surface-600 dark:text-surface-300 mb-1 block required">المنتج</label>
+                                    <Select
+                                        v-model="item.productId"
+                                        :options="productStore.products"
+                                        optionLabel="name"
+                                        optionValue="id"
+                                        filter
+                                        fluid
+                                        placeholder="اختر المنتج"
+                                        size="small"
+                                    />
+                                </div>
+                                <div class="col-span-6 md:col-span-3">
+                                    <label class="text-xs font-bold text-surface-600 dark:text-surface-300 mb-1 block required">الكمية</label>
+                                    <InputNumber v-model="item.qty" :min="1" fluid placeholder="الكمية" size="small" />
+                                </div>
+                                <div class="col-span-6 md:col-span-3">
+                                    <label class="text-xs font-bold text-surface-600 dark:text-surface-300 mb-1 block required">سعر الشراء</label>
+                                    <InputNumber v-model="item.cost" :minFractionDigits="2" fluid placeholder="سعر الشراء" size="small" />
+                                </div>
                             </div>
-                            <div class="w-28">
-                                <InputNumber v-model="item.cost" :minFractionDigits="2" fluid placeholder="سعر الشراء" />
+                            
+                            <div class="grid grid-cols-12 gap-3">
+                                <div class="col-span-12 md:col-span-6">
+                                    <label class="text-xs font-bold text-surface-600 dark:text-surface-300 mb-1 block required">رقم الدفعة (Batch)</label>
+                                    <InputText v-model="item.batchNumber" fluid placeholder="مثال: LOT-001" size="small" />
+                                </div>
+                                <div class="col-span-12 md:col-span-6">
+                                    <label class="text-xs font-bold text-surface-600 dark:text-surface-300 mb-1 block">تاريخ الصلاحية (إن وجد)</label>
+                                    <DatePicker v-model="item.expirationDate" dateFormat="yy-mm-dd" fluid placeholder="تاريخ الصلاحية" size="small" />
+                                </div>
                             </div>
-                            <button
-                                class="purchase-line-delete-btn"
-                                @click="removePurchaseLine(idx)"
-                                :disabled="purchaseForm.items.length <= 1"
-                                title="حذف السطر"
-                            >
-                                <Trash2 :size="15" />
-                            </button>
                         </div>
                     </div>
                     
-                    <Button label="إضافة سطر صنف جديد" outlined severity="primary" size="small" @click="addPurchaseLine" class="self-start mt-2">
+                    <Button label="إضافة صنف جديد" outlined severity="primary" size="small" @click="addPurchaseLine" class="self-start mt-2">
                         <template #icon><Plus :size="16" /></template>
                     </Button>
                 </div>
@@ -576,15 +637,21 @@ const formatCurrency = (val) => {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-    max-height: 240px;
+    max-height: 350px;
     overflow-y: auto;
-    padding-inline-end: 0.25rem;
+    padding-inline-end: 0.5rem;
 }
 
-.purchase-line-row {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
+.purchase-line-card {
+    padding: 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--p-surface-200);
+    background: var(--p-surface-50);
+}
+
+.dark .purchase-line-card {
+    border-color: var(--p-surface-700);
+    background: var(--p-surface-900);
 }
 
 .purchase-line-delete-btn {

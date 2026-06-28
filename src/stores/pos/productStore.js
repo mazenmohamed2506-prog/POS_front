@@ -26,17 +26,23 @@ export const useProductStore = defineStore("product", () => {
             cost: baseUnit.costPrice || 0,
             sellingPrice: baseUnit.sellingPrice || baseUnit.price || 0,
             costPrice: baseUnit.costPrice || 0,
+            itemDiscount: baseUnit.itemDiscount ?? 0,
             trackExpiration: apiProd.trackExpiration ?? false,
             trackSerialNumber: apiProd.trackSerialNumber ?? false,
             isActive: apiProd.isActive ?? true,
             units: units.map(u => ({
                 id: u.id,
                 name: u.unitName,
-                barcode: u.barcode,
+                barcode: u.barcode || null,
                 factor: u.conversionFactor,
                 price: u.price,
                 sellingPrice: u.sellingPrice || u.price || 0,
-                costPrice: u.costPrice || 0
+                costPrice: u.costPrice || 0,
+                itemDiscount: u.itemDiscount ?? 0,
+                isBaseUnit: u.isBaseUnit ?? (u.conversionFactor === 1),
+                unitId: u.unitId,
+                createdAt: u.createdAt,
+                updatedAt: u.updatedAt
             }))
         };
     }
@@ -108,21 +114,23 @@ export const useProductStore = defineStore("product", () => {
                     const cPrice = u.costPrice || u.cost || (u.factor ? (product.costPrice || product.cost) * u.factor : (product.costPrice || product.cost));
                     return {
                         unitName: u.name || "قطعة",
-                        barcode: u.barcode || product.barcode,
+                        barcode: u.barcode || product.barcode || null,
                         price: sPrice,
                         sellingPrice: sPrice,
                         costPrice: cPrice,
-                        conversionFactor: u.factor || 1
+                        conversionFactor: u.factor || 1,
+                        itemDiscount: u.itemDiscount ?? product.itemDiscount ?? 0
                     };
                 })
                 : [
                     {
                         unitName: "قطعة",
-                        barcode: product.barcode,
+                        barcode: product.barcode || null,
                         price: product.sellingPrice || product.price || 0,
                         sellingPrice: product.sellingPrice || product.price || 0,
                         costPrice: product.costPrice || product.cost || 0,
-                        conversionFactor: 1
+                        conversionFactor: 1,
+                        itemDiscount: product.itemDiscount ?? 0
                     }
                 ];
 
@@ -173,11 +181,12 @@ export const useProductStore = defineStore("product", () => {
                     return {
                         id: u.id || 0,
                         unitName: u.name || "قطعة",
-                        barcode: idx === 0 ? (product.barcode || u.barcode) : u.barcode,
+                        barcode: (idx === 0 ? (product.barcode || u.barcode) : u.barcode) || null,
                         price: uSellingPrice,
                         sellingPrice: uSellingPrice,
                         costPrice: uCostPrice,
-                        conversionFactor: u.factor || 1
+                        conversionFactor: u.factor || 1,
+                        itemDiscount: idx === 0 ? (product.itemDiscount ?? u.itemDiscount ?? 0) : (u.itemDiscount ?? 0)
                     };
                 });
             } else {
@@ -185,11 +194,12 @@ export const useProductStore = defineStore("product", () => {
                     {
                         id: 0,
                         unitName: "قطعة",
-                        barcode: product.barcode,
+                        barcode: product.barcode || null,
                         price: baseSellingPrice,
                         sellingPrice: baseSellingPrice,
                         costPrice: baseCostPrice,
-                        conversionFactor: 1
+                        conversionFactor: 1,
+                        itemDiscount: product.itemDiscount ?? 0
                     }
                 ];
             }
@@ -284,6 +294,21 @@ export const useProductStore = defineStore("product", () => {
         }
     }
 
+    async function fetchUnitConversions(productId) {
+        loading.value = true;
+        try {
+            const response = await apiGet(`/Inventory/explain-conversion/${productId}`);
+            return response.data;
+        } catch (err) {
+            console.error("Failed to fetch unit conversions:", err);
+            const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء تحميل تحويلات الوحدات";
+            toastStore.addErrorToast(detail);
+            throw err;
+        } finally {
+            loading.value = false;
+        }
+    }
+
     return {
         products,
         categories,
@@ -297,7 +322,8 @@ export const useProductStore = defineStore("product", () => {
         getProductById,
         getCategoryById,
         updateCategory,
-        deleteCategory
+        deleteCategory,
+        fetchUnitConversions
     };
 });
 

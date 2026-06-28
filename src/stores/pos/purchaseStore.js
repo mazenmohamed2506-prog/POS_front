@@ -1,7 +1,6 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { apiGet, apiPost } from "@/utilities/fetchApi";
-import { useProductStore } from "./productStore";
 import { useToastStore } from "@/stores/base/toastStore";
 
 export const usePurchaseStore = defineStore("purchase", () => {
@@ -9,7 +8,6 @@ export const usePurchaseStore = defineStore("purchase", () => {
     const loading = ref(false);
     const error = ref(null);
     const toastStore = useToastStore();
-    const productStore = useProductStore();
 
     function mapApiPurchaseToFrontend(apiPur) {
         return {
@@ -47,62 +45,22 @@ export const usePurchaseStore = defineStore("purchase", () => {
         }
     }
 
-    async function addPurchase(supplierData, items) {
+    async function addPurchase(payload) {
         loading.value = true;
         error.value = null;
         try {
-            // Fetch products first to have the latest lookup cache
-            await productStore.fetchProducts();
-
-            const itemsPayload = [];
-            for (const item of items) {
-                let pId = item.productId;
-                if (!pId && item.productName) {
-                    // Search by name
-                    const matched = productStore.products.find(
-                        p => p.name.toLowerCase().trim() === item.productName.toLowerCase().trim()
-                    );
-                    if (matched) {
-                        pId = matched.id;
-                    } else {
-                        // Create product dynamically on C# backend
-                        const barcode = `628100${Date.now() + Math.floor(Math.random() * 1000)}`;
-                        const newProd = await productStore.createProduct({
-                            name: item.productName,
-                            category: "عام",
-                            barcode: barcode,
-                            price: Math.ceil(item.cost * 1.3), // 30% markup
-                            cost: item.cost,
-                            trackExpiration: true,
-                            trackSerialNumber: false,
-                            isActive: true,
-                            units: [{ name: "قطعة", factor: 1, barcode: barcode }]
-                        });
-                        if (newProd && newProd.id) {
-                            pId = newProd.id;
-                        } else {
-                            throw new Error(`Failed to auto-create product: ${item.productName}`);
-                        }
-                    }
+            // payload should already be { supplierName: "...", items: [...] }
+            // Validate items have productId
+            for (const item of payload.items) {
+                if (!item.productId) {
+                    throw new Error("يجب تحديد منتج صالح لكل صنف");
                 }
-
-                if (!pId) {
-                    throw new Error("يجب تحديد منتج صالح");
-                }
-
-                itemsPayload.push({
-                    productId: pId,
-                    quantity: item.qty || 1,
-                    costPrice: item.cost || 0,
-                    batchNumber: `BATCH-${Date.now()}`, // Generate standard batch
-                    expirationDate: null
-                });
+                // Ensure required numeric fields
+                item.quantity = item.quantity || 1;
+                item.costPrice = item.costPrice || 0;
+                item.batchNumber = item.batchNumber || `BATCH-${Date.now()}`;
+                // expirationDate can be null
             }
-
-            const payload = {
-                supplierName: supplierData.supplier || "مورد عام",
-                items: itemsPayload
-            };
 
             await apiPost("/Purchases", payload, false);
             toastStore.addSuccessToast("تم إضافة فاتورة المشتريات بنجاح");

@@ -56,8 +56,12 @@ export const usePosStore = defineStore("pos", () => {
     const cartSubtotal = computed(() =>
         cart.value.reduce((sum, item) => sum + item.price * item.qty, 0)
     );
-    const cartTax = computed(() => cartSubtotal.value * taxRate.value);
-    const cartTotal = computed(() => cartSubtotal.value + cartTax.value);
+    const cartItemDiscountTotal = computed(() =>
+        cart.value.reduce((sum, item) => sum + (item.itemDiscount || 0) * item.qty, 0)
+    );
+    const cartAfterDiscount = computed(() => cartSubtotal.value - cartItemDiscountTotal.value);
+    const cartTax = computed(() => cartAfterDiscount.value * taxRate.value);
+    const cartTotal = computed(() => cartAfterDiscount.value + cartTax.value);
     const cartItemCount = computed(() =>
         cart.value.reduce((sum, item) => sum + item.qty, 0)
     );
@@ -217,6 +221,7 @@ export const usePosStore = defineStore("pos", () => {
                 price: product.price,
                 unit: product.unit || "قطعة",
                 qty: 1,
+                itemDiscount: product.itemDiscount || 0,
             });
         }
     }
@@ -258,7 +263,7 @@ export const usePosStore = defineStore("pos", () => {
                 return {
                     productUnitId,
                     qty: cartItem.qty,
-                    discount: 0,
+                    discount: cartItem.itemDiscount || 0,
                 };
             });
 
@@ -453,7 +458,7 @@ export const usePosStore = defineStore("pos", () => {
         // Shift
         currentShift, isShiftOpen, openShift, closeShift,
         // Cart
-        cart, taxRate, cartSubtotal, cartTax, cartTotal, cartItemCount,
+        cart, taxRate, cartSubtotal, cartItemDiscountTotal, cartAfterDiscount, cartTax, cartTotal, cartItemCount,
         addToCart, removeFromCart, updateCartQty, clearCart,
         // Actions
         scanBarcode, checkout,

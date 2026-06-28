@@ -170,3 +170,71 @@ html[dir="rtl"] *:not(.pi):not(.pi *) {
     color: #ef4444;
     /* text-red-500 */
 }
+
+@theme {
+    --animate-fade-in-up: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    --animate-scale-in: scale-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    
+    @keyframes fade-in-up {
+        0% {
+            opacity: 0;
+            transform: translateY(12px);
+        }
+        100% {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    @keyframes scale-in {
+        0% {
+            opacity: 0;
+            transform: scale(0.96);
+        }
+        100% {
+            opacity: 1;
+            transform: scale(1);
+        }
+    }
+}
+
+/* Glassmorphism utilities */
+.glass {
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.dark .glass {
+    background: rgba(24, 24, 27, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Vue Transition Classes */
+.list-enter-active,
+.list-leave-active {
+    transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.list-enter-from {
+    opacity: 0;
+    transform: translateX(15px);
+}
+.list-leave-to {
+    opacity: 0;
+    transform: translateX(-15px) scale(0.95);
+}
+
+/* Product Grid Transitions */
+.grid-enter-active,
+.grid-leave-active {
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.grid-enter-from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+}
+.grid-leave-to {
+    opacity: 0;
+    transform: scale(0.95);
+}

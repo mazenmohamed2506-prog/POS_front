@@ -26,6 +26,8 @@ export const useInventoryStore = defineStore("inventory", () => {
                     productName: item.productName || '',
                     sku: `PROD-${pId}`,
                     batchNumber: batchNum || '—',
+                    expirationDate: item.expirationDate || null,
+                    costPrice: item.costPrice || 0,
                     shelfStock: 0,
                     warehouseStock: 0,
                     shelfStockId: null,
@@ -89,6 +91,11 @@ export const useInventoryStore = defineStore("inventory", () => {
         } finally {
             loading.value = false;
         }
+    }
+
+    async function addInventoryStock(data) {
+        // Alias for backwards compatibility or clarity
+        return await addInventory(data);
     }
 
     async function getInventoryById(id) {
@@ -164,16 +171,28 @@ export const useInventoryStore = defineStore("inventory", () => {
         }
     }
 
+    async function fetchInventoryExplanation() {
+        try {
+            const response = await apiGet("/Inventory/explanation");
+            return response.data;
+        } catch (err) {
+            console.error("Failed to fetch inventory explanation:", err);
+            return null;
+        }
+    }
+
     return {
         inventory,
         loading,
         error,
         fetchInventory,
         addInventory,
+        addInventoryStock,
         getInventoryById,
         updateInventory,
         deleteInventory,
-        transferStock
+        transferStock,
+        fetchInventoryExplanation
     };
 });
 

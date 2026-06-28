@@ -1,18 +1,34 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import { useInventoryStore } from "@/stores/pos/inventoryStore";
-import { Warehouse, ArrowRightLeft, Search } from "lucide-vue-next";
+import { useProductStore } from "@/stores/pos/productStore";
+import { Warehouse, ArrowRightLeft, Search, Plus, Info, HelpCircle } from "lucide-vue-next";
 
 const inventoryStore = useInventoryStore();
+const productStore = useProductStore();
 
 const showTransferDialog = ref(false);
+const showAddStockDialog = ref(false);
+const showHelpDialog = ref(false);
+const helpText = ref(null);
 const transferItem = ref(null);
 const transferQty = ref(1);
 const transferDirection = ref("toShelf"); // "toShelf" | "toWarehouse"
 const searchQuery = ref("");
 
+const addStockForm = ref({
+    productId: null,
+    productUnitId: null, // this maps to originalProductUnitId
+    quantity: 1, // originalReceivedQuantity
+    batchNumber: "",
+    expirationDate: null,
+    costPrice: 0,
+    location: "StoreShelf"
+});
+
 onMounted(() => {
     inventoryStore.fetchInventory();
+    productStore.fetchProducts();
 });
 
 const filteredInventory = computed(() => {
@@ -63,6 +79,76 @@ const getStockLabel = (stock) => {
     if (stock <= 5) return `منخفض (${stock})`;
     return `متوفر (${stock})`;
 };
+
+const openAddStock = () => {
+    addStockForm.value = {
+        productId: null,
+        productUnitId: null,
+        quantity: 1,
+        batchNumber: "",
+        expirationDate: null,
+        costPrice: 0,
+        location: "StoreShelf"
+    };
+    showAddStockDialog.value = true;
+};
+
+const selectedProductUnits = computed(() => {
+    if (!addStockForm.value.productId) return [];
+    const p = productStore.products.find(x => x.id === addStockForm.value.productId);
+    return p ? p.units || [] : [];
+});
+
+const calculateBaseQuantity = computed(() => {
+    if (!addStockForm.value.productId || !addStockForm.value.productUnitId || !addStockForm.value.quantity) return 0;
+    const unit = selectedProductUnits.value.find(u => u.id === addStockForm.value.productUnitId) || selectedProductUnits.value.find(u => u.name === addStockForm.value.productUnitId);
+    if (!unit) return addStockForm.value.quantity;
+    return addStockForm.value.quantity * (unit.factor || 1);
+});
+
+const submitAddStock = async () => {
+    if (!addStockForm.value.productId || !addStockForm.value.batchNumber) return;
+    
+    // Format expiration date if exists
+    let expDate = null;
+    if (addStockForm.value.expirationDate) {
+        const d = new Date(addStockForm.value.expirationDate);
+        expDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    const unit = selectedProductUnits.value.find(u => u.id === addStockForm.value.productUnitId) || selectedProductUnits.value.find(u => u.name === addStockForm.value.productUnitId);
+    
+    // Assuming backend endpoint /api/inventory (from addInventoryStock) accepts:
+    // productId, quantity (which is the original unit qty if we send unitId too? Wait. 
+    // Wait, the prompt says "Let them enter quantity in that unit. Display system-calculated base quantity. Send originalProductUnitId and originalReceivedQuantity". 
+    // And CreateInventoryStockDto has "quantity" which is the base quantity, and we should also send "originalReceivedQuantity" and "originalProductUnitId"?
+    // The prompt says: "Send originalProductUnitId and originalReceivedQuantity so the backend can log the original receipt."
+    
+    await inventoryStore.addInventoryStock({
+        productId: addStockForm.value.productId,
+        quantity: calculateBaseQuantity.value, // Send base quantity as main quantity
+        originalReceivedQuantity: addStockForm.value.quantity,
+        originalProductUnitId: unit?.id || null,
+        batchNumber: addStockForm.value.batchNumber,
+        expirationDate: expDate,
+        costPrice: addStockForm.value.costPrice,
+        location: addStockForm.value.location
+    });
+    
+    showAddStockDialog.value = false;
+};
+
+const openHelp = async () => {
+    showHelpDialog.value = true;
+    if (!helpText.value) {
+        helpText.value = await inventoryStore.fetchInventoryExplanation();
+    }
+};
+
+const formatDate = (dateStr) => {
+    if (!dateStr) return "—";
+    return new Date(dateStr).toLocaleDateString("ar-EG");
+};
 </script>
 
 <template>
@@ -77,7 +163,13 @@ const getStockLabel = (stock) => {
                     <h1 class="inventory-title">إدارة المخزون</h1>
                     <p class="inventory-subtitle">متابعة ونقل البضائع بين المستودع ورفوف البيع</p>
                 </div>
+                <Button icon="pi pi-question-circle" text rounded aria-label="Help" @click="openHelp">
+                    <template #icon><HelpCircle :size="20" class="text-surface-500 hover:text-primary-500 transition-colors" /></template>
+                </Button>
             </div>
+            <Button label="إستلام مخزون" @click="openAddStock">
+                <template #icon><Plus :size="18" /></template>
+            </Button>
         </div>
 
         <!-- Table Container Card -->
@@ -114,12 +206,24 @@ const getStockLabel = (stock) => {
                         <span class="font-bold text-surface-800 dark:text-surface-100">{{ data.productName }}</span>
                     </template>
                 </Column>
-                <Column field="sku" header="رمز المنتج" sortable style="min-width: 130px">
+                <Column field="sku" sortable style="min-width: 130px">
+                    <template #header>
+                        <div class="flex items-center gap-2">
+                            <span>رمز المنتج</span>
+                            <i class="pi pi-info-circle text-surface-400 cursor-help" v-tooltip.top="'رمز المنتج (SKU) هو المعرف الفريد لنوع المنتج (مثل الباركود)، وهو مشترك لجميع الوحدات من نفس المنتج'"></i>
+                        </div>
+                    </template>
                     <template #body="{ data }">
                         <span class="text-sm font-semibold font-mono text-surface-650 dark:text-surface-350">{{ data.sku }}</span>
                     </template>
                 </Column>
-                <Column field="batchNumber" header="رقم الدفعة" sortable style="min-width: 130px">
+                <Column field="batchNumber" sortable style="min-width: 130px">
+                    <template #header>
+                        <div class="flex items-center gap-2">
+                            <span>رقم الدفعة</span>
+                            <i class="pi pi-info-circle text-surface-400 cursor-help" v-tooltip.top="'رقم الدفعة (Batch) هو المعرف الفريد لشحنة أو عملية إنتاج محددة'"></i>
+                        </div>
+                    </template>
                     <template #body="{ data }">
                         <span class="text-sm font-semibold font-mono text-surface-650 dark:text-surface-350">{{ data.batchNumber }}</span>
                     </template>
@@ -127,6 +231,18 @@ const getStockLabel = (stock) => {
                 <Column field="unit" header="الوحدة" style="min-width: 110px">
                     <template #body="{ data }">
                         <span class="text-sm text-surface-500">{{ data.unit || '—' }}</span>
+                    </template>
+                </Column>
+                <Column field="expirationDate" header="تاريخ الصلاحية" sortable style="min-width: 130px">
+                    <template #body="{ data }">
+                        <span class="text-sm font-medium" :class="{'text-red-500': data.expirationDate && new Date(data.expirationDate) < new Date()}">
+                            {{ formatDate(data.expirationDate) }}
+                        </span>
+                    </template>
+                </Column>
+                <Column field="costPrice" header="سعر التكلفة" sortable style="min-width: 120px">
+                    <template #body="{ data }">
+                        <span class="text-sm font-bold text-surface-700 dark:text-surface-300">{{ data.costPrice?.toFixed(2) || '—' }} EGP</span>
                     </template>
                 </Column>
                 <Column field="shelfStock" header="مخزون الرف" sortable style="min-width: 150px">
@@ -210,6 +326,121 @@ const getStockLabel = (stock) => {
                     <Button label="إلغاء" outlined severity="secondary" @click="showTransferDialog = false" />
                     <Button label="نقل الكمية" @click="handleTransfer" :loading="inventoryStore.loading" :disabled="maxTransferQty() === 0" />
                 </div>
+            </template>
+        </Dialog>
+
+        <!-- Add Stock Dialog -->
+        <Dialog
+            v-model:visible="showAddStockDialog"
+            header="إستلام مخزون (دفعة جديدة)"
+            :style="{ width: '550px' }"
+            modal
+            dismissableMask
+        >
+            <div class="inventory-dialog-form">
+                <div class="form-field">
+                    <label class="required">المنتج</label>
+                    <Select
+                        v-model="addStockForm.productId"
+                        :options="productStore.products"
+                        optionLabel="name"
+                        optionValue="id"
+                        filter
+                        fluid
+                        placeholder="اختر المنتج"
+                    />
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="form-field">
+                        <label class="required">وحدة الإستلام</label>
+                        <Select
+                            v-model="addStockForm.productUnitId"
+                            :options="selectedProductUnits"
+                            optionLabel="name"
+                            optionValue="id"
+                            fluid
+                            :disabled="!addStockForm.productId"
+                            placeholder="اختر الوحدة"
+                        />
+                    </div>
+                    <div class="form-field">
+                        <label class="required">الكمية المستلمة (بالوحدة)</label>
+                        <InputNumber v-model="addStockForm.quantity" :min="1" fluid placeholder="الكمية" />
+                    </div>
+                </div>
+                
+                <div v-if="addStockForm.productUnitId" class="p-2 mb-2 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-md">
+                    <div class="flex justify-between items-center text-sm">
+                        <span class="text-surface-600 dark:text-surface-400">الكمية الإجمالية بالوحدة الأساسية:</span>
+                        <span class="font-bold text-primary-600 dark:text-primary-400">{{ calculateBaseQuantity }} قطعة</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="form-field">
+                        <label class="required">رقم الدفعة (Batch)</label>
+                        <InputText v-model="addStockForm.batchNumber" fluid placeholder="مثال: LOT-001" />
+                    </div>
+                    <div class="form-field">
+                        <label>تاريخ الصلاحية (إن وجد)</label>
+                        <DatePicker v-model="addStockForm.expirationDate" dateFormat="yy-mm-dd" fluid placeholder="اختر التاريخ" />
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="form-field">
+                        <label>التكلفة للوحدة المستلمة</label>
+                        <InputNumber v-model="addStockForm.costPrice" :minFractionDigits="2" fluid placeholder="0.00" />
+                    </div>
+                    <div class="form-field">
+                        <label class="required">موقع التخزين المبدئي</label>
+                        <Select
+                            v-model="addStockForm.location"
+                            :options="[{label: 'رف المعرض', value: 'StoreShelf'}, {label: 'المستودع الداخلي', value: 'BackWarehouse'}]"
+                            optionLabel="label"
+                            optionValue="value"
+                            fluid
+                        />
+                    </div>
+                </div>
+            </div>
+            <template #footer>
+                <div class="flex gap-2 justify-end w-full">
+                    <Button label="إلغاء" outlined severity="secondary" @click="showAddStockDialog = false" />
+                    <Button label="حفظ الإستلام" @click="submitAddStock" :loading="inventoryStore.loading" :disabled="!addStockForm.productId || !addStockForm.batchNumber || !addStockForm.productUnitId" />
+                </div>
+            </template>
+        </Dialog>
+
+        <!-- Help Modal -->
+        <Dialog
+            v-model:visible="showHelpDialog"
+            header="مفاهيم المخزون"
+            :style="{ width: '500px' }"
+            modal
+            dismissableMask
+        >
+            <div v-if="helpText" class="p-2 space-y-4 text-surface-700 dark:text-surface-300">
+                <div v-if="typeof helpText === 'object'">
+                    <h3 class="font-bold text-lg mb-2 text-primary-600 dark:text-primary-400">الفروقات الأساسية</h3>
+                    <div class="mb-4">
+                        <h4 class="font-bold text-surface-900 dark:text-surface-100">رمز المنتج (Product Code)</h4>
+                        <p class="text-sm">{{ helpText.productCode || helpText.arabic?.productCode }}</p>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-surface-900 dark:text-surface-100">رقم الدفعة (Batch Code)</h4>
+                        <p class="text-sm">{{ helpText.batchCode || helpText.arabic?.batchCode }}</p>
+                    </div>
+                </div>
+                <div v-else>
+                    {{ helpText }}
+                </div>
+            </div>
+            <div v-else class="flex justify-center p-8">
+                <ProgressSpinner strokeWidth="4" class="w-8 h-8" />
+            </div>
+            <template #footer>
+                <Button label="فهمت ذلك" @click="showHelpDialog = false" />
             </template>
         </Dialog>
     </div>
