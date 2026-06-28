@@ -1,7 +1,9 @@
 <script setup>
-import { computed, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { usePosStore } from "@/stores/pos/posStore";
 import { useDashboardStore } from "@/stores/pos/dashboardStore";
+import { useProductStore } from "@/stores/pos/productStore";
+import { useInventoryStore } from "@/stores/pos/inventoryStore";
 import {
     LayoutDashboard,
     TrendingUp,
@@ -13,34 +15,229 @@ import {
     ArrowUpRight,
     RotateCcw,
     Banknote,
-    CreditCard
+    CreditCard,
+    CalendarRange,
+    X,
+    ChevronDown,
+    CheckCircle
 } from "lucide-vue-next";
 
 const posStore = usePosStore();
 const dashboardStore = useDashboardStore();
+const productStore = useProductStore();
+const inventoryStore = useInventoryStore();
 
 onMounted(() => {
     dashboardStore.fetchStats();
     posStore.fetchSettings();
+    productStore.fetchProducts();
+    inventoryStore.fetchInventory();
+});
+
+// Computed expiration stats across all products
+const expirationStats = computed(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let expired = 0;
+    let expiringSoon = 0;
+    let healthy = 0;
+
+    productStore.products.forEach(product => {
+        // Find all active inventory batches for this product in inventoryStore.inventory
+        // where total quantity (shelf + warehouse) > 0
+        const productBatches = inventoryStore.inventory.filter(item => 
+            item.productId === product.id && (item.shelfStock + item.warehouseStock) > 0
+        );
+
+        if (!product.trackExpiration || productBatches.length === 0) {
+            healthy++;
+            return;
+        }
+
+        // Filter batches with expiration date
+        const expiringBatches = productBatches.filter(b => b.expirationDate);
+
+        if (expiringBatches.length === 0) {
+            healthy++;
+            return;
+        }
+
+        // Find nearest expiry among active batches
+        let minDate = new Date(expiringBatches[0].expirationDate);
+        for (let i = 1; i < expiringBatches.length; i++) {
+            const d = new Date(expiringBatches[i].expirationDate);
+            if (d < minDate) {
+                minDate = d;
+            }
+        }
+
+        const timeDiff = minDate.getTime() - today.getTime();
+        const daysToExpiration = Math.ceil(timeDiff / (1000 * 3600 * 24));
+
+        if (daysToExpiration < 0) {
+            expired++;
+        } else if (daysToExpiration <= 30) {
+            expiringSoon++;
+        } else {
+            healthy++;
+        }
+    });
+
+    return {
+        expired,
+        expiringSoon,
+        healthy
+    };
+});
+
+// Computed list of products expiring within 30 days or already expired
+const expiringSoonProducts = computed(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const list = [];
+    productStore.products.forEach(product => {
+        if (!product.trackExpiration) return;
+
+        const productBatches = inventoryStore.inventory.filter(item => 
+            item.productId === product.id && (item.shelfStock + item.warehouseStock) > 0
+        );
+
+        const expiringBatches = productBatches.filter(b => b.expirationDate);
+        if (expiringBatches.length === 0) return;
+
+        // Find nearest expiry date
+        let nearestBatch = expiringBatches[0];
+        let minDate = new Date(nearestBatch.expirationDate);
+
+        for (let i = 1; i < expiringBatches.length; i++) {
+            const d = new Date(expiringBatches[i].expirationDate);
+            if (d < minDate) {
+                minDate = d;
+                nearestBatch = expiringBatches[i];
+            }
+        }
+
+        const timeDiff = minDate.getTime() - today.getTime();
+        const daysToExpiration = Math.ceil(timeDiff / (1000 * 3600 * 24));
+
+        if (daysToExpiration <= 30) {
+            list.push({
+                productId: product.id,
+                productName: product.name,
+                sku: product.sku || `PROD-${product.id}`,
+                expirationDate: nearestBatch.expirationDate,
+                daysToExpiration,
+                quantity: nearestBatch.shelfStock + nearestBatch.warehouseStock,
+                batchNumber: nearestBatch.batchNumber
+            });
+        }
+    });
+
+    // Sort by daysToExpiration ascending (expired first, then nearest)
+    return list.sort((a, b) => a.daysToExpiration - b.daysToExpiration);
+});
+
+// ── Date Filter State ──
+const showDatePicker = ref(false);
+const startDateInput = ref("");
+const endDateInput   = ref("");
+
+// Quick-range presets
+const presets = [
+    { label: "اليوم",         key: "today" },
+    { label: "أمس",           key: "yesterday" },
+    { label: "آخر 7 أيام",   key: "last7" },
+    { label: "آخر 30 يوم",   key: "last30" },
+    { label: "هذا الشهر",    key: "thisMonth" },
+    { label: "الشهر الماضي", key: "lastMonth" },
+];
+
+function applyPreset(key) {
+    const now   = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    let start, end;
+
+    if (key === "today") {
+        start = today;
+        end   = new Date(today.getTime() + 86399999);
+    } else if (key === "yesterday") {
+        start = new Date(today.getTime() - 86400000);
+        end   = new Date(today.getTime() - 1);
+    } else if (key === "last7") {
+        start = new Date(today.getTime() - 6 * 86400000);
+        end   = new Date(today.getTime() + 86399999);
+    } else if (key === "last30") {
+        start = new Date(today.getTime() - 29 * 86400000);
+        end   = new Date(today.getTime() + 86399999);
+    } else if (key === "thisMonth") {
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        end   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    } else if (key === "lastMonth") {
+        start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        end   = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    }
+
+    startDateInput.value = toLocalDateInputValue(start);
+    endDateInput.value   = toLocalDateInputValue(end);
+    applyFilter();
+}
+
+function toLocalDateInputValue(d) {
+    // Returns YYYY-MM-DD in local time for the <input type="date">
+    const y  = d.getFullYear();
+    const m  = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+}
+
+function applyFilter() {
+    const s = startDateInput.value ? new Date(startDateInput.value).toISOString() : null;
+    const e = endDateInput.value   ? new Date(endDateInput.value + "T23:59:59").toISOString() : null;
+    dashboardStore.fetchStats(s, e);
+    showDatePicker.value = false;
+}
+
+function clearFilter() {
+    startDateInput.value = "";
+    endDateInput.value   = "";
+    dashboardStore.clearFilter();
+    showDatePicker.value = false;
+}
+
+const isFiltered = computed(
+    () => !!dashboardStore.dateFilter.startDate || !!dashboardStore.dateFilter.endDate
+);
+
+const filterLabel = computed(() => {
+    const { startDate, endDate } = dashboardStore.dateFilter;
+    if (!startDate && !endDate) return "كل الفترات";
+    const fmt = (d) =>
+        new Date(d).toLocaleDateString("ar-EG", { day: "numeric", month: "short", year: "numeric" });
+    if (startDate && endDate) return `${fmt(startDate)} — ${fmt(endDate)}`;
+    if (startDate)            return `من ${fmt(startDate)}`;
+    return `حتى ${fmt(endDate)}`;
 });
 
 // ── Summary Cards ──
 const totalProducts = computed(() => dashboardStore.stats.totalProducts);
-const totalSales = computed(() => dashboardStore.stats.cashSalesTotal + dashboardStore.stats.cardSalesTotal);
-const salesCount = computed(() => dashboardStore.stats.salesCount);
-const returnsCount = computed(() => dashboardStore.stats.returnsCount);
-const totalReturns = computed(() => dashboardStore.stats.totalReturns);
-const netSales = computed(() => dashboardStore.stats.netSales);
-const purchasesTotal = computed(() => dashboardStore.stats.purchasesTotal);
-const purchasesCount = computed(() => dashboardStore.stats.purchasesCount);
-const lowStockItems = computed(() => dashboardStore.stats.lowStockItems);
+const totalSales    = computed(() => dashboardStore.stats.cashSalesTotal + dashboardStore.stats.cardSalesTotal);
+const salesCount    = computed(() => dashboardStore.stats.salesCount);
+const returnsCount  = computed(() => dashboardStore.stats.returnsCount);
+const totalReturns  = computed(() => dashboardStore.stats.totalReturns);
+const netSales      = computed(() => dashboardStore.stats.netSales);
+const purchasesTotal  = computed(() => dashboardStore.stats.purchasesTotal);
+const purchasesCount  = computed(() => dashboardStore.stats.purchasesCount);
+const lowStockItems   = computed(() => dashboardStore.stats.lowStockItems);
 const outOfStockCount = computed(() => dashboardStore.stats.outOfStockCount);
-const cashTotal = computed(() => dashboardStore.stats.cashSalesTotal);
-const cashSalesCount = computed(() => dashboardStore.stats.cashSalesCount);
-const cardTotal = computed(() => dashboardStore.stats.cardSalesTotal);
-const cardSalesCount = computed(() => dashboardStore.stats.cardSalesCount);
-const recentOrders = computed(() => dashboardStore.stats.recentOrders);
-const topProducts = computed(() => dashboardStore.stats.topProducts);
+const cashTotal       = computed(() => dashboardStore.stats.cashSalesTotal);
+const cashSalesCount  = computed(() => dashboardStore.stats.cashSalesCount);
+const cardTotal       = computed(() => dashboardStore.stats.cardSalesTotal);
+const cardSalesCount  = computed(() => dashboardStore.stats.cardSalesCount);
+const recentOrders    = computed(() => dashboardStore.stats.recentOrders);
+const topProducts     = computed(() => dashboardStore.stats.topProducts);
 
 const formatCurrency = (val) => {
     return new Intl.NumberFormat("ar-EG", {
@@ -73,7 +270,104 @@ const formatDate = (dateStr) => {
                     <p class="dashboard-subtitle">نظرة عامة على أداء المتجر في الوقت الفعلي</p>
                 </div>
             </div>
+
+            <!-- Date Filter Control -->
+            <div class="filter-control" v-click-outside="() => (showDatePicker = false)">
+                <button
+                    class="filter-btn"
+                    :class="{ 'filter-btn-active': isFiltered }"
+                    @click="showDatePicker = !showDatePicker"
+                    id="dashboard-date-filter-btn"
+                >
+                    <CalendarRange :size="16" />
+                    <span class="filter-btn-label">{{ filterLabel }}</span>
+                    <span v-if="isFiltered" class="filter-badge"></span>
+                    <ChevronDown :size="14" class="filter-chevron" :class="{ rotated: showDatePicker }" />
+                </button>
+
+                <!-- Clear active filter shortcut -->
+                <button
+                    v-if="isFiltered"
+                    class="filter-clear-btn"
+                    @click="clearFilter"
+                    title="مسح الفلتر"
+                    id="dashboard-clear-filter-btn"
+                >
+                    <X :size="14" />
+                </button>
+
+                <!-- Dropdown Panel -->
+                <Transition name="dropdown">
+                    <div v-if="showDatePicker" class="filter-panel" id="dashboard-filter-panel">
+                        <!-- Quick presets -->
+                        <div class="filter-section">
+                            <span class="filter-section-label">فترات سريعة</span>
+                            <div class="preset-grid">
+                                <button
+                                    v-for="preset in presets"
+                                    :key="preset.key"
+                                    class="preset-btn"
+                                    :id="`preset-${preset.key}`"
+                                    @click="applyPreset(preset.key)"
+                                >
+                                    {{ preset.label }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="filter-divider"></div>
+
+                        <!-- Custom range -->
+                        <div class="filter-section">
+                            <span class="filter-section-label">نطاق مخصص</span>
+                            <div class="date-inputs">
+                                <div class="date-input-group">
+                                    <label class="date-input-label">من</label>
+                                    <input
+                                        id="dashboard-start-date"
+                                        type="date"
+                                        class="date-input"
+                                        v-model="startDateInput"
+                                        :max="endDateInput || undefined"
+                                    />
+                                </div>
+                                <div class="date-input-group">
+                                    <label class="date-input-label">إلى</label>
+                                    <input
+                                        id="dashboard-end-date"
+                                        type="date"
+                                        class="date-input"
+                                        v-model="endDateInput"
+                                        :min="startDateInput || undefined"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="filter-actions">
+                            <button class="filter-apply-btn" @click="applyFilter" id="dashboard-apply-filter-btn">
+                                تطبيق
+                            </button>
+                            <button class="filter-reset-btn" @click="clearFilter" id="dashboard-reset-filter-btn">
+                                إعادة تعيين
+                            </button>
+                        </div>
+                    </div>
+                </Transition>
+            </div>
         </div>
+
+        <!-- Active filter pill -->
+        <Transition name="fade">
+            <div v-if="isFiltered" class="filter-active-banner">
+                <CalendarRange :size="15" class="text-primary-500" />
+                <span>تعرض الإحصائيات للفترة: <strong>{{ filterLabel }}</strong></span>
+                <button class="filter-banner-clear" @click="clearFilter">
+                    <X :size="13" /> مسح الفلتر
+                </button>
+                <div v-if="dashboardStore.loading" class="filter-loading-dot"></div>
+            </div>
+        </Transition>
 
         <!-- KPI Cards Row -->
         <div class="kpi-grid">
@@ -211,6 +505,60 @@ const formatDate = (dateStr) => {
                     </div>
                 </div>
             </div>
+
+            <!-- Expiration Summary Widget -->
+            <div class="dashboard-card">
+                <h3 class="card-title">
+                    <AlertTriangle :size="18" class="text-red-500" />
+                    تنبيهات صلاحية المنتجات
+                </h3>
+
+                <!-- Counts Summary -->
+                <div class="grid grid-cols-3 gap-2 mb-4">
+                    <router-link :to="{ path: '/products', query: { filter: 'Expired' } }" class="p-2 rounded bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/50 text-center block hover:scale-102 transition-transform cursor-pointer">
+                        <span class="block text-[10px] text-red-500 font-bold">منتهي</span>
+                        <span class="text-base font-black text-red-700 dark:text-red-300">{{ expirationStats.expired }}</span>
+                    </router-link>
+                    <router-link :to="{ path: '/products', query: { filter: 'Expiring Soon' } }" class="p-2 rounded bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/50 text-center block hover:scale-102 transition-transform cursor-pointer">
+                        <span class="block text-[10px] text-amber-500 font-bold">ينتهي قريباً</span>
+                        <span class="text-base font-black text-amber-700 dark:text-amber-300">{{ expirationStats.expiringSoon }}</span>
+                    </router-link>
+                    <router-link :to="{ path: '/products', query: { filter: 'Healthy Stock' } }" class="p-2 rounded bg-green-50 dark:bg-green-950/10 border border-green-100 dark:border-green-900/30 text-center block hover:scale-102 transition-transform cursor-pointer">
+                        <span class="block text-[10px] text-green-500 font-bold">سليم</span>
+                        <span class="text-base font-black text-green-700 dark:text-green-300">{{ expirationStats.healthy }}</span>
+                    </router-link>
+                </div>
+
+                <!-- Expiring Soon List -->
+                <div v-if="expiringSoonProducts.length === 0" class="empty-state !py-8">
+                    <CheckCircle :size="32" class="text-green-500 mb-2 mx-auto" />
+                    <div>لا توجد تنبيهات صلاحية حالياً</div>
+                </div>
+                <div v-else class="stock-alert-list max-h-[180px] overflow-y-auto">
+                    <router-link
+                        v-for="item in expiringSoonProducts"
+                        :key="item.productId"
+                        :to="{ path: '/products', query: { filter: item.daysToExpiration < 0 ? 'Expired' : 'Expiring Soon' } }"
+                        class="stock-alert-item block cursor-pointer"
+                        :class="item.daysToExpiration < 0 ? 'stock-alert-critical' : 'stock-alert-warning'"
+                    >
+                        <div class="flex justify-between items-center w-full">
+                            <div class="stock-alert-info">
+                                <span class="stock-alert-name">{{ item.productName }}</span>
+                                <span class="stock-alert-sku text-[11px] text-surface-500 dark:text-surface-400">دفعة: {{ item.batchNumber }} ({{ item.sku }})</span>
+                            </div>
+                            <div class="stock-alert-counts text-end">
+                                <span class="block text-xs font-bold" :class="item.daysToExpiration < 0 ? 'text-red-500' : 'text-amber-500'">
+                                    {{ item.daysToExpiration < 0 ? 'منتهي' : `خلال ${item.daysToExpiration} يوم` }}
+                                </span>
+                                <span class="text-[10px] text-surface-400">
+                                    تاريخ: {{ new Date(item.expirationDate).toLocaleDateString('ar-EG') }}
+                                </span>
+                            </div>
+                        </div>
+                    </router-link>
+                </div>
+            </div>
         </div>
 
         <!-- Third row: Recent Orders + Top Products -->
@@ -291,6 +639,8 @@ const formatDate = (dateStr) => {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
 }
 
 .header-icon-wrap {
@@ -325,6 +675,374 @@ const formatDate = (dateStr) => {
     font-size: 0.875rem;
     color: var(--p-surface-500);
     margin: 0.125rem 0 0;
+}
+
+/* ─── Date Filter Control ─── */
+.filter-control {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-inline-start: auto;
+}
+
+.filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1rem;
+    border-radius: 0.75rem;
+    background: var(--p-surface-0);
+    border: 1.5px solid var(--p-surface-200);
+    color: var(--p-surface-700);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    white-space: nowrap;
+}
+
+.dark .filter-btn {
+    background: var(--p-surface-900);
+    border-color: var(--p-surface-700);
+    color: var(--p-surface-200);
+}
+
+.filter-btn:hover {
+    border-color: var(--p-primary-400);
+    color: var(--p-primary-600);
+    box-shadow: 0 2px 8px rgba(var(--p-primary-500-rgb, 99, 102, 241), 0.15);
+}
+
+.filter-btn-active {
+    background: var(--p-primary-50, #eef2ff);
+    border-color: var(--p-primary-400, #818cf8);
+    color: var(--p-primary-700, #4338ca);
+}
+
+.dark .filter-btn-active {
+    background: rgba(99, 102, 241, 0.12);
+    border-color: rgba(99, 102, 241, 0.5);
+    color: #a5b4fc;
+}
+
+.filter-btn-label {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.filter-badge {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--p-primary-500, #6366f1);
+    flex-shrink: 0;
+}
+
+.filter-chevron {
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.filter-chevron.rotated {
+    transform: rotate(180deg);
+}
+
+.filter-clear-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.5rem;
+    border: 1.5px solid var(--p-surface-200);
+    background: var(--p-surface-0);
+    color: var(--p-surface-500);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.dark .filter-clear-btn {
+    background: var(--p-surface-900);
+    border-color: var(--p-surface-700);
+    color: var(--p-surface-400);
+}
+
+.filter-clear-btn:hover {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #dc2626;
+}
+
+.dark .filter-clear-btn:hover {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.35);
+    color: #f87171;
+}
+
+/* ─── Filter Dropdown Panel ─── */
+.filter-panel {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    inset-inline-end: 0;
+    width: 340px;
+    background: var(--p-surface-0);
+    border: 1px solid var(--p-surface-200);
+    border-radius: 1rem;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.12), 0 4px 8px rgba(0,0,0,0.06);
+    z-index: 200;
+    overflow: hidden;
+}
+
+.dark .filter-panel {
+    background: var(--p-surface-900);
+    border-color: var(--p-surface-700);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+}
+
+.filter-section {
+    padding: 1rem 1.25rem;
+}
+
+.filter-section-label {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--p-surface-400);
+    margin-bottom: 0.6rem;
+}
+
+.preset-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.45rem;
+}
+
+.preset-btn {
+    padding: 0.45rem 0.5rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--p-surface-200);
+    background: var(--p-surface-50);
+    color: var(--p-surface-700);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+}
+
+.dark .preset-btn {
+    background: var(--p-surface-800);
+    border-color: var(--p-surface-700);
+    color: var(--p-surface-200);
+}
+
+.preset-btn:hover {
+    background: var(--p-primary-50, #eef2ff);
+    border-color: var(--p-primary-300, #a5b4fc);
+    color: var(--p-primary-700, #4338ca);
+}
+
+.dark .preset-btn:hover {
+    background: rgba(99, 102, 241, 0.15);
+    border-color: rgba(99, 102, 241, 0.4);
+    color: #a5b4fc;
+}
+
+.filter-divider {
+    height: 1px;
+    background: var(--p-surface-150, var(--p-surface-200));
+    margin: 0 1.25rem;
+}
+
+.dark .filter-divider {
+    background: var(--p-surface-700);
+}
+
+.date-inputs {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.date-input-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.date-input-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--p-surface-500);
+}
+
+.date-input {
+    width: 100%;
+    padding: 0.5rem 0.65rem;
+    border-radius: 0.5rem;
+    border: 1.5px solid var(--p-surface-200);
+    background: var(--p-surface-50);
+    color: var(--p-surface-800);
+    font-size: 0.82rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.dark .date-input {
+    background: var(--p-surface-800);
+    border-color: var(--p-surface-600);
+    color: var(--p-surface-100);
+    color-scheme: dark;
+}
+
+.date-input:focus {
+    border-color: var(--p-primary-400, #818cf8);
+}
+
+.filter-actions {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.75rem 1.25rem 1rem;
+}
+
+.filter-apply-btn {
+    flex: 1;
+    padding: 0.55rem;
+    border-radius: 0.6rem;
+    border: none;
+    background: var(--p-primary-500, #6366f1);
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+}
+
+.filter-apply-btn:hover {
+    background: var(--p-primary-600, #4f46e5);
+    transform: translateY(-1px);
+}
+
+.filter-apply-btn:active {
+    transform: translateY(0);
+}
+
+.filter-reset-btn {
+    padding: 0.55rem 1rem;
+    border-radius: 0.6rem;
+    border: 1.5px solid var(--p-surface-200);
+    background: transparent;
+    color: var(--p-surface-600);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.dark .filter-reset-btn {
+    border-color: var(--p-surface-700);
+    color: var(--p-surface-400);
+}
+
+.filter-reset-btn:hover {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #dc2626;
+}
+
+.dark .filter-reset-btn:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239,68,68,0.3);
+    color: #f87171;
+}
+
+/* ─── Active Filter Banner ─── */
+.filter-active-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.6rem 1rem;
+    background: var(--p-primary-50, #eef2ff);
+    border: 1px solid var(--p-primary-200, #c7d2fe);
+    border-radius: 0.75rem;
+    font-size: 0.85rem;
+    color: var(--p-primary-800, #3730a3);
+}
+
+.dark .filter-active-banner {
+    background: rgba(99,102,241,0.1);
+    border-color: rgba(99,102,241,0.3);
+    color: #a5b4fc;
+}
+
+.filter-banner-clear {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-inline-start: auto;
+    padding: 0.3rem 0.75rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--p-primary-300, #a5b4fc);
+    background: transparent;
+    color: var(--p-primary-700, #4338ca);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.dark .filter-banner-clear {
+    border-color: rgba(99,102,241,0.35);
+    color: #a5b4fc;
+}
+
+.filter-banner-clear:hover {
+    background: var(--p-primary-100, #e0e7ff);
+}
+
+.dark .filter-banner-clear:hover {
+    background: rgba(99,102,241,0.18);
+}
+
+.filter-loading-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--p-primary-400);
+    animation: pulse-dot 1s infinite;
+    margin-inline-start: 0.25rem;
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.4; transform: scale(0.7); }
+}
+
+/* ─── Dropdown Animation ─── */
+.dropdown-enter-active,
+.dropdown-leave-active {
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.dropdown-enter-from,
+.dropdown-leave-to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+}
+
+/* ─── Fade Animation ─── */
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.2s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
 }
 
 /* KPI Grid */
@@ -886,5 +1604,31 @@ const formatDate = (dateStr) => {
     .dashboard-row {
         grid-template-columns: 1fr;
     }
+
+    .filter-panel {
+        width: 300px;
+    }
+
+    .preset-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.stock-alert-warning {
+    border-color: #fde68a;
+    background: #fffbeb;
+}
+
+.dark .stock-alert-warning {
+    border-color: rgba(245, 158, 11, 0.3);
+    background: rgba(245, 158, 11, 0.08);
+}
+
+.stock-alert-warning:hover {
+    background: #fef3c7;
+}
+
+.dark .stock-alert-warning:hover {
+    background: rgba(245, 158, 11, 0.12);
 }
 </style>

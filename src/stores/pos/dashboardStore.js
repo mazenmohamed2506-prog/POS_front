@@ -26,11 +26,22 @@ export const useDashboardStore = defineStore("dashboard", () => {
     const error = ref(null);
     const toastStore = useToastStore();
 
-    async function fetchStats() {
+    // Active date filter – null means "all time"
+    const dateFilter = ref({ startDate: null, endDate: null });
+
+    async function fetchStats(startDate = null, endDate = null) {
         loading.value = true;
         error.value = null;
+
+        // Persist the active filter so the view can display it
+        dateFilter.value = { startDate, endDate };
+
         try {
-            const response = await apiGet("/Dashboard/stats");
+            const params = {};
+            if (startDate) params.startDate = startDate;
+            if (endDate)   params.endDate   = endDate;
+
+            const response = await apiGet("/Dashboard/stats", { params });
             stats.value = response.data || stats.value;
         } catch (err) {
             console.error("Failed to fetch dashboard stats:", err);
@@ -41,10 +52,16 @@ export const useDashboardStore = defineStore("dashboard", () => {
         }
     }
 
+    function clearFilter() {
+        fetchStats(null, null);
+    }
+
     return {
         stats,
         loading,
         error,
-        fetchStats
+        dateFilter,
+        fetchStats,
+        clearFilter
     };
 });

@@ -1,8 +1,12 @@
 <script setup>
 import { ref, computed, onMounted } from "vue";
+import { useRoute } from "vue-router";
 import { useProductStore } from "@/stores/pos/productStore";
 import { useToastStore } from "@/stores/base/toastStore";
-import { Package, Plus, Pencil, Trash2, Search, Info, Star, PlusCircle, ArrowLeft } from "lucide-vue-next";
+import { usePosStore } from "@/stores/pos/posStore";
+import { useInventoryStore } from "@/stores/pos/inventoryStore";
+import { Package, Plus, Pencil, Trash2, Search, Info, Star, PlusCircle, ArrowLeft, AlertTriangle } from "lucide-vue-next";
+
 
 // Category combobox state
 const isAddingNewCategory = ref(false);
@@ -10,6 +14,8 @@ const newCategoryName = ref("");
 
 const productStore = useProductStore();
 const toastStore = useToastStore();
+const posStore = usePosStore();
+const inventoryStore = useInventoryStore();
 
 const showProductDialog = ref(false);
 const editingProduct = ref(null);
@@ -29,10 +35,136 @@ const productForm = ref({
 });
 
 const filters = ref({ global: { value: "", matchMode: "contains" } });
+const route = useRoute();
+
+const expirationFilter = ref("all");
+const expirationFilterOptions = [
+    { label: "كل المنتجات", value: "all" },
+    { label: "منتهي الصلاحية", value: "Expired" },
+    { label: "ينتهي قريباً (30 يوم)", value: "Expiring Soon" },
+    { label: "صالح / لا يتطلب صلاحية", value: "Healthy Stock" }
+];
 
 onMounted(() => {
     productStore.fetchProducts();
+    inventoryStore.fetchInventory();
+    
+    if (route.query?.filter) {
+        expirationFilter.value = route.query.filter;
+    }
 });
+
+// Computed products list with expiration details mapped from inventory
+const productsWithExpiration = computed(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return productStore.products.map(product => {
+        // Find all inventory items for this product that have stock
+        const productBatches = inventoryStore.inventory.filter(item => 
+            item.productId === product.id && (item.shelfStock + item.warehouseStock) > 0
+        );
+
+        const expiringBatches = productBatches.filter(b => b.expirationDate);
+
+        let nearestExpiryDate = null;
+        let nearestExpiryBatchQty = 0;
+        let expirationStatus = "Healthy Stock"; // Default status
+        let daysToExpiration = null;
+
+        if (expiringBatches.length > 0) {
+            // Find the batch with the nearest expiration date
+            let nearestBatch = expiringBatches[0];
+            let minDate = new Date(nearestBatch.expirationDate);
+
+            for (let i = 1; i < expiringBatches.length; i++) {
+                const d = new Date(expiringBatches[i].expirationDate);
+                if (d < minDate) {
+                    minDate = d;
+                    nearestBatch = expiringBatches[i];
+                }
+            }
+
+            nearestExpiryDate = nearestBatch.expirationDate;
+            nearestExpiryBatchQty = nearestBatch.shelfStock + nearestBatch.warehouseStock;
+
+            // Calculate remaining days
+            const timeDiff = minDate.getTime() - today.getTime();
+            daysToExpiration = Math.ceil(timeDiff / (1000 * 3600 * 24));
+
+            if (daysToExpiration < 0) {
+                expirationStatus = "Expired";
+            } else if (daysToExpiration <= 30) {
+                expirationStatus = "Expiring Soon";
+            } else {
+                expirationStatus = "Healthy Stock";
+            }
+        }
+
+        return {
+            ...product,
+            nearestExpiryDate,
+            nearestExpiryBatchQty,
+            activeBatchesCount: productBatches.length,
+            expirationStatus,
+            daysToExpiration
+        };
+    });
+});
+
+// Filtered list based on expiration filter selection
+const filteredProducts = computed(() => {
+    let list = productsWithExpiration.value;
+    
+    if (expirationFilter.value !== "all") {
+        if (expirationFilter.value === "Healthy Stock") {
+            list = list.filter(p => !p.trackExpiration || p.activeBatchesCount === 0 || p.expirationStatus === "Healthy Stock");
+        } else {
+            list = list.filter(p => p.trackExpiration && p.expirationStatus === expirationFilter.value && p.activeBatchesCount > 0);
+        }
+    }
+    
+    return list;
+});
+
+// Statistics overview
+const expiredCount = computed(() => {
+    return productsWithExpiration.value.filter(p => p.trackExpiration && p.expirationStatus === "Expired" && p.activeBatchesCount > 0).length;
+});
+
+const expiringSoonCount = computed(() => {
+    return productsWithExpiration.value.filter(p => p.trackExpiration && p.expirationStatus === "Expiring Soon" && p.activeBatchesCount > 0).length;
+});
+
+const healthyCount = computed(() => {
+    return productsWithExpiration.value.filter(p => !p.trackExpiration || p.activeBatchesCount === 0 || p.expirationStatus === "Healthy Stock").length;
+});
+
+const formatDate = (dateStr) => {
+    if (!dateStr) return "—";
+    return new Date(dateStr).toLocaleDateString("ar-EG");
+};
+
+const getExpirationMessage = (product) => {
+    if (product.expirationStatus === "Expired") {
+        return "منتهي الصلاحية بالفعل";
+    }
+    if (product.expirationStatus === "Expiring Soon") {
+        if (product.daysToExpiration <= 7) {
+            return "تنتهي الدفعة الأسبوع القادم";
+        }
+        return `ينتهي خلال ${product.daysToExpiration} يومًا`;
+    }
+    return "";
+};
+
+const rowClass = (data) => {
+    if (!data.trackExpiration || data.activeBatchesCount === 0) return '';
+    if (data.expirationStatus === 'Expired') return 'row-expired';
+    if (data.expirationStatus === 'Expiring Soon') return 'row-expiring-soon';
+    return '';
+};
+
 
 const openNewProduct = () => {
     editingProduct.value = null;
@@ -100,17 +232,25 @@ const validateUnits = () => {
 const saveProduct = async () => {
     if (!validateUnits()) return;
 
-    if (editingProduct.value) {
-        await productStore.updateProduct({ ...productForm.value, id: editingProduct.value.id });
-    } else {
-        await productStore.createProduct({ ...productForm.value });
+    try {
+        if (editingProduct.value) {
+            await productStore.updateProduct({ ...productForm.value, id: editingProduct.value.id });
+        } else {
+            await productStore.createProduct({ ...productForm.value });
+        }
+        showProductDialog.value = false;
+    } catch {
+        // Handled by store toasts
     }
-    showProductDialog.value = false;
 };
 
 const deleteProduct = async (product) => {
     if (confirm(`هل أنت متأكد من حذف المنتج "${product.name}"؟`)) {
-        await productStore.deleteProduct(product.id);
+        try {
+            await productStore.deleteProduct(product.id);
+        } catch {
+            // Handled by store toasts
+        }
     }
 };
 
@@ -138,17 +278,57 @@ const viewConversions = async (product) => {
                     <p class="products-subtitle">عرض وإضافة وتعديل بيانات المنتجات والأسعار</p>
                 </div>
             </div>
-            <Button label="إضافة منتج" @click="openNewProduct">
+            <Button v-if="posStore.role === 'Manager' || posStore.role === 'SuperAdmin'" label="إضافة منتج" @click="openNewProduct">
                 <template #icon>
                     <Plus :size="18" />
                 </template>
             </Button>
         </div>
 
+        <!-- Expiration Overview Stats Cards -->
+        <div class="products-stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon red">
+                    <AlertTriangle :size="20" />
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">منتهي الصلاحية</span>
+                    <span class="stat-value">{{ expiredCount }}</span>
+                    <span class="stat-sub">منتجات يجب إزالتها</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon orange">
+                    <AlertTriangle :size="20" />
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">ينتهي قريباً (30 يوم)</span>
+                    <span class="stat-value">{{ expiringSoonCount }}</span>
+                    <span class="stat-sub">منتجات تقترب صلاحيتها</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon green">
+                    <Package :size="20" />
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">مخزون سليم</span>
+                    <span class="stat-value">{{ healthyCount }}</span>
+                    <span class="stat-sub">منتجات في حالة جيدة</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error Banner -->
+        <div v-if="productStore.error" class="mb-4 p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-lg flex items-center justify-between">
+            <span>{{ productStore.error }}</span>
+            <Button label="إعادة المحاولة" size="small" severity="danger" text @click="productStore.fetchProducts()" />
+        </div>
+
         <!-- Table Container Card -->
         <div class="products-card">
             <!-- Filter TopBar -->
-            <div class="products-filter-bar">
+            <div class="products-filter-bar flex justify-between items-center flex-wrap gap-3">
                 <div class="relative w-full max-w-xs">
                     <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400 dark:text-surface-500" />
                     <InputText
@@ -159,11 +339,23 @@ const viewConversions = async (product) => {
                         size="small"
                     />
                 </div>
+                <div class="flex items-center gap-2">
+                    <label class="text-sm font-semibold text-surface-600 dark:text-surface-400">تصفية حسب الصلاحية:</label>
+                    <Select
+                        v-model="expirationFilter"
+                        :options="expirationFilterOptions"
+                        optionLabel="label"
+                        optionValue="value"
+                        placeholder="كل المنتجات"
+                        class="w-48"
+                        size="small"
+                    />
+                </div>
             </div>
 
             <!-- Products Table -->
             <DataTable
-                :value="productStore.products"
+                :value="filteredProducts"
                 :loading="productStore.loading"
                 paginator
                 :rows="10"
@@ -175,6 +367,7 @@ const viewConversions = async (product) => {
                 stripedRows
                 removableSort
                 scrollable
+                :rowClass="rowClass"
                 class="products-table"
             >
                 <Column field="name" header="اسم المنتج" sortable style="min-width: 220px">
@@ -224,6 +417,29 @@ const viewConversions = async (product) => {
                             <div v-if="data.units?.some(u => u.isBaseUnit)" class="flex gap-1">
                                 <Tag severity="success" value="أساسية" class="text-[10px] px-1 py-0 h-4 leading-none" />
                             </div>
+                        </div>
+                    </template>
+                </Column>
+                <Column header="الصلاحية" style="min-width: 180px">
+                    <template #body="{ data }">
+                        <div v-if="data.trackExpiration && data.activeBatchesCount > 0" class="flex flex-col gap-1">
+                            <Tag :severity="data.expirationStatus === 'Expired' ? 'danger' : data.expirationStatus === 'Expiring Soon' ? 'warn' : 'success'" 
+                                 :value="data.expirationStatus === 'Expired' ? 'منتهي الصلاحية' : data.expirationStatus === 'Expiring Soon' ? 'ينتهي قريباً' : 'صالح'" />
+                            <span class="text-[11px] text-surface-500">
+                                الأقرب: {{ formatDate(data.nearestExpiryDate) }}
+                            </span>
+                            <span class="text-[10px] text-surface-500 font-semibold">
+                                الكمية: {{ data.nearestExpiryBatchQty }} ({{ data.activeBatchesCount }} دفعات)
+                            </span>
+                            <span v-if="data.expirationStatus !== 'Healthy Stock'" class="text-[10px] font-bold" :class="data.expirationStatus === 'Expired' ? 'text-red-500' : 'text-amber-500'">
+                                {{ getExpirationMessage(data) }}
+                            </span>
+                        </div>
+                        <div v-else-if="data.trackExpiration" class="text-xs text-surface-400">
+                            لا توجد كميات حالياً
+                        </div>
+                        <div v-else class="text-xs text-surface-400">
+                            لا يتطلب صلاحية
                         </div>
                     </template>
                 </Column>
@@ -737,5 +953,98 @@ const viewConversions = async (product) => {
 
 .dark .new-category-hint {
     color: var(--p-primary-400);
+}
+
+/* Products Stats Grid */
+.products-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.stat-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem;
+    border-radius: 1rem;
+    background: var(--p-surface-0);
+    border: 1px solid var(--p-surface-200);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.dark .stat-card {
+    background: var(--p-surface-900);
+    border-color: var(--p-surface-800);
+}
+
+.stat-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 0.75rem;
+}
+
+.stat-icon.red {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+}
+
+.stat-icon.orange {
+    background: rgba(245, 158, 11, 0.1);
+    color: #f59e0b;
+}
+
+.stat-icon.green {
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+}
+
+.stat-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.stat-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--p-surface-500);
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--p-surface-900);
+    line-height: 1.2;
+    margin: 0.125rem 0;
+}
+
+.dark .stat-value {
+    color: var(--p-surface-0);
+}
+
+.stat-sub {
+    font-size: 0.75rem;
+    color: var(--p-surface-400);
+}
+
+/* Row colors for Expiration Alert */
+:deep(.row-expired) {
+    background-color: rgba(239, 68, 68, 0.08) !important;
+}
+
+:deep(.row-expiring-soon) {
+    background-color: rgba(245, 158, 11, 0.08) !important;
+}
+
+:deep(.row-expired:hover) {
+    background-color: rgba(239, 68, 68, 0.12) !important;
+}
+
+:deep(.row-expiring-soon:hover) {
+    background-color: rgba(245, 158, 11, 0.12) !important;
 }
 </style>

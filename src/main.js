@@ -28,6 +28,21 @@ app.component("ProgressSpinner", ProgressSpinner);
 
 app.directive("tooltip", Tooltip);
 
+// Global click-outside directive
+app.directive("click-outside", {
+    mounted(el, binding) {
+        el._clickOutsideHandler = (event) => {
+            if (!el.contains(event.target)) {
+                binding.value(event);
+            }
+        };
+        document.addEventListener("pointerdown", el._clickOutsideHandler);
+    },
+    unmounted(el) {
+        document.removeEventListener("pointerdown", el._clickOutsideHandler);
+    }
+});
+
 importIcons(app);
 
 app.mount("#app");
