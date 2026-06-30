@@ -1,26 +1,109 @@
 <script setup>
 import { ref, computed, onMounted } from "vue";
-import { useRoute } from "vue-router";
 import { useProductStore } from "@/stores/pos/productStore";
+import { useUnitStore } from "@/stores/pos/unitStore";
 import { useToastStore } from "@/stores/base/toastStore";
 import { usePosStore } from "@/stores/pos/posStore";
-import { useInventoryStore } from "@/stores/pos/inventoryStore";
-import { Package, Plus, Pencil, Trash2, Search, Info, Star, PlusCircle, ArrowLeft, AlertTriangle } from "lucide-vue-next";
-
+import {
+    Package, Plus, Pencil, Trash2, Search, Star,
+    PlusCircle, ArrowLeft, Eye,
+    LayoutGrid, CheckCircle2, XCircle, AlertCircle
+} from "lucide-vue-next";
 
 // Category combobox state
 const isAddingNewCategory = ref(false);
 const newCategoryName = ref("");
 
 const productStore = useProductStore();
+const unitStore = useUnitStore();
 const toastStore = useToastStore();
 const posStore = usePosStore();
-const inventoryStore = useInventoryStore();
+
+const showManageCategoriesDialog = ref(false);
+const editingCategory = ref(null);
+const categoryForm = ref({ name: "" });
+
+const openManageCategories = () => {
+    editingCategory.value = null;
+    categoryForm.value = { name: "" };
+    showManageCategoriesDialog.value = true;
+};
+
+const editCategory = (c) => {
+    editingCategory.value = c;
+    categoryForm.value = { name: c.name };
+};
+
+const saveCategory = async () => {
+    if (!categoryForm.value.name) return;
+    try {
+        if (editingCategory.value) {
+            await productStore.updateCategory(editingCategory.value.id, categoryForm.value);
+        } else {
+            await productStore.createCategory(categoryForm.value);
+        }
+        categoryForm.value = { name: "" };
+        editingCategory.value = null;
+    } catch (e) {}
+};
+
+const removeCategory = async (c) => {
+    if (confirm(`هل أنت متأكد من حذف الفئة "${c.name}"؟`)) {
+        try {
+            await productStore.deleteCategory(c.id);
+        } catch (e) {}
+    }
+};
+
+const showManageUnitsDialog = ref(false);
+const editingUnit = ref(null);
+const unitForm = ref({ name: "" });
+
+const openManageUnits = () => {
+    editingUnit.value = null;
+    unitForm.value = { name: "" };
+    showManageUnitsDialog.value = true;
+};
+
+const editUnit = (u) => {
+    editingUnit.value = u;
+    unitForm.value = { name: u.name };
+};
+
+const saveUnit = async () => {
+    if (!unitForm.value.name) return;
+    try {
+        if (editingUnit.value) {
+            await unitStore.updateUnit(editingUnit.value.id, unitForm.value);
+        } else {
+            await unitStore.createUnit(unitForm.value);
+        }
+        unitForm.value = { name: "" };
+        editingUnit.value = null;
+    } catch (e) {}
+};
+
+const removeUnit = async (u) => {
+    if (confirm(`هل أنت متأكد من حذف الوحدة "${u.name}"؟`)) {
+        try {
+            await unitStore.deleteUnit(u.id);
+        } catch (e) {}
+    }
+};
 
 const showProductDialog = ref(false);
 const editingProduct = ref(null);
 const showConversionsDialog = ref(false);
 const unitConversions = ref(null);
+
+const showDetailsDialog = ref(false);
+const selectedProductDetails = ref(null);
+
+const openProductDetails = (product) => {
+    selectedProductDetails.value = product;
+    showDetailsDialog.value = true;
+};
+
 const productForm = ref({
     name: "",
     sku: "",
@@ -35,152 +118,57 @@ const productForm = ref({
 });
 
 const filters = ref({ global: { value: "", matchMode: "contains" } });
-const route = useRoute();
-
-const expirationFilter = ref("all");
-const expirationFilterOptions = [
-    { label: "كل المنتجات", value: "all" },
-    { label: "منتهي الصلاحية", value: "Expired" },
-    { label: "ينتهي قريباً (30 يوم)", value: "Expiring Soon" },
-    { label: "صالح / لا يتطلب صلاحية", value: "Healthy Stock" }
-];
 
 onMounted(() => {
     productStore.fetchProducts();
-    inventoryStore.fetchInventory();
-    
-    if (route.query?.filter) {
-        expirationFilter.value = route.query.filter;
-    }
+    unitStore.fetchUnits();
 });
 
-// Computed products list with expiration details mapped from inventory
-const productsWithExpiration = computed(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+// ─── Catalog Summary Metrics ────────────────────────────────────────────────
 
-    return productStore.products.map(product => {
-        // Find all inventory items for this product that have stock
-        const productBatches = inventoryStore.inventory.filter(item => 
-            item.productId === product.id && (item.shelfStock + item.warehouseStock) > 0
-        );
+/** Total number of products in the catalog */
+const totalProducts = computed(() => productStore.products.length);
 
-        const expiringBatches = productBatches.filter(b => b.expirationDate);
+/** Products where isActive === true */
+const activeProducts = computed(() =>
+    productStore.products.filter(p => p.isActive).length
+);
 
-        let nearestExpiryDate = null;
-        let nearestExpiryBatchQty = 0;
-        let expirationStatus = "Healthy Stock"; // Default status
-        let daysToExpiration = null;
+/** Products where isActive === false */
+const inactiveProducts = computed(() =>
+    productStore.products.filter(p => !p.isActive).length
+);
 
-        if (expiringBatches.length > 0) {
-            // Find the batch with the nearest expiration date
-            let nearestBatch = expiringBatches[0];
-            let minDate = new Date(nearestBatch.expirationDate);
+/**
+ * Incomplete products: missing a barcode on the base unit (factor === 1)
+ * OR have a selling price of 0.
+ */
+const incompleteProducts = computed(() =>
+    productStore.products.filter(p => {
+        const baseUnit = (p.units || []).find(u => u.factor === 1) || (p.units || [])[0];
+        const missingBarcode = !baseUnit?.barcode;
+        const missingPrice  = (baseUnit?.sellingPrice ?? baseUnit?.price ?? p.sellingPrice ?? 0) === 0;
+        return missingBarcode || missingPrice;
+    }).length
+);
 
-            for (let i = 1; i < expiringBatches.length; i++) {
-                const d = new Date(expiringBatches[i].expirationDate);
-                if (d < minDate) {
-                    minDate = d;
-                    nearestBatch = expiringBatches[i];
-                }
-            }
-
-            nearestExpiryDate = nearestBatch.expirationDate;
-            nearestExpiryBatchQty = nearestBatch.shelfStock + nearestBatch.warehouseStock;
-
-            // Calculate remaining days
-            const timeDiff = minDate.getTime() - today.getTime();
-            daysToExpiration = Math.ceil(timeDiff / (1000 * 3600 * 24));
-
-            if (daysToExpiration < 0) {
-                expirationStatus = "Expired";
-            } else if (daysToExpiration <= 30) {
-                expirationStatus = "Expiring Soon";
-            } else {
-                expirationStatus = "Healthy Stock";
-            }
-        }
-
-        return {
-            ...product,
-            nearestExpiryDate,
-            nearestExpiryBatchQty,
-            activeBatchesCount: productBatches.length,
-            expirationStatus,
-            daysToExpiration
-        };
-    });
-});
-
-// Filtered list based on expiration filter selection
-const filteredProducts = computed(() => {
-    let list = productsWithExpiration.value;
-    
-    if (expirationFilter.value !== "all") {
-        if (expirationFilter.value === "Healthy Stock") {
-            list = list.filter(p => !p.trackExpiration || p.activeBatchesCount === 0 || p.expirationStatus === "Healthy Stock");
-        } else {
-            list = list.filter(p => p.trackExpiration && p.expirationStatus === expirationFilter.value && p.activeBatchesCount > 0);
-        }
-    }
-    
-    return list;
-});
-
-// Statistics overview
-const expiredCount = computed(() => {
-    return productsWithExpiration.value.filter(p => p.trackExpiration && p.expirationStatus === "Expired" && p.activeBatchesCount > 0).length;
-});
-
-const expiringSoonCount = computed(() => {
-    return productsWithExpiration.value.filter(p => p.trackExpiration && p.expirationStatus === "Expiring Soon" && p.activeBatchesCount > 0).length;
-});
-
-const healthyCount = computed(() => {
-    return productsWithExpiration.value.filter(p => !p.trackExpiration || p.activeBatchesCount === 0 || p.expirationStatus === "Healthy Stock").length;
-});
-
-const formatDate = (dateStr) => {
-    if (!dateStr) return "—";
-    return new Date(dateStr).toLocaleDateString("ar-EG");
-};
-
-const getExpirationMessage = (product) => {
-    if (product.expirationStatus === "Expired") {
-        return "منتهي الصلاحية بالفعل";
-    }
-    if (product.expirationStatus === "Expiring Soon") {
-        if (product.daysToExpiration <= 7) {
-            return "تنتهي الدفعة الأسبوع القادم";
-        }
-        return `ينتهي خلال ${product.daysToExpiration} يومًا`;
-    }
-    return "";
-};
-
-const rowClass = (data) => {
-    if (!data.trackExpiration || data.activeBatchesCount === 0) return '';
-    if (data.expirationStatus === 'Expired') return 'row-expired';
-    if (data.expirationStatus === 'Expiring Soon') return 'row-expiring-soon';
-    return '';
-};
-
+// ─── Product Dialog Handlers ─────────────────────────────────────────────────
 
 const openNewProduct = () => {
     editingProduct.value = null;
-    productForm.value = { 
-        name: "", 
-        sku: "", 
-        barcode: "", 
-        category: "", 
-        price: 0, 
-        sellingPrice: 0, 
-        cost: 0, 
-        costPrice: 0, 
+    productForm.value = {
+        name: "",
+        sku: "",
+        barcode: "",
+        category: "",
+        price: 0,
+        sellingPrice: 0,
+        cost: 0,
+        costPrice: 0,
         itemDiscount: 0,
         units: [
             { id: 0, name: "قطعة", factor: 1, barcode: "", price: 0, cost: 0, itemDiscount: 0 }
-        ] 
+        ]
     };
     isAddingNewCategory.value = false;
     newCategoryName.value = "";
@@ -193,17 +181,16 @@ const openEditProduct = (product) => {
     if (units.length === 0) {
         units = [{ id: 0, name: "قطعة", factor: 1, barcode: product.barcode || "", price: product.sellingPrice, cost: product.costPrice, itemDiscount: product.itemDiscount }];
     }
-    
-    // Convert units to the form structure
+
     units = units.map(u => ({
-        id: u.id || 0,
+        id: u.id ?? 0,
         name: u.name || "",
         factor: u.factor || 1,
         barcode: u.barcode || "",
-        price: u.sellingPrice || u.price || 0,
-        cost: u.costPrice || 0,
-        itemDiscount: u.itemDiscount || 0,
-        isBaseUnit: u.isBaseUnit || u.factor === 1
+        price: u.sellingPrice ?? u.price ?? 0,
+        cost: u.costPrice ?? u.cost ?? 0,
+        itemDiscount: u.itemDiscount ?? 0,
+        isBaseUnit: u.isBaseUnit ?? (u.factor === 1)
     }));
 
     productForm.value = { ...product, units };
@@ -231,6 +218,19 @@ const validateUnits = () => {
 
 const saveProduct = async () => {
     if (!validateUnits()) return;
+
+    // Sync base unit back to the root product object.
+    if (productForm.value.units.length > 0) {
+        const baseUnit = productForm.value.units[0];
+        productForm.value.price = baseUnit.price;
+        productForm.value.sellingPrice = baseUnit.price;
+        productForm.value.cost = baseUnit.cost;
+        productForm.value.costPrice = baseUnit.cost;
+        productForm.value.itemDiscount = baseUnit.itemDiscount;
+        if (baseUnit.barcode) {
+            productForm.value.barcode = baseUnit.barcode;
+        }
+    }
 
     try {
         if (editingProduct.value) {
@@ -285,36 +285,46 @@ const viewConversions = async (product) => {
             </Button>
         </div>
 
-        <!-- Expiration Overview Stats Cards -->
+        <!-- Catalog Overview Stats Cards -->
         <div class="products-stats-grid">
             <div class="stat-card">
-                <div class="stat-icon red">
-                    <AlertTriangle :size="20" />
+                <div class="stat-icon blue">
+                    <Package :size="20" />
                 </div>
                 <div class="stat-info">
-                    <span class="stat-label">منتهي الصلاحية</span>
-                    <span class="stat-value">{{ expiredCount }}</span>
-                    <span class="stat-sub">منتجات يجب إزالتها</span>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon orange">
-                    <AlertTriangle :size="20" />
-                </div>
-                <div class="stat-info">
-                    <span class="stat-label">ينتهي قريباً (30 يوم)</span>
-                    <span class="stat-value">{{ expiringSoonCount }}</span>
-                    <span class="stat-sub">منتجات تقترب صلاحيتها</span>
+                    <span class="stat-label">إجمالي المنتجات</span>
+                    <span class="stat-value">{{ totalProducts }}</span>
+                    <span class="stat-sub">جميع المنتجات المسجلة</span>
                 </div>
             </div>
             <div class="stat-card">
                 <div class="stat-icon green">
-                    <Package :size="20" />
+                    <CheckCircle2 :size="20" />
                 </div>
                 <div class="stat-info">
-                    <span class="stat-label">مخزون سليم</span>
-                    <span class="stat-value">{{ healthyCount }}</span>
-                    <span class="stat-sub">منتجات في حالة جيدة</span>
+                    <span class="stat-label">المنتجات النشطة</span>
+                    <span class="stat-value">{{ activeProducts }}</span>
+                    <span class="stat-sub">متاحة للبيع</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon red">
+                    <XCircle :size="20" />
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">المنتجات غير النشطة</span>
+                    <span class="stat-value">{{ inactiveProducts }}</span>
+                    <span class="stat-sub">غير معروضة للبيع</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon orange">
+                    <AlertCircle :size="20" />
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">بيانات غير مكتملة</span>
+                    <span class="stat-value">{{ incompleteProducts }}</span>
+                    <span class="stat-sub">بدون باركود أو السعر 0</span>
                 </div>
             </div>
         </div>
@@ -333,21 +343,9 @@ const viewConversions = async (product) => {
                     <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400 dark:text-surface-500" />
                     <InputText
                         v-model="filters.global.value"
-                        placeholder="بحث سريع عن صنف..."
-                        class="ps-9 w-full"
+                        placeholder="         بحث سريع عن صنف..."
+                        class="ps-10 pr-4 w-full"
                         autocomplete="off"
-                        size="small"
-                    />
-                </div>
-                <div class="flex items-center gap-2">
-                    <label class="text-sm font-semibold text-surface-600 dark:text-surface-400">تصفية حسب الصلاحية:</label>
-                    <Select
-                        v-model="expirationFilter"
-                        :options="expirationFilterOptions"
-                        optionLabel="label"
-                        optionValue="value"
-                        placeholder="كل المنتجات"
-                        class="w-48"
                         size="small"
                     />
                 </div>
@@ -355,19 +353,17 @@ const viewConversions = async (product) => {
 
             <!-- Products Table -->
             <DataTable
-                :value="filteredProducts"
+                :value="productStore.products"
                 :loading="productStore.loading"
                 paginator
                 :rows="10"
                 :rowsPerPageOptions="[5, 10, 20, 50]"
                 v-model:filters="filters"
-                filterDisplay="row"
                 :globalFilterFields="['name', 'sku', 'barcode', 'category']"
                 emptyMessage="لا توجد منتجات مطابقة للبحث"
                 stripedRows
                 removableSort
                 scrollable
-                :rowClass="rowClass"
                 class="products-table"
             >
                 <Column field="name" header="اسم المنتج" sortable style="min-width: 220px">
@@ -380,11 +376,7 @@ const viewConversions = async (product) => {
                         <span class="text-sm font-semibold font-mono text-surface-600 dark:text-surface-400">{{ data.sku }}</span>
                     </template>
                 </Column>
-                <Column field="barcode" header="الباركود" style="min-width: 160px">
-                    <template #body="{ data }">
-                        <span class="text-sm text-surface-600 dark:text-surface-400">{{ data.barcode || '—' }}</span>
-                    </template>
-                </Column>
+
                 <Column field="category" header="الفئة" sortable style="min-width: 130px">
                     <template #body="{ data }">
                         <Tag :value="data.category" severity="info" class="font-medium" />
@@ -408,46 +400,13 @@ const viewConversions = async (product) => {
                     </template>
                 </Column>
 
-                <Column header="الوحدات" style="min-width: 140px">
-                    <template #body="{ data }">
-                        <div class="flex flex-col gap-1">
-                            <span class="text-sm font-medium text-surface-500">
-                                {{ data.units?.length || 0 }} وحدة
-                            </span>
-                            <div v-if="data.units?.some(u => u.isBaseUnit)" class="flex gap-1">
-                                <Tag severity="success" value="أساسية" class="text-[10px] px-1 py-0 h-4 leading-none" />
-                            </div>
-                        </div>
-                    </template>
-                </Column>
-                <Column header="الصلاحية" style="min-width: 180px">
-                    <template #body="{ data }">
-                        <div v-if="data.trackExpiration && data.activeBatchesCount > 0" class="flex flex-col gap-1">
-                            <Tag :severity="data.expirationStatus === 'Expired' ? 'danger' : data.expirationStatus === 'Expiring Soon' ? 'warn' : 'success'" 
-                                 :value="data.expirationStatus === 'Expired' ? 'منتهي الصلاحية' : data.expirationStatus === 'Expiring Soon' ? 'ينتهي قريباً' : 'صالح'" />
-                            <span class="text-[11px] text-surface-500">
-                                الأقرب: {{ formatDate(data.nearestExpiryDate) }}
-                            </span>
-                            <span class="text-[10px] text-surface-500 font-semibold">
-                                الكمية: {{ data.nearestExpiryBatchQty }} ({{ data.activeBatchesCount }} دفعات)
-                            </span>
-                            <span v-if="data.expirationStatus !== 'Healthy Stock'" class="text-[10px] font-bold" :class="data.expirationStatus === 'Expired' ? 'text-red-500' : 'text-amber-500'">
-                                {{ getExpirationMessage(data) }}
-                            </span>
-                        </div>
-                        <div v-else-if="data.trackExpiration" class="text-xs text-surface-400">
-                            لا توجد كميات حالياً
-                        </div>
-                        <div v-else class="text-xs text-surface-400">
-                            لا يتطلب صلاحية
-                        </div>
-                    </template>
-                </Column>
+
+
                 <Column header="إجراءات" style="min-width: 130px; text-align: center">
                     <template #body="{ data }">
                         <div class="flex gap-1 justify-center">
-                            <button class="action-info-btn" @click="viewConversions(data)" title="عرض تحويلات الوحدات">
-                                <Info :size="15" />
+                            <button class="action-view-btn text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 p-1.5 rounded-md border border-primary-200 dark:border-primary-800 transition-colors" @click="openProductDetails(data)" title="عرض التفاصيل">
+                                <Eye :size="15" />
                             </button>
                             <button class="action-edit-btn" @click="openEditProduct(data)" title="تعديل">
                                 <Pencil :size="15" />
@@ -470,63 +429,45 @@ const viewConversions = async (product) => {
             dismissableMask
         >
             <div class="product-dialog-form">
-                <div class="form-field">
-                    <label class="required">اسم المنتج</label>
-                    <InputText v-model="productForm.name" fluid placeholder="أدخل اسم المنتج" />
-                </div>
+
                 <div class="grid grid-cols-2 gap-4">
+                    <div class="form-field">
+                        <label class="required">اسم المنتج</label>
+                        <InputText v-model="productForm.name" fluid placeholder="أدخل اسم المنتج" />
+                    </div>
                     <div class="form-field">
                         <label class="required">رمز المنتج (SKU)</label>
                         <InputText v-model="productForm.sku" fluid placeholder="SKU" />
                     </div>
-                    <div class="form-field">
-                        <label>الباركود</label>
-                        <InputText v-model="productForm.barcode" fluid placeholder="باركود المنتج" />
-                    </div>
+
                 </div>
                 <div class="form-field">
-                    <label class="required">الفئة</label>
-                    <!-- Mode: Select existing category -->
-                    <div v-if="!isAddingNewCategory" class="category-combobox">
-                        <Select 
-                            v-model="productForm.category" 
-                            :options="productStore.categories" 
-                            optionLabel="name" 
-                            optionValue="name" 
-                            filter 
-                            fluid 
-                            placeholder="اختر فئة من القائمة"
-                            showClear
-                        />
-                        <button type="button" class="add-category-btn" @click="isAddingNewCategory = true" title="إضافة فئة جديدة">
-                            <PlusCircle :size="18" />
-                            <span>فئة جديدة</span>
-                        </button>
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="required">الفئة</label>
+                        <Button label="إدارة الفئات" size="small" severity="info" outlined @click="openManageCategories" />
                     </div>
-                    <!-- Mode: Type new category -->
-                    <div v-else class="category-combobox">
-                        <div class="new-category-input-wrap">
-                            <button type="button" class="back-to-select-btn" @click="isAddingNewCategory = false" title="الرجوع للقائمة">
-                                <ArrowLeft :size="16" />
-                            </button>
-                            <InputText 
-                                v-model="productForm.category" 
-                                fluid 
-                                placeholder="اكتب اسم الفئة الجديدة..." 
-                                autofocus
-                            />
-                        </div>
-                        <p class="new-category-hint">سيتم إنشاء الفئة تلقائياً عند حفظ المنتج</p>
-                    </div>
+                    <Select 
+                        v-model="productForm.category" 
+                        :options="productStore.categories" 
+                        optionLabel="name" 
+                        optionValue="name" 
+                        filter 
+                        fluid 
+                        placeholder="اختر فئة من القائمة"
+                        showClear
+                    />
                 </div>
                 
                 <!-- Units section -->
                 <div class="units-section">
                     <div class="flex justify-between items-center mb-2">
                         <label class="font-bold text-surface-700 dark:text-surface-200">وحدات المنتج <span class="text-xs font-normal text-surface-500">(يجب أن توجد وحدة أساسية واحدة بمعامل 1)</span></label>
-                        <Button label="إضافة وحدة" size="small" outlined @click="addUnitLine">
-                            <template #icon><Plus :size="14" /></template>
-                        </Button>
+                        <div class="flex gap-2">
+                            <Button label="إدارة الوحدات" size="small" severity="info" outlined @click="openManageUnits" />
+                            <Button label="إضافة وحدة" size="small" outlined @click="addUnitLine">
+                                <template #icon><Plus :size="14" /></template>
+                            </Button>
+                        </div>
                     </div>
                     
                     <div class="units-list">
@@ -543,7 +484,7 @@ const viewConversions = async (product) => {
                             <div class="grid grid-cols-2 gap-3 mb-3">
                                 <div class="form-field">
                                     <label class="required">اسم الوحدة</label>
-                                    <InputText v-model="unit.name" size="small" fluid placeholder="مثال: قطعة، كرتونة" />
+                                    <Select v-model="unit.name" :options="unitStore.units" optionLabel="name" optionValue="name" filter fluid placeholder="اختر وحدة" size="small" />
                                 </div>
                                 <div class="form-field">
                                     <label class="required">معامل التحويل</label>
@@ -618,6 +559,145 @@ const viewConversions = async (product) => {
             <template #footer>
                 <div class="flex justify-end w-full">
                     <Button label="إغلاق" outlined severity="secondary" @click="showConversionsDialog = false" />
+                </div>
+            </template>
+        </Dialog>
+
+        <!-- Product Details Dialog -->
+        <Dialog
+            v-model:visible="showDetailsDialog"
+            header="تفاصيل المنتج"
+            :style="{ width: '500px' }"
+            modal
+            dismissableMask
+        >
+            <div v-if="selectedProductDetails" class="p-1 flex flex-col gap-4">
+                <div class="bg-surface-50 dark:bg-surface-900 p-4 rounded-lg border border-surface-200 dark:border-surface-800">
+                    <h3 class="font-bold text-lg mb-1">{{ selectedProductDetails.name }}</h3>
+                    <p class="text-sm text-surface-500 font-mono mb-2">SKU: {{ selectedProductDetails.sku }}</p>
+                    <Tag :value="selectedProductDetails.category" severity="info" class="font-medium" />
+                </div>
+
+                <h4 class="font-bold text-surface-700 dark:text-surface-300 mt-2 border-b pb-2 dark:border-surface-800">الوحدات والأسعار</h4>
+                
+                <div class="flex flex-col gap-3">
+                    <div v-for="(unit, idx) in selectedProductDetails.units" :key="idx" 
+                         class="p-4 bg-white dark:bg-surface-950 rounded-lg border border-surface-200 dark:border-surface-800 shadow-sm relative overflow-hidden"
+                         :class="{'border-l-4 border-l-primary-500': unit.factor === 1}">
+                         
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex items-center gap-2">
+                                <span class="font-bold text-md">{{ unit.name }}</span>
+                                <Tag v-if="unit.factor === 1" value="وحدة أساسية" severity="success" class="text-[10px] px-1 py-0 h-4 leading-none"></Tag>
+                                <span v-else class="text-xs bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded text-surface-600 dark:text-surface-400">معامل: {{ unit.factor }}</span>
+                            </div>
+                        </div>
+                        
+                        <div class="text-xs text-surface-500 font-mono mb-4 bg-surface-50 dark:bg-surface-900 px-2 py-1.5 rounded">
+                            الباركود: {{ unit.barcode || selectedProductDetails.barcode || '—' }}
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3 text-sm">
+                            <div class="flex flex-col bg-surface-50 dark:bg-surface-900/50 p-2 rounded">
+                                <span class="text-surface-500 text-[11px] mb-1">سعر الشراء</span>
+                                <span class="font-bold text-surface-800 dark:text-surface-200">{{ unit.costPrice?.toFixed(2) ?? unit.cost?.toFixed(2) ?? '0.00' }} <span class="text-[10px]">EGP</span></span>
+                            </div>
+                            <div class="flex flex-col bg-primary-50 dark:bg-primary-900/20 p-2 rounded">
+                                <span class="text-primary-600 dark:text-primary-400 text-[11px] mb-1">سعر البيع</span>
+                                <span class="font-black text-primary-700 dark:text-primary-300">{{ unit.sellingPrice?.toFixed(2) ?? unit.price?.toFixed(2) ?? '0.00' }} <span class="text-[10px]">EGP</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <template #footer>
+                <div class="flex justify-end w-full">
+                    <Button label="إغلاق" outlined severity="secondary" @click="showDetailsDialog = false" />
+                </div>
+            </template>
+        </Dialog>
+        <!-- Manage Categories Dialog -->
+        <Dialog
+            v-model:visible="showManageCategoriesDialog"
+            header="إدارة الفئات"
+            :style="{ width: '500px' }"
+            modal
+            dismissableMask
+        >
+            <div class="flex flex-col gap-4 py-2">
+                <div class="flex gap-2 items-end">
+                    <div class="form-field flex-1">
+                        <label>{{ editingCategory ? 'تعديل فئة' : 'إضافة فئة جديدة' }}</label>
+                        <InputText v-model="categoryForm.name" fluid placeholder="اسم الفئة" @keyup.enter="saveCategory" />
+                    </div>
+                    <Button :label="editingCategory ? 'حفظ' : 'إضافة'" :icon="editingCategory ? 'pi pi-check' : 'pi pi-plus'" @click="saveCategory" :disabled="!categoryForm.name || productStore.loading" />
+                    <Button v-if="editingCategory" icon="pi pi-times" severity="secondary" outlined @click="editingCategory = null; categoryForm.name = ''" title="إلغاء التعديل" />
+                </div>
+
+                <div class="border rounded-lg border-surface-200 dark:border-surface-800 overflow-hidden mt-4">
+                    <DataTable :value="productStore.categories" :loading="productStore.loading" scrollable scrollHeight="300px" emptyMessage="لا توجد فئات">
+                        <Column field="name" header="اسم الفئة"></Column>
+                        <Column header="إجراءات" style="width: 100px">
+                            <template #body="{ data }">
+                                <div class="flex gap-1 justify-end">
+                                    <button class="action-edit-btn !w-7 !h-7" @click="editCategory(data)" title="تعديل">
+                                        <Pencil :size="14" />
+                                    </button>
+                                    <button class="action-delete-btn !w-7 !h-7" @click="removeCategory(data)" title="حذف">
+                                        <Trash2 :size="14" />
+                                    </button>
+                                </div>
+                            </template>
+                        </Column>
+                    </DataTable>
+                </div>
+            </div>
+            <template #footer>
+                <div class="flex justify-end w-full">
+                    <Button label="إغلاق" outlined severity="secondary" @click="showManageCategoriesDialog = false" />
+                </div>
+            </template>
+        </Dialog>
+
+        <!-- Manage Units Dialog -->
+        <Dialog
+            v-model:visible="showManageUnitsDialog"
+            header="إدارة الوحدات"
+            :style="{ width: '500px' }"
+            modal
+            dismissableMask
+        >
+            <div class="flex flex-col gap-4 py-2">
+                <div class="flex gap-2 items-end">
+                    <div class="form-field flex-1">
+                        <label>{{ editingUnit ? 'تعديل وحدة' : 'إضافة وحدة جديدة' }}</label>
+                        <InputText v-model="unitForm.name" fluid placeholder="اسم الوحدة" @keyup.enter="saveUnit" />
+                    </div>
+                    <Button :label="editingUnit ? 'حفظ' : 'إضافة'" :icon="editingUnit ? 'pi pi-check' : 'pi pi-plus'" @click="saveUnit" :disabled="!unitForm.name || unitStore.loading" />
+                    <Button v-if="editingUnit" icon="pi pi-times" severity="secondary" outlined @click="editingUnit = null; unitForm.name = ''" title="إلغاء التعديل" />
+                </div>
+
+                <div class="border rounded-lg border-surface-200 dark:border-surface-800 overflow-hidden mt-4">
+                    <DataTable :value="unitStore.units" :loading="unitStore.loading" scrollable scrollHeight="300px" emptyMessage="لا توجد وحدات">
+                        <Column field="name" header="اسم الوحدة"></Column>
+                        <Column header="إجراءات" style="width: 100px">
+                            <template #body="{ data }">
+                                <div class="flex gap-1 justify-end">
+                                    <button class="action-edit-btn !w-7 !h-7" @click="editUnit(data)" title="تعديل">
+                                        <Pencil :size="14" />
+                                    </button>
+                                    <button class="action-delete-btn !w-7 !h-7" @click="removeUnit(data)" title="حذف">
+                                        <Trash2 :size="14" />
+                                    </button>
+                                </div>
+                            </template>
+                        </Column>
+                    </DataTable>
+                </div>
+            </div>
+            <template #footer>
+                <div class="flex justify-end w-full">
+                    <Button label="إغلاق" outlined severity="secondary" @click="showManageUnitsDialog = false" />
                 </div>
             </template>
         </Dialog>
@@ -988,6 +1068,11 @@ const viewConversions = async (product) => {
     border-radius: 0.75rem;
 }
 
+.stat-icon.blue {
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
+}
+
 .stat-icon.red {
     background: rgba(239, 68, 68, 0.1);
     color: #ef4444;
@@ -1031,20 +1116,9 @@ const viewConversions = async (product) => {
     color: var(--p-surface-400);
 }
 
-/* Row colors for Expiration Alert */
-:deep(.row-expired) {
-    background-color: rgba(239, 68, 68, 0.08) !important;
+:deep(.p-datatable-tbody > tr > td) {
+    border-bottom: none !important;
 }
 
-:deep(.row-expiring-soon) {
-    background-color: rgba(245, 158, 11, 0.08) !important;
-}
 
-:deep(.row-expired:hover) {
-    background-color: rgba(239, 68, 68, 0.12) !important;
-}
-
-:deep(.row-expiring-soon:hover) {
-    background-color: rgba(245, 158, 11, 0.12) !important;
-}
 </style>

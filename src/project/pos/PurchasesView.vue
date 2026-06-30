@@ -16,8 +16,44 @@ const searchQuery = ref("");
 
 const purchaseForm = ref({
     supplier: "",
-    items: [{ productId: null, qty: 1, cost: 0, batchNumber: "", expirationDate: null }],
+    items: [{ categoryId: null, productId: null, productUnitId: null, qty: 1, cost: 0, batchNumber: "", expirationDate: null }],
 });
+
+const getFilteredProducts = (item) => {
+    if (item.categoryId) {
+        return productStore.products.filter(p => p.categoryId === item.categoryId);
+    }
+    return productStore.products;
+};
+
+const getProductUnits = (productId) => {
+    if (!productId) return [];
+    const p = productStore.products.find(x => x.id === productId);
+    return p ? p.units || [] : [];
+};
+
+const getSelectedUnit = (item) => {
+    if (!item.productId || !item.productUnitId) return null;
+    const units = getProductUnits(item.productId);
+    return units.find(u => u.id === item.productUnitId) || null;
+};
+
+const getBaseQuantity = (item) => {
+    const unit = getSelectedUnit(item);
+    if (!unit) return item.qty;
+    return item.qty * (unit.factor || 1);
+};
+
+const onProductChange = (item) => {
+    // Auto-select base unit when a product is chosen
+    const units = getProductUnits(item.productId);
+    if (units.length > 0) {
+        const baseUnit = units.find(u => u.isBaseUnit || u.factor === 1) || units[0];
+        item.productUnitId = baseUnit.id;
+    } else {
+        item.productUnitId = null;
+    }
+};
 
 onMounted(() => {
     purchaseStore.fetchPurchases();
@@ -29,17 +65,17 @@ const filteredPurchases = computed(() => {
     const q = searchQuery.value.trim().toLowerCase();
     if (!q) return purchaseStore.purchases;
     return purchaseStore.purchases.filter((p) =>
-        (p.invoiceNumber && p.invoiceNumber.toLowerCase().includes(q)) ||
+        (p.purchaseNo && p.purchaseNo.toLowerCase().includes(q)) ||
         (p.supplier && p.supplier.toLowerCase().includes(q))
     );
 });
 
 const purchaseTotal = computed(() =>
-    purchaseForm.value.items.reduce((sum, i) => sum + i.qty * i.cost, 0)
+    purchaseForm.value.items.reduce((sum, i) => sum + getBaseQuantity(i) * i.cost, 0)
 );
 
 const addPurchaseLine = () => {
-    purchaseForm.value.items.push({ productId: null, qty: 1, cost: 0, batchNumber: "", expirationDate: null });
+    purchaseForm.value.items.push({ categoryId: null, productId: null, productUnitId: null, qty: 1, cost: 0, batchNumber: "", expirationDate: null });
 };
 
 const removePurchaseLine = (idx) => {
@@ -49,7 +85,7 @@ const removePurchaseLine = (idx) => {
 const openNewPurchase = () => {
     purchaseForm.value = {
         supplier: "",
-        items: [{ productId: null, qty: 1, cost: 0, batchNumber: "", expirationDate: null }],
+        items: [{ categoryId: null, productId: null, productUnitId: null, qty: 1, cost: 0, batchNumber: "", expirationDate: null }],
     };
     showPurchaseDialog.value = true;
 };
@@ -64,7 +100,10 @@ const savePurchase = async () => {
         }
         return {
             productId: item.productId,
-            quantity: item.qty,
+            categoryId: item.categoryId || null,
+            productUnitId: item.productUnitId || null,
+            quantity: getBaseQuantity(item),
+            originalReceivedQuantity: item.qty,
             costPrice: item.cost,
             batchNumber: item.batchNumber || null,
             expirationDate: expDate
@@ -149,9 +188,9 @@ const formatCurrency = (val) => {
                 scrollable
                 class="purchases-table"
             >
-                <Column field="invoiceNumber" header="رقم الفاتورة" sortable style="min-width: 170px">
+                <Column field="purchaseNo" header="رقم الفاتورة" sortable style="min-width: 170px">
                     <template #body="{ data }">
-                        <span class="purchase-inv-number font-mono">{{ data.invoiceNumber }}</span>
+                        <span class="purchase-inv-number font-mono">{{ data.purchaseNo }}</span>
                     </template>
                 </Column>
                 <Column field="supplier" header="المورد" sortable style="min-width: 180px">
@@ -166,7 +205,7 @@ const formatCurrency = (val) => {
                 </Column>
                 <Column header="عدد الأصناف" style="min-width: 130px">
                     <template #body="{ data }">
-                        <Tag :value="`${data.items?.length || 0} صنف`" severity="info" class="font-medium" />
+                        <Tag :value="`${data.itemNo ?? data.items?.length ?? 0} صنف`" severity="info" class="font-medium" />
                     </template>
                 </Column>
                 <Column field="total" header="الإجمالي" sortable style="min-width: 160px">
@@ -202,7 +241,7 @@ const formatCurrency = (val) => {
                 <div class="purchase-detail-header-card">
                     <div class="detail-row">
                         <span class="detail-label">رقم الفاتورة:</span>
-                        <span class="detail-value font-mono font-bold text-primary-600 dark:text-primary-400">{{ selectedPurchase.invoiceNumber }}</span>
+                        <span class="detail-value font-mono font-bold text-primary-600 dark:text-primary-400">{{ selectedPurchase.purchaseNo }}</span>
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">المورد:</span>
@@ -322,11 +361,27 @@ const formatCurrency = (val) => {
                             </div>
                             
                             <div class="grid grid-cols-12 gap-3 mb-3">
-                                <div class="col-span-12 md:col-span-6">
+                                <div class="col-span-12 md:col-span-3">
+                                    <label class="text-xs font-bold text-surface-600 dark:text-surface-300 mb-1 block">الفئة (اختياري)</label>
+                                    <Select
+                                        v-model="item.categoryId"
+                                        @update:modelValue="() => { item.productId = null; item.productUnitId = null; }"
+                                        :options="productStore.categories"
+                                        optionLabel="name"
+                                        optionValue="id"
+                                        filter
+                                        showClear
+                                        fluid
+                                        placeholder="اختر الفئة"
+                                        size="small"
+                                    />
+                                </div>
+                                <div class="col-span-12 md:col-span-3">
                                     <label class="text-xs font-bold text-surface-600 dark:text-surface-300 mb-1 block required">المنتج</label>
                                     <Select
-                                        v-model="item.productId"
-                                        :options="productStore.products"
+                                        :modelValue="item.productId"
+                                        @update:modelValue="(val) => { item.productId = val; onProductChange(item); }"
+                                        :options="getFilteredProducts(item)"
                                         optionLabel="name"
                                         optionValue="id"
                                         filter
@@ -335,21 +390,39 @@ const formatCurrency = (val) => {
                                         size="small"
                                     />
                                 </div>
-                                <div class="col-span-6 md:col-span-3">
+                                <div class="col-span-6 md:col-span-2">
+                                    <label class="text-xs font-bold text-surface-600 dark:text-surface-300 mb-1 block required">الوحدة</label>
+                                    <Select
+                                        v-model="item.productUnitId"
+                                        :options="getProductUnits(item.productId)"
+                                        optionLabel="name"
+                                        optionValue="id"
+                                        fluid
+                                        :disabled="!item.productId || getProductUnits(item.productId).length === 0"
+                                        placeholder="اختر الوحدة"
+                                        size="small"
+                                    />
+                                </div>
+                                <div class="col-span-3 md:col-span-2">
                                     <label class="text-xs font-bold text-surface-600 dark:text-surface-300 mb-1 block required">الكمية</label>
                                     <InputNumber v-model="item.qty" :min="1" fluid placeholder="الكمية" size="small" />
                                 </div>
-                                <div class="col-span-6 md:col-span-3">
+                                <div class="col-span-3 md:col-span-2">
                                     <label class="text-xs font-bold text-surface-600 dark:text-surface-300 mb-1 block required">سعر الشراء</label>
                                     <InputNumber v-model="item.cost" :minFractionDigits="2" fluid placeholder="سعر الشراء" size="small" />
                                 </div>
                             </div>
+
+                            <!-- Base quantity info -->
+                            <div v-if="item.productUnitId && getSelectedUnit(item) && getSelectedUnit(item).factor !== 1" class="p-2 mb-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-md">
+                                <div class="flex justify-between items-center text-xs">
+                                    <span class="text-surface-600 dark:text-surface-400">الكمية بالوحدة الأساسية:</span>
+                                    <span class="font-bold text-primary-600 dark:text-primary-400">{{ getBaseQuantity(item) }} قطعة</span>
+                                </div>
+                            </div>
                             
                             <div class="grid grid-cols-12 gap-3">
-                                <div class="col-span-12 md:col-span-6">
-                                    <label class="text-xs font-bold text-surface-600 dark:text-surface-300 mb-1 block required">رقم الدفعة (Batch)</label>
-                                    <InputText v-model="item.batchNumber" fluid placeholder="مثال: LOT-001" size="small" />
-                                </div>
+                               
                                 <div class="col-span-12 md:col-span-6">
                                     <label class="text-xs font-bold text-surface-600 dark:text-surface-300 mb-1 block">تاريخ الصلاحية (إن وجد)</label>
                                     <DatePicker v-model="item.expirationDate" dateFormat="yy-mm-dd" fluid placeholder="تاريخ الصلاحية" size="small" />

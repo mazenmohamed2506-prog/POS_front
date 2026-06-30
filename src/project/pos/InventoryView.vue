@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from "vue";
 import { useInventoryStore } from "@/stores/pos/inventoryStore";
 import { useProductStore } from "@/stores/pos/productStore";
-import { Warehouse, ArrowRightLeft, Search, Plus, Info, HelpCircle } from "lucide-vue-next";
+import { Warehouse, ArrowRightLeft, Search, Plus, Info, HelpCircle, Package, AlertTriangle, CheckCircle2, AlertCircle } from "lucide-vue-next";
 
 const inventoryStore = useInventoryStore();
 const productStore = useProductStore();
@@ -15,6 +15,7 @@ const transferItem = ref(null);
 const transferQty = ref(1);
 const transferDirection = ref("toShelf"); // "toShelf" | "toWarehouse"
 const searchQuery = ref("");
+const expandedRows = ref({});
 
 const addStockForm = ref({
     productId: null,
@@ -36,9 +37,98 @@ const filteredInventory = computed(() => {
     if (!q) return inventoryStore.inventory;
     return inventoryStore.inventory.filter((item) =>
         (item.productName && item.productName.toLowerCase().includes(q)) ||
-        (item.sku && item.sku.toLowerCase().includes(q)) ||
+        (item.serialNumber && item.serialNumber.toLowerCase().includes(q)) ||
         (item.batchNumber && item.batchNumber.toLowerCase().includes(q))
     );
+});
+
+const groupedInventory = computed(() => {
+    const groups = {};
+    filteredInventory.value.forEach(item => {
+        const key = `${item.productId}_${item.batchNumber}`;
+        if (!groups[key]) {
+            groups[key] = {
+                id: key,
+                productId: item.productId,
+                productName: item.productName,
+                serialNumber: item.serialNumber,
+                batchNumber: item.batchNumber,
+                expirationDate: item.expirationDate,
+                costPrice: item.costPrice,
+                sellingPrice: item.sellingPrice,
+                totalQuantity: 0,
+                locations: []
+            };
+        }
+        groups[key].totalQuantity += item.quantity;
+        groups[key].locations.push(item);
+    });
+    return Object.values(groups);
+});
+
+// ─── Inventory Summary Metrics ───────────────────────────────────────────────
+
+const totalStock = computed(() => {
+    return inventoryStore.inventory.reduce((sum, item) => sum + (item.quantity || 0), 0);
+});
+
+const stockByProduct = computed(() => {
+    const map = new Map();
+    inventoryStore.inventory.forEach(item => {
+        const current = map.get(item.productId) || 0;
+        map.set(item.productId, current + (item.quantity || 0));
+    });
+    return map;
+});
+
+const healthyStockCount = computed(() => {
+    let count = 0;
+    stockByProduct.value.forEach(stock => {
+        if (stock > 5) count++;
+    });
+    return count;
+});
+
+const lowStockCount = computed(() => {
+    let count = 0;
+    stockByProduct.value.forEach(stock => {
+        if (stock > 0 && stock <= 5) count++;
+    });
+    return count;
+});
+
+const outOfStockCount = computed(() => {
+    let count = 0;
+    productStore.products.forEach(p => {
+        if (p.isActive) {
+            const stock = stockByProduct.value.get(p.id) || 0;
+            if (stock === 0) count++;
+        }
+    });
+    return count;
+});
+
+const expiringBatches = computed(() => {
+    let expiringSoon = 0;
+    let expired = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    inventoryStore.inventory.forEach(item => {
+        if (item.expirationDate && item.quantity > 0) {
+            const expDate = new Date(item.expirationDate);
+            const timeDiff = expDate.getTime() - today.getTime();
+            const daysToExpiration = Math.ceil(timeDiff / (1000 * 3600 * 24));
+            
+            if (daysToExpiration < 0) {
+                expired++;
+            } else if (daysToExpiration <= 30) {
+                expiringSoon++;
+            }
+        }
+    });
+    
+    return { expiringSoon, expired };
 });
 
 const openTransfer = (item, direction = "toShelf") => {
@@ -51,11 +141,9 @@ const openTransfer = (item, direction = "toShelf") => {
 const handleTransfer = async () => {
     if (!transferItem.value || transferQty.value <= 0) return;
 
-    const from = transferDirection.value === "toShelf" ? "BackWarehouse" : "StoreShelf";
-    const to = transferDirection.value === "toShelf" ? "StoreShelf" : "BackWarehouse";
-    const stockId = transferDirection.value === "toShelf"
-        ? transferItem.value.warehouseStockId
-        : transferItem.value.shelfStockId;
+    const from = transferItem.value.location;
+    const to = from === "BackWarehouse" ? "StoreShelf" : "BackWarehouse";
+    const stockId = transferItem.value.id;
 
     await inventoryStore.transferStock(transferItem.value.productId, transferQty.value, from, to, stockId);
     showTransferDialog.value = false;
@@ -63,9 +151,7 @@ const handleTransfer = async () => {
 
 const maxTransferQty = () => {
     if (!transferItem.value) return 0;
-    return transferDirection.value === "toShelf"
-        ? transferItem.value.warehouseStock
-        : transferItem.value.shelfStock;
+    return transferItem.value.quantity || 0;
 };
 
 const getStockSeverity = (stock) => {
@@ -172,6 +258,60 @@ const formatDate = (dateStr) => {
             </Button>
         </div>
 
+        <!-- Inventory Summary Stats Cards -->
+        <div class="inventory-stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon blue">
+                    <Package :size="20" />
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">إجمالي الوحدات</span>
+                    <span class="stat-value">{{ totalStock }}</span>
+                    <span class="stat-sub">في جميع المستودعات والرفوف</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon green">
+                    <CheckCircle2 :size="20" />
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">مخزون سليم</span>
+                    <span class="stat-value">{{ healthyStockCount }}</span>
+                    <span class="stat-sub">منتجات متوفرة (أكثر من 5)</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon orange">
+                    <AlertTriangle :size="20" />
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">مخزون منخفض</span>
+                    <span class="stat-value">{{ lowStockCount }}</span>
+                    <span class="stat-sub">منتجات (1-5 وحدات)</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon red">
+                    <AlertCircle :size="20" />
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">نفذ المخزون</span>
+                    <span class="stat-value">{{ outOfStockCount }}</span>
+                    <span class="stat-sub">منتجات بدون رصيد</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon amber">
+                    <AlertTriangle :size="20" />
+                </div>
+                <div class="stat-info">
+                    <span class="stat-label">تنتهي قريباً / منتهية</span>
+                    <span class="stat-value">{{ expiringBatches.expiringSoon + expiringBatches.expired }}</span>
+                    <span class="stat-sub">{{ expiringBatches.expiringSoon }} قريباً، {{ expiringBatches.expired }} منتهية</span>
+                </div>
+            </div>
+        </div>
+
         <!-- Table Container Card -->
         <div class="inventory-card">
             <!-- Filter Bar -->
@@ -181,7 +321,7 @@ const formatDate = (dateStr) => {
                     <InputText
                         v-model="searchQuery"
                         placeholder="ابحث باسم المنتج أو الرمز..."
-                        class="ps-9 w-full"
+                        class="ps-10 pr-4 w-full"
                         autocomplete="off"
                         size="small"
                     />
@@ -190,7 +330,9 @@ const formatDate = (dateStr) => {
 
             <!-- Inventory Table -->
             <DataTable
-                :value="filteredInventory"
+                v-model:expandedRows="expandedRows"
+                :value="groupedInventory"
+                dataKey="id"
                 :loading="inventoryStore.loading"
                 paginator
                 :rows="10"
@@ -201,20 +343,10 @@ const formatDate = (dateStr) => {
                 scrollable
                 class="inventory-table"
             >
+                <Column expander style="width: 4rem" />
                 <Column field="productName" header="المنتج" sortable style="min-width: 220px">
                     <template #body="{ data }">
                         <span class="font-bold text-surface-800 dark:text-surface-100">{{ data.productName }}</span>
-                    </template>
-                </Column>
-                <Column field="sku" sortable style="min-width: 130px">
-                    <template #header>
-                        <div class="flex items-center gap-2">
-                            <span>رمز المنتج</span>
-                            <i class="pi pi-info-circle text-surface-400 cursor-help" v-tooltip.top="'رمز المنتج (SKU) هو المعرف الفريد لنوع المنتج (مثل الباركود)، وهو مشترك لجميع الوحدات من نفس المنتج'"></i>
-                        </div>
-                    </template>
-                    <template #body="{ data }">
-                        <span class="text-sm font-semibold font-mono text-surface-650 dark:text-surface-350">{{ data.sku }}</span>
                     </template>
                 </Column>
                 <Column field="batchNumber" sortable style="min-width: 130px">
@@ -225,12 +357,7 @@ const formatDate = (dateStr) => {
                         </div>
                     </template>
                     <template #body="{ data }">
-                        <span class="text-sm font-semibold font-mono text-surface-650 dark:text-surface-350">{{ data.batchNumber }}</span>
-                    </template>
-                </Column>
-                <Column field="unit" header="الوحدة" style="min-width: 110px">
-                    <template #body="{ data }">
-                        <span class="text-sm text-surface-500">{{ data.unit || '—' }}</span>
+                        <span class="text-sm font-semibold font-mono text-surface-650 dark:text-surface-350">{{ data.batchNumber || '—' }}</span>
                     </template>
                 </Column>
                 <Column field="expirationDate" header="تاريخ الصلاحية" sortable style="min-width: 130px">
@@ -245,50 +372,68 @@ const formatDate = (dateStr) => {
                         <span class="text-sm font-bold text-surface-700 dark:text-surface-300">{{ data.costPrice?.toFixed(2) || '—' }} EGP</span>
                     </template>
                 </Column>
-                <Column field="shelfStock" header="مخزون الرف" sortable style="min-width: 150px">
+                <Column field="sellingPrice" header="سعر البيع" sortable style="min-width: 120px">
                     <template #body="{ data }">
-                        <Tag
-                            :value="getStockLabel(data.shelfStock)"
-                            :severity="getStockSeverity(data.shelfStock)"
-                            class="font-bold"
-                        />
+                        <span class="text-sm font-bold text-surface-700 dark:text-surface-300">{{ data.sellingPrice?.toFixed(2) || '—' }} EGP</span>
                     </template>
                 </Column>
-                <Column field="warehouseStock" header="مخزون المستودع" sortable style="min-width: 160px">
+                <Column field="totalQuantity" header="إجمالي الكمية" sortable style="min-width: 150px">
                     <template #body="{ data }">
-                        <span class="font-bold text-surface-800 dark:text-surface-100">{{ data.warehouseStock }} وحدة</span>
-                    </template>
-                </Column>
-                <Column header="إجمالي المخزون" style="min-width: 140px">
-                    <template #body="{ data }">
-                        <span class="font-black text-primary-600 dark:text-primary-450">
-                            {{ data.shelfStock + data.warehouseStock }} وحدة
-                        </span>
-                    </template>
-                </Column>
-                <Column header="عمليات النقل" style="min-width: 220px; text-align: center">
-                    <template #body="{ data }">
-                        <div class="flex gap-2 justify-center">
-                            <Button
-                                size="small"
-                                label="إلى الرف"
-                                outlined
-                                :disabled="data.warehouseStock === 0"
-                                @click="openTransfer(data, 'toShelf')"
-                            >
-                                <template #icon><ArrowRightLeft :size="14" class="me-1" /></template>
-                            </Button>
-                            <Button
-                                size="small"
-                                label="إلى المستودع"
-                                outlined
-                                severity="secondary"
-                                :disabled="data.shelfStock === 0"
-                                @click="openTransfer(data, 'toWarehouse')"
+                        <span class="font-black text-primary-600 dark:text-primary-450">{{ data.totalQuantity }} وحدة</span>
+                        <div class="mt-1">
+                            <Tag
+                                :value="getStockLabel(data.totalQuantity)"
+                                :severity="getStockSeverity(data.totalQuantity)"
+                                class="font-bold text-xs"
                             />
                         </div>
                     </template>
                 </Column>
+
+                <template #expansion="{ data }">
+                    <div class="p-4 bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-lg mx-6 my-2">
+                        <h5 class="mb-3 font-bold text-surface-700 dark:text-surface-200">تفاصيل المخزون حسب الموقع</h5>
+                        <DataTable :value="data.locations" dataKey="id" class="p-datatable-sm">
+                            <Column field="location" header="الموقع" style="min-width: 140px">
+                                <template #body="{ data: locData }">
+                                    <Tag
+                                        :value="locData.location === 'BackWarehouse' ? 'المستودع' : (locData.location === 'StoreShelf' ? 'الرف' : locData.location)"
+                                        :severity="locData.location === 'StoreShelf' ? 'success' : 'info'"
+                                        class="font-bold"
+                                    />
+                                </template>
+                            </Column>
+                            <Column field="quantity" header="الكمية" style="min-width: 100px">
+                                <template #body="{ data: locData }">
+                                    <span class="font-bold">{{ locData.quantity }} وحدة</span>
+                                </template>
+                            </Column>
+                            <Column header="عمليات النقل" style="min-width: 220px; text-align: start">
+                                <template #body="{ data: locData }">
+                                    <div class="flex gap-2">
+                                        <Button
+                                            size="small"
+                                            label="إلى الرف"
+                                            outlined
+                                            :disabled="locData.location === 'StoreShelf' || locData.quantity <= 0"
+                                            @click="openTransfer(locData, 'toShelf')"
+                                        >
+                                            <template #icon><ArrowRightLeft :size="14" class="me-1" /></template>
+                                        </Button>
+                                        <Button
+                                            size="small"
+                                            label="إلى المستودع"
+                                            outlined
+                                            severity="secondary"
+                                            :disabled="locData.location === 'BackWarehouse' || locData.quantity <= 0"
+                                            @click="openTransfer(locData, 'toWarehouse')"
+                                        />
+                                    </div>
+                                </template>
+                            </Column>
+                        </DataTable>
+                    </div>
+                </template>
             </DataTable>
         </div>
 
@@ -508,6 +653,87 @@ const formatDate = (dateStr) => {
     margin: 0.125rem 0 0;
 }
 
+/* Inventory Stats Grid */
+.inventory-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.stat-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem;
+    border-radius: 1rem;
+    background: var(--p-surface-0);
+    border: 1px solid var(--p-surface-200);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.dark .stat-card {
+    background: var(--p-surface-900);
+    border-color: var(--p-surface-800);
+}
+
+.stat-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 0.75rem;
+}
+
+.stat-icon.blue {
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
+}
+
+.stat-icon.red {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+}
+
+.stat-icon.orange, .stat-icon.amber {
+    background: rgba(245, 158, 11, 0.1);
+    color: #f59e0b;
+}
+
+.stat-icon.green {
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+}
+
+.stat-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.stat-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--p-surface-500);
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--p-surface-900);
+    line-height: 1.2;
+    margin: 0.125rem 0;
+}
+
+.dark .stat-value {
+    color: var(--p-surface-0);
+}
+
+.stat-sub {
+    font-size: 0.75rem;
+    color: var(--p-surface-400);
+}
+
 /* Card Wrapper */
 .inventory-card {
     border-radius: 1rem;
@@ -571,5 +797,9 @@ const formatDate = (dateStr) => {
 
 .dark .form-field label {
     color: var(--p-surface-200);
+}
+
+:deep(.p-datatable-tbody > tr > td) {
+    border-bottom: none !important;
 }
 </style>

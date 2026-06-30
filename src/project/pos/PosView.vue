@@ -2,7 +2,7 @@
 import { ref, onMounted, nextTick, computed } from "vue";
 import { usePosStore } from "@/stores/pos/posStore";
 import { useToastStore } from "@/stores/base/toastStore";
-import { Barcode, Trash2, Plus, Minus, CreditCard, Banknote, ShoppingCart, XCircle, Search, RotateCcw, Receipt, Package } from "lucide-vue-next";
+import { Barcode, Trash2, Plus, Minus, CreditCard, Banknote, ShoppingCart, XCircle, Search, RotateCcw, Receipt, Package, AlertTriangle } from "lucide-vue-next";
 
 const posStore = ref(null);
 posStore.value = usePosStore();
@@ -190,19 +190,17 @@ const getStockClass = (stock) => {
         <div class="pos-cart-panel">
             <!-- Cart Header -->
             <div class="pos-cart-header">
-                <div class="flex items-center gap-2">
-                    <div class="cart-icon-wrap bg-primary-50 dark:bg-primary-950/20 text-primary-500">
-                        <ShoppingCart :size="18" />
+                <div class="cart-header-left">
+                    <div class="cart-icon-wrap">
+                        <ShoppingCart :size="20" />
                     </div>
-                    <h2 class="text-md font-bold text-surface-800 dark:text-surface-100">
-                        سلة البيع الحالية
-                    </h2>
-                    <span
-                        v-if="posStore.cartItemCount > 0"
-                        class="bg-primary-500 text-white text-xs font-bold rounded-full min-w-5 h-5 px-1.5 flex items-center justify-center"
-                    >
-                        {{ posStore.cartItemCount }}
-                    </span>
+                    <div class="cart-header-info">
+                        <h2 class="cart-header-title">سلة المبيعات</h2>
+                        <span class="cart-header-count" v-if="posStore.cartItemCount > 0">
+                            {{ posStore.cartItemCount }} عنصر
+                        </span>
+                        <span class="cart-header-count empty" v-else>فارغة</span>
+                    </div>
                 </div>
                 <button
                     v-if="posStore.cart.length > 0"
@@ -210,221 +208,211 @@ const getStockClass = (stock) => {
                     @click="posStore.clearCart()"
                     title="مسح السلة"
                 >
-                    <XCircle :size="16" />
+                    <XCircle :size="14" />
                     <span>تفريغ</span>
                 </button>
             </div>
 
-            <!-- Cart Table -->
-            <div class="pos-cart-table-wrap">
-                <DataTable
-                    :value="posStore.cart"
-                    scrollable
-                    scrollHeight="flex"
-                    :emptyMessage="'السلة فارغة — اختر منتجات لإضافتها'"
-                    class="pos-cart-table"
-                >
-                    <Column header="#" style="width: 40px">
-                        <template #body="{ index }">
-                            <span class="text-surface-400 text-xs font-mono">{{ index + 1 }}</span>
-                        </template>
-                    </Column>
-                    <Column field="name" header="المنتج" style="min-width: 130px">
-                        <template #body="{ data }">
-                            <div>
-                                <div class="font-bold text-surface-800 dark:text-surface-100 line-clamp-1 leading-tight">{{ data.name }}</div>
-                                <div class="text-xs font-mono text-surface-400 mt-0.5">{{ data.sku }}</div>
-                            </div>
-                        </template>
-                    </Column>
-                    <Column header="السعر" style="min-width: 80px; flex: 1">
-                        <template #body="{ data }">
-                            <span class="font-medium text-sm">{{ formatCurrency(data.price) }}</span>
-                        </template>
-                    </Column>
-                    <Column header="الكمية" style="min-width: 120px">
-                        <template #body="{ data }">
-                            <div class="qty-controls">
-                                <button class="qty-btn" @click="posStore.updateCartQty(data.id, data.qty - 1)">
-                                    <Minus :size="16" />
-                                </button>
-                                <span class="qty-value font-bold text-sm">{{ data.qty }}</span>
-                                <button class="qty-btn" @click="posStore.updateCartQty(data.id, data.qty + 1)">
-                                    <Plus :size="16" />
-                                </button>
-                            </div>
-                        </template>
-                    </Column>
-                    <Column header="الصافي" style="min-width: 100px; flex: 1">
-                        <template #body="{ data }">
-                            <div class="item-net-cell">
-                                <template v-if="data.itemDiscount > 0">
-                                    <span class="item-net-subtotal text-sm text-surface-400">{{ formatCurrency(data.price * data.qty) }}</span>
-                                    <span class="item-net-discount text-sm text-red-500 font-bold">-{{ formatCurrency(data.itemDiscount * data.qty) }}</span>
-                                    <span class="item-net-total font-bold text-sm text-surface-800 dark:text-surface-100">{{ formatCurrency((data.price - data.itemDiscount) * data.qty) }}</span>
-                                </template>
-                                <span v-else class="font-bold text-sm text-surface-800 dark:text-surface-100">{{ formatCurrency(data.price * data.qty) }}</span>
-                            </div>
-                        </template>
-                    </Column>
-                    <Column style="width: 50px; text-align: center">
-                        <template #body="{ data }">
-                            <button class="remove-btn" @click="posStore.removeFromCart(data.id)" title="حذف">
-                                <Trash2 :size="18" />
+            <!-- Cart Items List -->
+            <div class="pos-cart-items-wrap">
+                <div v-if="posStore.cart.length === 0" class="cart-empty-state">
+                    <div class="cart-empty-icon">
+                        <ShoppingCart :size="40" />
+                    </div>
+                    <p class="cart-empty-text">السلة فارغة</p>
+                    <p class="cart-empty-hint">اختر منتجات من القائمة لإضافتها</p>
+                </div>
+
+                <TransitionGroup v-else name="cart-item" tag="div" class="cart-items-list">
+                    <div
+                        v-for="(item, index) in posStore.cart"
+                        :key="item.id"
+                        class="cart-item-card"
+                    >
+                        <div class="cart-item-index">{{ index + 1 }}</div>
+                        <div class="cart-item-info">
+                            <span class="cart-item-name">{{ item.name }}</span>
+                            <span class="cart-item-sku">{{ item.sku }}</span>
+                        </div>
+                        <div class="cart-item-qty-controls">
+                            <button class="qty-btn qty-btn-minus" @click="posStore.updateCartQty(item.id, item.qty - 1)">
+                                <Minus :size="14" />
                             </button>
-                        </template>
-                    </Column>
-                </DataTable>
+                            <span class="qty-value">{{ item.qty }}</span>
+                            <button class="qty-btn qty-btn-plus" @click="posStore.updateCartQty(item.id, item.qty + 1)">
+                                <Plus :size="14" />
+                            </button>
+                        </div>
+                        <div class="cart-item-total-col">
+                            <template v-if="item.itemDiscount > 0">
+                                <span class="cart-item-original">{{ formatCurrency(item.price * item.qty) }}</span>
+                                <span class="cart-item-discount-badge">-{{ formatCurrency(item.itemDiscount * item.qty) }}</span>
+                                <span class="cart-item-net">{{ formatCurrency((item.price - item.itemDiscount) * item.qty) }}</span>
+                            </template>
+                            <span v-else class="cart-item-net">{{ formatCurrency(item.price * item.qty) }}</span>
+                        </div>
+                        <button class="cart-item-remove" @click="posStore.removeFromCart(item.id)" title="حذف">
+                            <Trash2 :size="14" />
+                        </button>
+                    </div>
+                </TransitionGroup>
             </div>
 
-            <!-- Summary Block sticky at bottom -->
-            <div class="pos-summary-block glass border-t border-surface-200 dark:border-surface-800">
-                <div class="pos-summary-rows">
-                    <div class="pos-summary-row">
-                        <span>المجموع الفرعي</span>
-                        <span class="font-medium text-surface-700 dark:text-surface-300">{{ formatCurrency(posStore.cartSubtotal) }}</span>
+            <!-- Summary & Payment -->
+            <div class="pos-checkout-section">
+                <div class="checkout-summary">
+                    <div class="summary-row">
+                        <span class="summary-label">المجموع الفرعي</span>
+                        <span class="summary-value">{{ formatCurrency(posStore.cartSubtotal) }}</span>
                     </div>
-                    <div class="pos-summary-row" v-if="posStore.cartItemDiscountTotal > 0">
-                        <span class="text-red-500">خصم الأصناف</span>
-                        <span class="font-bold text-red-500">-{{ formatCurrency(posStore.cartItemDiscountTotal) }}</span>
+                    <div class="summary-row" v-if="posStore.cartItemDiscountTotal > 0">
+                        <span class="summary-label discount-label">خصم الأصناف</span>
+                        <span class="summary-value discount-value">-{{ formatCurrency(posStore.cartItemDiscountTotal) }}</span>
                     </div>
-                    <div class="pos-summary-row">
-                        <span>الضريبة ({{ (posStore.taxRate * 100).toFixed(0) }}%)</span>
-                        <span class="font-medium text-surface-700 dark:text-surface-300">{{ formatCurrency(posStore.cartTax) }}</span>
+                    <div class="summary-row">
+                        <span class="summary-label">الضريبة ({{ (posStore.taxRate * 100).toFixed(0) }}%)</span>
+                        <span class="summary-value">{{ formatCurrency(posStore.cartTax) }}</span>
                     </div>
-                    <div class="pos-summary-divider"></div>
-                    <div class="pos-summary-row pos-summary-total">
-                        <span>الإجمالي</span>
-                        <span class="font-black text-primary-600 dark:text-primary-450">{{ formatCurrency(posStore.cartTotal) }}</span>
+                    <div class="summary-divider"></div>
+                    <div class="summary-row total-row">
+                        <span class="summary-label total-label">الإجمالي</span>
+                        <span class="summary-value total-value">{{ formatCurrency(posStore.cartTotal) }}</span>
                     </div>
                 </div>
 
-                <!-- Payment Buttons -->
-                <div class="pos-payment-actions">
+                <div class="checkout-actions">
                     <button
-                        class="pos-pay-btn pos-pay-cash"
+                        class="pay-btn pay-cash"
                         :disabled="posStore.cart.length === 0 || posStore.loading || !posStore.isShiftOpen"
                         @click="handleCheckout('cash')"
                     >
-                        <Banknote :size="18" />
-                        <span>دفع نقدي</span>
+                        <Banknote :size="22" />
+                        <span class="pay-btn-label">دفع نقدي</span>
                     </button>
                     <button
-                        class="pos-pay-btn pos-pay-card"
+                        class="pay-btn pay-card"
                         :disabled="posStore.cart.length === 0 || posStore.loading || !posStore.isShiftOpen"
                         @click="handleCheckout('card')"
                     >
-                        <CreditCard :size="18" />
-                        <span>بطاقة</span>
+                        <CreditCard :size="22" />
+                        <span class="pay-btn-label">بطاقة</span>
                     </button>
                 </div>
 
-                <!-- Shift Warning -->
-                <div v-if="!posStore.isShiftOpen" class="pos-shift-warning">
-                    ⚠️ يجب فتح وردية جديدة من صفحة الورديات لإجراء العمليات
+                <div v-if="!posStore.isShiftOpen" class="shift-warning">
+                    <AlertTriangle :size="16" />
+                    <span>يجب فتح وردية جديدة لإجراء العمليات</span>
                 </div>
             </div>
         </div>
 
         <!-- ═══ RIGHT PANEL: Mode Toggle + Content ═══ -->
         <div class="pos-catalog-panel">
-            <!-- Mode Toggle Bar -->
-            <div class="pos-mode-bar glass shadow-sm z-10 relative">
-                <button
-                    class="pos-mode-btn"
-                    :class="{ 'pos-mode-active': posMode === 'sell' }"
-                    @click="posMode = 'sell'"
-                >
-                    <ShoppingCart :size="16" />
-                    <span>شاشة البيع</span>
-                </button>
-                <button
-                    class="pos-mode-btn pos-mode-btn-return"
-                    :class="{ 'pos-mode-active-return': posMode === 'returns' }"
-                    @click="posMode = 'returns'"
-                >
-                    <RotateCcw :size="16" />
-                    <span>معالجة المرتجعات</span>
-                </button>
+            <!-- Mode Toggle (Segmented Control) -->
+            <div class="pos-mode-bar">
+                <div class="mode-segmented">
+                    <div class="mode-slider" :class="{ 'mode-slider-returns': posMode === 'returns' }"></div>
+                    <button
+                        class="mode-btn"
+                        :class="{ 'mode-active': posMode === 'sell' }"
+                        @click="posMode = 'sell'"
+                    >
+                        <ShoppingCart :size="16" />
+                        <span>شاشة البيع</span>
+                    </button>
+                    <button
+                        class="mode-btn"
+                        :class="{ 'mode-active': posMode === 'returns' }"
+                        @click="posMode = 'returns'"
+                    >
+                        <RotateCcw :size="16" />
+                        <span>المرتجعات</span>
+                    </button>
+                </div>
             </div>
+
 
             <!-- ═══ SELL MODE ═══ -->
             <template v-if="posMode === 'sell'">
                 <!-- Search & scan topbar -->
-                <div class="pos-search-bar glass shadow-sm z-10 relative">
-                    <form @submit.prevent="handleScan" class="flex-1">
-                        <div class="relative w-full">
-                            <Barcode :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400 dark:text-surface-500" />
+                <div class="pos-search-bar">
+                    <form @submit.prevent="handleScan" class="search-group">
+                        <div class="search-field">
+                            <Barcode :size="16" class="search-icon" />
                             <InputText
                                 ref="barcodeInputRef"
                                 v-model="barcodeInput"
-                                placeholder="امسح الباركود الصنف..."
-                                class="ps-9"
+                                placeholder= "مسح الباركود..."
                                 autocomplete="off"
                                 size="small"
                                 fluid
+                                class="search-input"
                             />
                         </div>
                     </form>
-                    <div class="relative flex-1">
-                        <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400 dark:text-surface-500" />
+                    <div class="search-field">
+                        <Search :size="16" class="search-icon" />
                         <InputText
                             v-model="searchQuery"
-                            placeholder="ابحث باسم المنتج أو الرمز..."
-                            class="ps-9"
+                            placeholder="بحث بالاسم أو الرمز..."
+                            
                             autocomplete="off"
                             size="small"
                             fluid
+                            class="search-input"
                         />
                     </div>
                 </div>
 
                 <!-- Categories Tabs -->
-                <div class="pos-categories-tabs glass z-10 relative">
-                    <button
-                        v-for="cat in categories"
-                        :key="cat"
-                        class="category-tab-btn"
-                        :class="{ active: selectedCategory === cat }"
-                        @click="selectedCategory = cat"
-                    >
-                        {{ cat }}
-                    </button>
+                <div class="pos-categories">
+                    <div class="categories-scroll">
+                        <button
+                            v-for="cat in categories"
+                            :key="cat"
+                            class="cat-pill"
+                            :class="{ active: selectedCategory === cat }"
+                            @click="selectedCategory = cat"
+                        >
+                            {{ cat }}
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Products Grid -->
-                <div class="pos-grid-wrap relative">
+                <div class="pos-grid-wrap">
                     <Transition name="fade" mode="out-in">
-                        <div v-if="filteredProducts.length === 0" class="pos-empty-grid animate-fade-in-up">
-                            <Package :size="48" class="text-surface-300 mb-3" />
-                            <span>لا توجد منتجات مطابقة لخيارات التصفية</span>
+                        <div v-if="filteredProducts.length === 0" class="pos-empty-state">
+                            <Package :size="48" class="empty-icon" />
+                            <span>لا توجد منتجات مطابقة</span>
                         </div>
-                        <TransitionGroup v-else name="grid" tag="div" class="pos-product-grid">
+                        <TransitionGroup v-else name="grid" tag="div" class="product-grid">
                             <div
                                 v-for="prod in filteredProducts"
                                 :key="prod.id"
-                                class="product-card hover:-translate-y-1 hover:shadow-xl transition-all duration-300"
+                                class="p-card"
                                 :class="{
-                                    'disabled-card': getShelfStock(prod.id) === 0 || !posStore.isShiftOpen,
-                                    'out-of-stock': getShelfStock(prod.id) === 0,
+                                    'p-card-disabled': getShelfStock(prod.id) === 0 || !posStore.isShiftOpen,
+                                    'p-card-oos': getShelfStock(prod.id) === 0,
                                     'shake': shakingCardId === prod.id
                                 }"
                                 @click="handleProductClick(prod)"
                             >
-                                <div class="product-card-body">
-                                    <span class="product-card-cat">{{ prod.category }}</span>
-                                    <h4 class="product-card-title">{{ prod.name }}</h4>
-                                    <span class="product-card-sku font-mono">{{ prod.sku }}</span>
-                                    
-                                    <div class="product-card-footer mt-auto">
-                                        <span class="product-card-price">{{ formatCurrency(prod.price) }}</span>
-                                        <span
-                                            class="product-card-stock"
-                                            :class="getStockClass(getShelfStock(prod.id))"
-                                        >
-                                            {{ getShelfStock(prod.id) > 0 ? `الرف: ${getShelfStock(prod.id)}` : 'نفذ' }}
-                                        </span>
-                                    </div>
+                                <div class="p-card-cat-strip">
+                                    <span>{{ prod.category }}</span>
+                                </div>
+                                <div class="p-card-body">
+                                    <h4 class="p-card-name">{{ prod.name }}</h4>
+                                    <span class="p-card-sku">{{ prod.sku }}</span>
+                                </div>
+                                <div class="p-card-footer">
+                                    <span class="p-card-price">{{ formatCurrency(prod.price) }}</span>
+                                    <span class="p-card-stock" :class="getStockClass(getShelfStock(prod.id))">
+                                        {{ getShelfStock(prod.id) > 0 ? getShelfStock(prod.id) : 'نفذ' }}
+                                    </span>
+                                </div>
+                                <div v-if="getShelfStock(prod.id) === 0" class="p-card-oos-overlay">
+                                    <span>نفذ المخزون</span>
                                 </div>
                             </div>
                         </TransitionGroup>
@@ -434,62 +422,58 @@ const getStockClass = (stock) => {
 
             <!-- ═══ RETURNS MODE ═══ -->
             <template v-else>
-                <!-- Search Orders -->
                 <div class="pos-search-bar">
-                    <div class="relative flex-1">
-                        <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400 dark:text-surface-500" />
+                    <div class="search-field" style="flex:1">
+                        <Search :size="16" class="search-icon" />
                         <InputText
                             v-model="orderSearchQuery"
-                            placeholder="ابحث برقم الفاتورة..."
-                            class="ps-9"
+                            placeholder="ابحث برقم الفاتورة أو الكاشير..."
                             autocomplete="off"
                             size="small"
                             fluid
+                            class="search-input"
                         />
                     </div>
                 </div>
 
-                <!-- Invoices List -->
-                <div class="returns-list-wrap relative">
+                <div class="returns-wrap">
                     <Transition name="fade" mode="out-in">
-                        <div v-if="filteredSaleOrders.length === 0" class="pos-empty-grid animate-fade-in-up">
-                            <Receipt :size="48" class="text-surface-300 mb-3" />
-                            <span>لا توجد فواتير بيع مسجلة بالبيانات</span>
+                        <div v-if="filteredSaleOrders.length === 0" class="pos-empty-state">
+                            <Receipt :size="48" class="empty-icon" />
+                            <span>لا توجد فواتير بيع مسجلة</span>
                         </div>
-                        <TransitionGroup v-else name="grid" tag="div" class="returns-invoice-list">
+                        <TransitionGroup v-else name="grid" tag="div" class="returns-grid">
                             <div
                                 v-for="order in filteredSaleOrders"
                                 :key="order.id"
-                                class="return-invoice-card hover:-translate-y-1 hover:shadow-xl transition-all duration-300"
+                                class="return-card"
                                 @click="openReturnDialog(order)"
                             >
-                                <div class="return-invoice-header">
-                                    <div class="return-invoice-number">
-                                        <Receipt :size="16" class="text-primary-500" />
-                                        <span class="font-mono">{{ order.orderNumber }}</span>
+                                <div class="return-card-header">
+                                    <div class="return-card-id">
+                                        <Receipt :size="14" />
+                                        <span>{{ order.orderNumber }}</span>
                                     </div>
-                                    <span class="return-invoice-date">{{ formatDate(order.date) }}</span>
+                                    <span class="return-card-date">{{ formatDate(order.date) }}</span>
                                 </div>
-                                <div class="return-invoice-body">
-                                    <div class="return-invoice-items-list">
-                                        <span
-                                            v-for="(item, idx) in order.items.slice(0, 3)"
-                                            :key="idx"
-                                            class="return-invoice-item-chip"
-                                        >
-                                            {{ item.name }} × {{ item.qty }}
-                                        </span>
-                                        <span v-if="order.items.length > 3" class="return-invoice-item-chip return-invoice-more">
-                                            +{{ order.items.length - 3 }} صنف
-                                        </span>
-                                    </div>
-                                    <div class="return-invoice-footer">
-                                        <span class="return-invoice-cashier">الكاشير: {{ order.cashier || '—' }}</span>
-                                        <span class="return-invoice-total font-mono">{{ formatCurrency(order.total) }}</span>
-                                    </div>
+                                <div class="return-card-items">
+                                    <span
+                                        v-for="(item, idx) in order.items.slice(0, 3)"
+                                        :key="idx"
+                                        class="return-item-chip"
+                                    >
+                                        {{ item.name }} × {{ item.qty }}
+                                    </span>
+                                    <span v-if="order.items.length > 3" class="return-item-chip more">
+                                        +{{ order.items.length - 3 }}
+                                    </span>
                                 </div>
-                                <div class="return-invoice-action">
-                                    <RotateCcw :size="14" />
+                                <div class="return-card-footer">
+                                    <span class="return-card-cashier">{{ order.cashier || '—' }}</span>
+                                    <span class="return-card-total">{{ formatCurrency(order.total) }}</span>
+                                </div>
+                                <div class="return-card-action">
+                                    <RotateCcw :size="13" />
                                     <span>اختيار أصناف للإرجاع</span>
                                 </div>
                             </div>
@@ -523,11 +507,11 @@ const getStockClass = (stock) => {
                         <div class="return-dialog-item-info">
                             <span class="return-dialog-item-name">{{ item.name }}</span>
                             <span class="return-dialog-item-meta">
-                                سعر الوحدة: {{ formatCurrency(item.price) }} · الكمية الأصلية بالطلب: {{ item.qty }}
+                                سعر الوحدة: {{ formatCurrency(item.price) }} · الكمية الأصلية: {{ item.qty }}
                             </span>
                         </div>
                         <div class="return-dialog-item-qty">
-                            <label class="return-qty-label">الكمية المستردة</label>
+                            <label class="return-qty-label">المستردة</label>
                             <InputNumber
                                 v-model="item.returnQty"
                                 :min="0"
@@ -542,7 +526,7 @@ const getStockClass = (stock) => {
                 </div>
 
                 <div class="return-dialog-summary mt-2" v-if="returnDialogTotal > 0">
-                    <span>إجمالي القيمة المستردة للعميل:</span>
+                    <span>إجمالي القيمة المستردة:</span>
                     <span class="return-dialog-summary-total font-mono">{{ formatCurrency(returnDialogTotal) }}</span>
                 </div>
             </div>
@@ -563,119 +547,262 @@ const getStockClass = (stock) => {
 </template>
 
 <style scoped>
+/* ══════════════════════════════════════════════
+   POS CONTAINER
+   ══════════════════════════════════════════════ */
 .pos-container {
     display: flex;
     height: calc(100vh - 3.5rem);
     overflow: hidden;
+    background: var(--p-surface-50);
 }
 
-/* ── Left Panel (Cart & Payment) ── */
+.dark .pos-container {
+    background: var(--p-surface-950);
+}
+
+/* ══════════════════════════════════════════════
+   LEFT PANEL — CART
+   ══════════════════════════════════════════════ */
 .pos-cart-panel {
-    width: clamp(340px, 25vw, 460px);
+    width: clamp(360px, 28vw, 480px);
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
     background: var(--p-surface-0);
     border-inline-end: 1px solid var(--p-surface-200);
+    box-shadow: 4px 0 24px -8px rgba(0, 0, 0, 0.06);
+    z-index: 2;
 }
 
 .dark .pos-cart-panel {
     background: var(--p-surface-900);
     border-color: var(--p-surface-800);
+    box-shadow: 4px 0 24px -8px rgba(0, 0, 0, 0.3);
 }
 
+/* ── Cart Header ── */
 .pos-cart-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.875rem 1.25rem;
-    border-bottom: 1px solid var(--p-surface-200);
+    padding: 1rem 1.25rem;
+    background: linear-gradient(135deg, var(--p-primary-500), var(--p-primary-600));
     flex-shrink: 0;
 }
 
-.dark .pos-cart-header {
-    border-color: var(--p-surface-800);
+.cart-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
 }
 
 .cart-icon-wrap {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
-    width: 2.25rem;
-    height: 2.25rem;
-    border-radius: 0.5rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.75rem;
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(8px);
+    color: white;
+}
+
+.cart-header-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.cart-header-title {
+    font-size: 1rem;
+    font-weight: 800;
+    color: white;
+    margin: 0;
+    line-height: 1.2;
+}
+
+.cart-header-count {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.cart-header-count.empty {
+    opacity: 0.6;
 }
 
 .pos-clear-btn {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
-    font-size: 0.8rem;
-    padding: 0.25rem 0.625rem;
-    border-radius: 0.375rem;
-    border: 1px solid #fecaca;
-    background: #fef2f2;
-    color: #ef4444;
+    gap: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(8px);
+    color: white;
     cursor: pointer;
-    transition: all 0.15s;
-}
-
-.dark .pos-clear-btn {
-    background: rgba(239, 68, 68, 0.1);
-    border-color: rgba(239, 68, 68, 0.3);
-    color: #fca5a5;
+    transition: all 0.2s;
 }
 
 .pos-clear-btn:hover {
-    background: #fee2e2;
+    background: rgba(239, 68, 68, 0.9);
+    border-color: transparent;
 }
 
-.pos-cart-table-wrap {
+/* ── Cart Items ── */
+.pos-cart-items-wrap {
     flex: 1;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
-.pos-cart-table {
-    height: 100%;
+.pos-cart-items-wrap::-webkit-scrollbar {
+    width: 4px;
 }
 
-/* ── Item Net Cell ── */
-.item-net-cell {
+.pos-cart-items-wrap::-webkit-scrollbar-thumb {
+    background: var(--p-surface-300);
+    border-radius: 2px;
+}
+
+.dark .pos-cart-items-wrap::-webkit-scrollbar-thumb {
+    background: var(--p-surface-700);
+}
+
+.cart-empty-state {
     display: flex;
     flex-direction: column;
-    gap: 0.125rem;
-    line-height: 1.2;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 0.5rem;
+    padding: 2rem;
 }
 
-.item-net-subtotal {
-    text-decoration: line-through;
-    opacity: 0.7;
-}
-
-.item-net-discount {
-    font-size: 0.7rem;
-}
-
-.item-net-total {
-    font-size: 0.8rem;
-}
-
-.qty-controls {
+.cart-empty-icon {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    justify-content: center;
+    width: 5rem;
+    height: 5rem;
+    border-radius: 50%;
+    background: var(--p-surface-100);
+    color: var(--p-surface-300);
+    margin-bottom: 0.5rem;
+}
+
+.dark .cart-empty-icon {
+    background: var(--p-surface-800);
+    color: var(--p-surface-600);
+}
+
+.cart-empty-text {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--p-surface-400);
+    margin: 0;
+}
+
+.cart-empty-hint {
+    font-size: 0.8rem;
+    color: var(--p-surface-350);
+    margin: 0;
+}
+
+.cart-items-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.cart-item-card {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--p-surface-100);
+    transition: background 0.15s;
+}
+
+.dark .cart-item-card {
+    border-color: var(--p-surface-800);
+}
+
+.cart-item-card:hover {
+    background: var(--p-surface-50);
+}
+
+.dark .cart-item-card:hover {
+    background: var(--p-surface-850);
+}
+
+.cart-item-index {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    background: var(--p-surface-100);
+    color: var(--p-surface-500);
+    font-size: 0.65rem;
+    font-weight: 800;
+    flex-shrink: 0;
+}
+
+.dark .cart-item-index {
+    background: var(--p-surface-800);
+    color: var(--p-surface-400);
+}
+
+.cart-item-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.cart-item-name {
+    font-size: 0.825rem;
+    font-weight: 700;
+    color: var(--p-surface-800);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+}
+
+.dark .cart-item-name {
+    color: var(--p-surface-100);
+}
+
+.cart-item-sku {
+    font-size: 0.65rem;
+    font-family: monospace;
+    color: var(--p-surface-400);
+}
+
+/* ── Qty Controls ── */
+.cart-item-qty-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.125rem;
+    flex-shrink: 0;
 }
 
 .qty-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 2.5rem;
-    height: 2.5rem;
+    width: 1.75rem;
+    height: 1.75rem;
     border-radius: 0.375rem;
-    border: 1px solid var(--p-surface-300);
+    border: 1px solid var(--p-surface-200);
     background: var(--p-surface-0);
-    color: var(--p-surface-600);
+    color: var(--p-surface-500);
     cursor: pointer;
     transition: all 0.15s;
 }
@@ -683,187 +810,366 @@ const getStockClass = (stock) => {
 .dark .qty-btn {
     background: var(--p-surface-800);
     border-color: var(--p-surface-700);
-    color: var(--p-surface-350);
+    color: var(--p-surface-400);
 }
 
-.qty-btn:hover {
+.qty-btn-minus:hover {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #ef4444;
+}
+
+.dark .qty-btn-minus:hover {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #f87171;
+}
+
+.qty-btn-plus:hover {
     background: var(--p-primary-50);
     border-color: var(--p-primary-300);
     color: var(--p-primary-600);
 }
 
-.dark .qty-btn:hover {
+.dark .qty-btn-plus:hover {
     background: rgba(99, 102, 241, 0.15);
     border-color: rgba(99, 102, 241, 0.3);
     color: var(--p-primary-400);
 }
 
 .qty-value {
-    min-width: 1.5rem;
+    min-width: 1.75rem;
     text-align: center;
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: var(--p-surface-800);
 }
 
-.remove-btn {
-    display: inline-flex;
+.dark .qty-value {
+    color: var(--p-surface-100);
+}
+
+/* ── Cart Item Total ── */
+.cart-item-total-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    flex-shrink: 0;
+    min-width: 5rem;
+    gap: 1px;
+}
+
+.cart-item-original {
+    font-size: 0.65rem;
+    color: var(--p-surface-400);
+    text-decoration: line-through;
+}
+
+.cart-item-discount-badge {
+    font-size: 0.6rem;
+    color: #ef4444;
+    font-weight: 700;
+}
+
+.cart-item-net {
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: var(--p-surface-800);
+}
+
+.dark .cart-item-net {
+    color: var(--p-surface-100);
+}
+
+.cart-item-remove {
+    display: flex;
     align-items: center;
     justify-content: center;
-    width: 2.5rem;
-    height: 2.5rem;
+    width: 1.75rem;
+    height: 1.75rem;
     border-radius: 0.375rem;
     border: none;
     background: transparent;
-    color: var(--p-surface-400);
+    color: var(--p-surface-350);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all 0.2s;
+    flex-shrink: 0;
 }
 
-.remove-btn:hover {
+.cart-item-remove:hover {
     background: #fef2f2;
     color: #ef4444;
 }
 
-.pos-summary-block {
-    padding: 1.25rem;
-    background: var(--p-surface-50);
-    border-top: 1px solid var(--p-surface-200);
+.dark .cart-item-remove:hover {
+    background: rgba(239, 68, 68, 0.12);
+    color: #f87171;
+}
+
+/* Cart Item Transitions */
+.cart-item-enter-active { transition: all 0.3s ease; }
+.cart-item-leave-active { transition: all 0.2s ease; }
+.cart-item-enter-from { opacity: 0; transform: translateX(20px); }
+.cart-item-leave-to { opacity: 0; transform: translateX(-20px); }
+
+/* ══════════════════════════════════════════════
+   CHECKOUT SECTION
+   ══════════════════════════════════════════════ */
+.pos-checkout-section {
     flex-shrink: 0;
+    padding: 1rem 1.25rem 1.25rem;
+    background: var(--p-surface-0);
+    border-top: 1px solid var(--p-surface-200);
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.04);
 }
 
-.dark .pos-summary-block {
-    background: var(--p-surface-950);
+.dark .pos-checkout-section {
+    background: var(--p-surface-900);
     border-color: var(--p-surface-800);
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.2);
 }
 
-.pos-summary-rows {
+.checkout-summary {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    margin-bottom: 1rem;
 }
 
-.pos-summary-row {
+.summary-row {
     display: flex;
     justify-content: space-between;
-    font-size: 0.875rem;
-    color: var(--p-surface-600);
+    align-items: center;
 }
 
-.dark .pos-summary-row {
-    color: var(--p-surface-450);
+.summary-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--p-surface-500);
 }
 
-.pos-summary-divider {
-    border-top: 2px dashed var(--p-surface-300);
-    margin: 0.375rem 0;
+.summary-value {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--p-surface-700);
 }
 
-.dark .pos-summary-divider {
-    border-color: var(--p-surface-800);
+.dark .summary-value {
+    color: var(--p-surface-300);
 }
 
-.pos-summary-total {
-    font-size: 1.25rem;
-    font-weight: 900;
-    color: var(--p-surface-900);
+.discount-label,
+.discount-value {
+    color: #ef4444 !important;
 }
 
-.dark .pos-summary-total {
-    color: var(--p-surface-0);
+.summary-divider {
+    border-top: 2px dashed var(--p-surface-200);
+    margin: 0.25rem 0;
 }
 
-.pos-payment-actions {
+.dark .summary-divider {
+    border-color: var(--p-surface-700);
+}
+
+.total-label {
+    font-size: 1.05rem !important;
+    font-weight: 900 !important;
+    color: var(--p-surface-800) !important;
+}
+
+.dark .total-label {
+    color: var(--p-surface-100) !important;
+}
+
+.total-value {
+    font-size: 1.35rem !important;
+    font-weight: 900 !important;
+    color: var(--p-primary-600) !important;
+    letter-spacing: -0.02em;
+}
+
+.dark .total-value {
+    color: var(--p-primary-400) !important;
+}
+
+/* ── Payment Buttons ── */
+.checkout-actions {
     display: flex;
-    gap: 0.5rem;
-    margin-top: 0.875rem;
+    gap: 0.625rem;
 }
 
-.pos-pay-btn {
+.pay-btn {
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    padding: 0.875rem;
-    border-radius: 0.5rem;
-    border: 2px solid transparent;
-    font-size: 0.9rem;
-    font-weight: 750;
+    gap: 0.625rem;
+    padding: 1rem;
+    border-radius: 0.75rem;
+    border: none;
+    font-size: 0.95rem;
+    font-weight: 800;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    color: white;
 }
 
-.pos-pay-btn:disabled {
-    opacity: 0.4;
+.pay-btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 50%);
+    pointer-events: none;
+}
+
+.pay-btn:disabled {
+    opacity: 0.35;
     cursor: not-allowed;
+    transform: none !important;
 }
 
-.pos-pay-cash {
-    background: #dcfce7;
-    color: #15803d;
-    border-color: #bbf7d0;
+.pay-btn:not(:disabled):hover {
+    transform: translateY(-2px);
 }
 
-.pos-pay-cash:not(:disabled):hover {
-    background: #bbf7d0;
-    border-color: #86efac;
+.pay-btn:not(:disabled):active {
+    transform: translateY(0) scale(0.98);
 }
 
-.dark .pos-pay-cash {
-    background: rgba(34, 197, 94, 0.15);
-    color: #4ade80;
-    border-color: rgba(34, 197, 94, 0.25);
+.pay-cash {
+    background: linear-gradient(135deg, #22c55e, #16a34a);
 }
 
-.pos-pay-card {
-    background: #dbeafe;
-    color: #1d4ed8;
-    border-color: #bfdbfe;
+.pay-cash:not(:disabled):hover {
+    box-shadow: 0 6px 20px rgba(34, 197, 94, 0.35);
 }
 
-.pos-pay-card:not(:disabled):hover {
-    background: #bfdbfe;
-    border-color: #93c5fd;
+.pay-card {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
 }
 
-.dark .pos-pay-card {
-    background: rgba(59, 130, 246, 0.15);
-    color: #60a5fa;
-    border-color: rgba(59, 130, 246, 0.25);
+.pay-card:not(:disabled):hover {
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.35);
 }
 
-.pos-shift-warning {
+.pay-btn-label {
+    position: relative;
+    z-index: 1;
+}
+
+/* ── Shift Warning ── */
+.shift-warning {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
     margin-top: 0.75rem;
     padding: 0.625rem;
-    border-radius: 0.375rem;
-    font-size: 0.8rem;
+    border-radius: 0.5rem;
+    font-size: 0.75rem;
     font-weight: 700;
-    background: #fef3c7;
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
     color: #92400e;
     border: 1px solid #fcd34d;
-    text-align: center;
 }
 
-.dark .pos-shift-warning {
-    background: rgba(245, 158, 11, 0.12);
+.dark .shift-warning {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0.08));
     color: #fbbf24;
     border-color: rgba(245, 158, 11, 0.25);
 }
 
-/* ── Right Panel (Catalog Grid) ── */
+/* ══════════════════════════════════════════════
+   RIGHT PANEL — CATALOG
+   ══════════════════════════════════════════════ */
 .pos-catalog-panel {
     flex: 1;
     display: flex;
     flex-direction: column;
     background: var(--p-surface-50);
+    min-width: 0;
 }
 
 .dark .pos-catalog-panel {
     background: var(--p-surface-950);
 }
 
+/* ── Mode Toggle ── */
+.pos-mode-bar {
+    padding: 0.75rem 1.25rem;
+    background: var(--p-surface-0);
+    border-bottom: 1px solid var(--p-surface-200);
+    flex-shrink: 0;
+}
+
+.dark .pos-mode-bar {
+    background: var(--p-surface-900);
+    border-color: var(--p-surface-800);
+}
+
+.mode-segmented {
+    display: flex;
+    position: relative;
+    background: var(--p-surface-100);
+    border-radius: 0.625rem;
+    padding: 0.25rem;
+    gap: 0.25rem;
+}
+
+.dark .mode-segmented {
+    background: var(--p-surface-800);
+}
+
+.mode-slider {
+    position: absolute;
+    top: 0.25rem;
+    bottom: 0.25rem;
+    left: 0.25rem;
+    width: calc(50% - 0.375rem);
+    border-radius: 0.5rem;
+    background: linear-gradient(135deg, var(--p-primary-500), var(--p-primary-600));
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 0;
+}
+
+.mode-slider-returns {
+    left: calc(50% + 0.125rem);
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+}
+
+.mode-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.625rem;
+    border: none;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--p-surface-500);
+    font-size: 0.85rem;
+    font-weight: 750;
+    cursor: pointer;
+    transition: color 0.2s;
+    position: relative;
+    z-index: 1;
+}
+
+.mode-btn.mode-active {
+    color: white;
+}
+
+/* ── Search Bar ── */
 .pos-search-bar {
     display: flex;
     gap: 0.75rem;
-    padding: 1rem 1.25rem;
+    padding: 0.875rem 1.25rem;
     background: var(--p-surface-0);
     border-bottom: 1px solid var(--p-surface-200);
     flex-shrink: 0;
@@ -874,192 +1180,247 @@ const getStockClass = (stock) => {
     border-color: var(--p-surface-800);
 }
 
-.pos-categories-tabs {
-    display: flex;
-    gap: 0.5rem;
-    padding: 0.625rem 1.25rem;
-    overflow-x: auto;
+.search-group {
+    flex: 1;
+}
+
+.search-field {
+    position: relative;
+    flex: 1;
+}
+
+.search-icon {
+    position: absolute;
+    start: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--p-surface-400);
+    z-index: 1;
+    pointer-events: none;
+}
+
+.search-field :deep(.p-inputtext) {
+    padding-inline-start: 2.25rem;
+}
+
+/* ── Categories ── */
+.pos-categories {
     background: var(--p-surface-0);
     border-bottom: 1px solid var(--p-surface-200);
     flex-shrink: 0;
-    mask-image: linear-gradient(to left, transparent, black 5%, black 95%, transparent);
-    -webkit-mask-image: linear-gradient(to left, transparent, black 5%, black 95%, transparent);
 }
 
-.dark .pos-categories-tabs {
+.dark .pos-categories {
     background: var(--p-surface-900);
     border-color: var(--p-surface-800);
 }
 
-.pos-categories-tabs::-webkit-scrollbar {
-    height: 4px;
+.categories-scroll {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.625rem 1.25rem;
+    overflow-x: auto;
+    mask-image: linear-gradient(to left, transparent, black 3%, black 97%, transparent);
+    -webkit-mask-image: linear-gradient(to left, transparent, black 3%, black 97%, transparent);
 }
 
-.pos-categories-tabs::-webkit-scrollbar-thumb {
-    background-color: var(--p-surface-300);
+.categories-scroll::-webkit-scrollbar {
+    height: 3px;
+}
+
+.categories-scroll::-webkit-scrollbar-thumb {
+    background: var(--p-surface-300);
     border-radius: 2px;
 }
 
-.category-tab-btn {
+.cat-pill {
     padding: 0.375rem 1rem;
     border-radius: 9999px;
-    border: 1px solid var(--p-surface-300);
+    border: 1px solid var(--p-surface-200);
     background: var(--p-surface-0);
-    color: var(--p-surface-700);
-    font-size: 0.8125rem;
+    color: var(--p-surface-600);
+    font-size: 0.8rem;
     font-weight: 700;
     cursor: pointer;
     white-space: nowrap;
-    transition: all 0.15s ease-in-out;
+    transition: all 0.2s ease;
 }
 
-.dark .category-tab-btn {
+.dark .cat-pill {
     border-color: var(--p-surface-700);
     background: var(--p-surface-800);
-    color: var(--p-surface-300);
+    color: var(--p-surface-400);
 }
 
-.category-tab-btn:hover {
+.cat-pill:hover {
     background: var(--p-surface-100);
-    border-color: var(--p-surface-400);
+    border-color: var(--p-surface-300);
+    color: var(--p-surface-700);
 }
 
-.dark .category-tab-btn:hover {
+.dark .cat-pill:hover {
     background: var(--p-surface-700);
+    color: var(--p-surface-200);
 }
 
-.category-tab-btn.active {
-    background: var(--p-primary-500);
+.cat-pill.active {
+    background: linear-gradient(135deg, var(--p-primary-500), var(--p-primary-600));
     color: white;
-    border-color: var(--p-primary-500);
+    border-color: transparent;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
 }
 
+/* ══════════════════════════════════════════════
+   PRODUCT GRID
+   ══════════════════════════════════════════════ */
 .pos-grid-wrap {
     flex: 1;
     overflow-y: auto;
     padding: 1.25rem;
 }
 
-.pos-empty-grid {
+.pos-grid-wrap::-webkit-scrollbar {
+    width: 5px;
+}
+
+.pos-grid-wrap::-webkit-scrollbar-thumb {
+    background: var(--p-surface-300);
+    border-radius: 3px;
+}
+
+.pos-empty-state {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    height: 60%;
+    height: 50%;
+    gap: 0.75rem;
     color: var(--p-surface-400);
-    font-size: 1rem;
-    font-weight: 500;
+    font-size: 0.95rem;
+    font-weight: 600;
 }
 
-.pos-product-grid {
+.empty-icon {
+    color: var(--p-surface-250);
+}
+
+.product-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+    gap: 0.875rem;
 }
 
-.product-card {
+/* ── Product Card ── */
+.p-card {
     background: var(--p-surface-0);
     border: 1px solid var(--p-surface-200);
-    border-radius: 0.75rem;
+    border-radius: 0.875rem;
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     user-select: none;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
 }
 
-.dark .product-card {
+.dark .p-card {
     background: var(--p-surface-900);
     border-color: var(--p-surface-800);
     box-shadow: none;
 }
 
-.product-card:not(.disabled-card):hover {
-    transform: translateY(-3px);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+.p-card:not(.p-card-disabled):hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px -4px rgba(0, 0, 0, 0.1), 0 0 0 1px var(--p-primary-400);
     border-color: var(--p-primary-400);
 }
 
-.product-card.disabled-card {
-    opacity: 0.55;
-    cursor: not-allowed;
-    background: var(--p-surface-100);
+.dark .p-card:not(.p-card-disabled):hover {
+    box-shadow: 0 12px 24px -4px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--p-primary-500);
+    border-color: var(--p-primary-500);
 }
 
-.dark .product-card.disabled-card {
-    background: var(--p-surface-950);
+.p-card:not(.p-card-disabled):active {
+    transform: translateY(-1px) scale(0.98);
 }
 
-.product-card-body {
-    padding: 0.875rem;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-}
-
-.product-card-cat {
-    font-size: 0.725rem;
+.p-card-cat-strip {
+    padding: 0.375rem 0.875rem;
+    background: linear-gradient(135deg, var(--p-primary-500), var(--p-primary-600));
+    color: white;
+    font-size: 0.625rem;
     font-weight: 800;
-    color: var(--p-primary-500);
+    letter-spacing: 0.04em;
     text-transform: uppercase;
 }
 
-.product-card-title {
-    font-size: 0.9rem;
-    font-weight: 750;
+.p-card-body {
+    padding: 0.75rem 0.875rem 0.5rem;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.p-card-name {
+    font-size: 0.875rem;
+    font-weight: 800;
     color: var(--p-surface-800);
-    margin: 0.375rem 0;
-    line-clamp: 2;
+    margin: 0;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    height: 2.5rem;
-    line-height: 1.3;
+    line-height: 1.35;
+    min-height: 2.4em;
 }
 
-.dark .product-card-title {
+.dark .p-card-name {
     color: var(--p-surface-100);
 }
 
-.product-card-sku {
-    font-size: 0.725rem;
+.p-card-sku {
+    font-size: 0.65rem;
+    font-family: monospace;
     color: var(--p-surface-400);
-    margin-bottom: 0.5rem;
+    margin-top: 0.25rem;
 }
 
-.product-card-footer {
+.p-card-footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    padding: 0.625rem 0.875rem;
     border-top: 1px solid var(--p-surface-100);
-    padding-top: 0.625rem;
+    margin-top: auto;
 }
 
-.dark .product-card-footer {
+.dark .p-card-footer {
     border-color: var(--p-surface-800);
 }
 
-.product-card-price {
-    font-size: 0.95rem;
-    font-weight: 850;
+.p-card-price {
+    font-size: 0.9rem;
+    font-weight: 900;
     color: var(--p-surface-900);
 }
 
-.dark .product-card-price {
-    color: var(--p-surface-0);
+.dark .p-card-price {
+    color: var(--p-surface-50);
 }
 
-.product-card-stock {
-    font-size: 0.725rem;
+.p-card-stock {
+    font-size: 0.675rem;
     font-weight: 800;
     padding: 0.2rem 0.5rem;
-    border-radius: 0.375rem;
+    border-radius: 9999px;
+    line-height: 1.2;
 }
 
 .stock-ok {
     background: #dcfce7;
-    color: #166534;
+    color: #15803d;
 }
 
 .dark .stock-ok {
@@ -1087,247 +1448,204 @@ const getStockClass = (stock) => {
     color: #f87171;
 }
 
-@media (max-width: 1024px) {
-    .pos-container {
-        flex-direction: column;
-        overflow-y: auto;
-    }
-    .pos-cart-panel {
-        width: 100%;
-        height: 400px;
-        border-inline-end: none;
-        border-bottom: 1px solid var(--p-surface-200);
-    }
-    .pos-catalog-panel {
-        height: auto;
-    }
+/* ── Out of Stock Card ── */
+.p-card-disabled {
+    cursor: not-allowed;
 }
 
-/* ── Shake Animation ── */
-@keyframes shake {
-    0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-4px); }
-    50% { transform: translateX(4px); }
-    75% { transform: translateX(-4px); }
+.p-card-oos {
+    opacity: 0.6;
 }
 
-.shake {
-    animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
-    border-color: #ef4444 !important;
+.p-card-oos .p-card-cat-strip {
+    background: linear-gradient(135deg, var(--p-surface-400), var(--p-surface-500));
 }
 
-/* ── Mode Toggle Bar ── */
-.pos-mode-bar {
-    display: flex;
-    gap: 0.5rem;
-    padding: 0.75rem 1.25rem;
-    background: var(--p-surface-0);
-    border-bottom: 1px solid var(--p-surface-200);
-    flex-shrink: 0;
-}
-
-.dark .pos-mode-bar {
-    background: var(--p-surface-900);
-    border-color: var(--p-surface-800);
-}
-
-.pos-mode-btn {
-    flex: 1;
+.p-card-oos-overlay {
+    position: absolute;
+    inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    padding: 0.75rem;
-    border: 1px solid var(--p-surface-200);
-    border-radius: 0.5rem;
-    background: var(--p-surface-50);
-    color: var(--p-surface-500);
-    font-size: 0.875rem;
-    font-weight: 750;
-    cursor: pointer;
-    transition: all 0.2s;
+    background: rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(1px);
+    pointer-events: none;
 }
 
-.dark .pos-mode-btn {
-    background: var(--p-surface-950);
-    border-color: var(--p-surface-800);
-    color: var(--p-surface-400);
+.dark .p-card-oos-overlay {
+    background: rgba(0, 0, 0, 0.4);
 }
 
-.pos-mode-btn:hover {
-    background: var(--p-surface-100);
-    color: var(--p-surface-700);
+.p-card-oos-overlay span {
+    padding: 0.375rem 1rem;
+    border-radius: 0.375rem;
+    background: rgba(239, 68, 68, 0.9);
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 800;
+    transform: rotate(-8deg);
 }
 
-.dark .pos-mode-btn:hover {
-    background: var(--p-surface-850);
-    color: var(--p-surface-200);
-}
-
-.pos-mode-active {
-    background: var(--p-primary-500) !important;
-    color: white !important;
-    border-color: var(--p-primary-500) !important;
-}
-
-.pos-mode-active-return {
-    background: #f59e0b !important;
-    color: white !important;
-    border-color: #f59e0b !important;
-}
-
-/* ── Returns Invoice List ── */
-.returns-list-wrap {
+/* ══════════════════════════════════════════════
+   RETURNS SECTION
+   ══════════════════════════════════════════════ */
+.returns-wrap {
     flex: 1;
     overflow-y: auto;
     padding: 1.25rem;
 }
 
-.returns-invoice-list {
-    display: flex;
-    flex-direction: column;
+.returns-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 0.875rem;
 }
 
-.return-invoice-card {
+.return-card {
     background: var(--p-surface-0);
     border: 1px solid var(--p-surface-200);
-    border-radius: 1rem;
+    border-radius: 0.875rem;
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+    border-inline-start: 3px solid var(--p-surface-300);
 }
 
-.dark .return-invoice-card {
+.dark .return-card {
     background: var(--p-surface-900);
     border-color: var(--p-surface-800);
-    box-shadow: none;
+    border-inline-start-color: var(--p-surface-600);
 }
 
-.return-invoice-card:hover {
-    border-color: #f59e0b;
-    box-shadow: 0 8px 16px rgba(245, 158, 11, 0.08);
-    transform: translateY(-2px);
+.return-card:hover {
+    border-inline-start-color: #f59e0b;
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(245, 158, 11, 0.12);
 }
 
-.return-invoice-header {
+.dark .return-card:hover {
+    box-shadow: 0 8px 24px rgba(245, 158, 11, 0.08);
+}
+
+.return-card-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1rem 1.25rem 0.625rem;
+    padding: 0.875rem 1rem 0.5rem;
 }
 
-.return-invoice-number {
+.return-card-id {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-size: 0.95rem;
+    font-size: 0.875rem;
     font-weight: 800;
     color: var(--p-surface-800);
+    font-family: monospace;
 }
 
-.dark .return-invoice-number {
+.return-card-id svg {
+    color: var(--p-primary-500);
+}
+
+.dark .return-card-id {
     color: var(--p-surface-100);
 }
 
-.return-invoice-date {
-    font-size: 0.75rem;
+.return-card-date {
+    font-size: 0.7rem;
     color: var(--p-surface-400);
 }
 
-.return-invoice-body {
-    padding: 0 1.25rem 0.75rem;
-}
-
-.return-invoice-items-list {
+.return-card-items {
     display: flex;
     flex-wrap: wrap;
     gap: 0.375rem;
-    margin-bottom: 0.625rem;
+    padding: 0.25rem 1rem 0.5rem;
 }
 
-.return-invoice-item-chip {
+.return-item-chip {
     display: inline-block;
     padding: 0.2rem 0.625rem;
     border-radius: 9999px;
     background: var(--p-surface-100);
     color: var(--p-surface-600);
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     font-weight: 700;
 }
 
-.dark .return-invoice-item-chip {
+.dark .return-item-chip {
     background: var(--p-surface-800);
     color: var(--p-surface-300);
 }
 
-.return-invoice-more {
+.return-item-chip.more {
     background: var(--p-primary-50);
     color: var(--p-primary-600);
 }
 
-.dark .return-invoice-more {
-    background: rgba(var(--p-primary-500), 0.15);
+.dark .return-item-chip.more {
+    background: rgba(99, 102, 241, 0.15);
     color: var(--p-primary-400);
 }
 
-.return-invoice-footer {
+.return-card-footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    padding: 0.5rem 1rem;
     border-top: 1px solid var(--p-surface-100);
-    padding-top: 0.5rem;
 }
 
-.dark .return-invoice-footer {
+.dark .return-card-footer {
     border-color: var(--p-surface-800);
 }
 
-.return-invoice-cashier {
-    font-size: 0.75rem;
-    color: var(--p-surface-450);
+.return-card-cashier {
+    font-size: 0.7rem;
+    color: var(--p-surface-400);
 }
 
-.return-invoice-total {
-    font-size: 1.05rem;
-    font-weight: 850;
-    color: var(--p-surface-900);
+.return-card-total {
+    font-size: 1rem;
+    font-weight: 900;
+    color: var(--p-surface-800);
+    font-family: monospace;
 }
 
-.dark .return-invoice-total {
-    color: var(--p-surface-0);
+.dark .return-card-total {
+    color: var(--p-surface-100);
 }
 
-.return-invoice-action {
+.return-card-action {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 0.375rem;
-    padding: 0.625rem;
-    background: #fef3c7;
+    padding: 0.5rem;
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
     color: #92400e;
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     font-weight: 800;
-    border-top: 1px solid #fde68a;
-    transition: background-color 0.15s;
+    transition: all 0.2s;
 }
 
-.dark .return-invoice-action {
-    background: rgba(245, 158, 11, 0.1);
+.dark .return-card-action {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05));
     color: #fbbf24;
-    border-color: rgba(245, 158, 11, 0.2);
 }
 
-.return-invoice-card:hover .return-invoice-action {
-    background: #fde68a;
+.return-card:hover .return-card-action {
+    background: linear-gradient(135deg, #fde68a, #fcd34d);
 }
 
-.dark .return-invoice-card:hover .return-invoice-action {
-    background: rgba(245, 158, 11, 0.18);
+.dark .return-card:hover .return-card-action {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(245, 158, 11, 0.1));
 }
 
-/* ── Return Dialog ── */
+/* ══════════════════════════════════════════════
+   RETURN DIALOG
+   ══════════════════════════════════════════════ */
 .return-dialog-content {
     display: flex;
     flex-direction: column;
@@ -1425,7 +1743,7 @@ const getStockClass = (stock) => {
     justify-content: space-between;
     padding: 0.875rem 1.25rem;
     border-radius: 0.75rem;
-    background: #fef3c7;
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
     border: 1px solid #fde68a;
     font-size: 0.95rem;
     font-weight: 800;
@@ -1433,12 +1751,88 @@ const getStockClass = (stock) => {
 }
 
 .dark .return-dialog-summary {
-    background: rgba(245, 158, 11, 0.12);
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0.06));
     border-color: rgba(245, 158, 11, 0.2);
     color: #fbbf24;
 }
 
 .return-dialog-summary-total {
     font-size: 1.15rem;
+}
+
+/* ══════════════════════════════════════════════
+   ANIMATIONS
+   ══════════════════════════════════════════════ */
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    50% { transform: translateX(5px); }
+    75% { transform: translateX(-5px); }
+}
+
+.shake {
+    animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+    border-color: #ef4444 !important;
+}
+
+.grid-enter-active { transition: all 0.3s ease; }
+.grid-leave-active { transition: all 0.2s ease; }
+.grid-enter-from { opacity: 0; transform: scale(0.9); }
+.grid-leave-to { opacity: 0; transform: scale(0.9); }
+
+.fade-enter-active,
+.fade-leave-active { transition: opacity 0.2s ease; }
+.fade-enter-from,
+.fade-leave-to { opacity: 0; }
+
+/* ══════════════════════════════════════════════
+   RESPONSIVE
+   ══════════════════════════════════════════════ */
+@media (max-width: 1024px) {
+    .pos-container {
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    .pos-cart-panel {
+        width: 100%;
+        max-height: 55vh;
+        border-inline-end: none;
+        border-bottom: 1px solid var(--p-surface-200);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+    }
+
+    .dark .pos-cart-panel {
+        border-color: var(--p-surface-800);
+    }
+
+    .pos-catalog-panel {
+        height: auto;
+        min-height: 50vh;
+    }
+
+    .product-grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    }
+
+    .returns-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .pos-search-bar {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .product-grid {
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+        gap: 0.625rem;
+    }
+
+    .checkout-actions {
+        flex-direction: column;
+    }
 }
 </style>

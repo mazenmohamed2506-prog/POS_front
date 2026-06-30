@@ -18,7 +18,7 @@ export const useProductStore = defineStore("product", () => {
         return {
             id: apiProd.id,
             name: apiProd.name,
-            sku: `PROD-${apiProd.id}`, // Fallback since C# model doesn't have SKU
+            sku: apiProd.sku || `PROD-${apiProd.id}`,
             barcode: baseUnit.barcode || '',
             category: apiProd.categoryName || 'عام',
             categoryId: apiProd.categoryId,
@@ -136,6 +136,7 @@ export const useProductStore = defineStore("product", () => {
 
             const payload = {
                 name: product.name,
+                sku: product.sku,
                 categoryId: categoryId,
                 trackExpiration: product.trackExpiration ?? true,
                 trackSerialNumber: product.trackSerialNumber ?? false,
@@ -206,6 +207,7 @@ export const useProductStore = defineStore("product", () => {
 
             const payload = {
                 name: product.name,
+                sku: product.sku,
                 categoryId: categoryId,
                 trackExpiration: product.trackExpiration ?? true,
                 trackSerialNumber: product.trackSerialNumber ?? false,
@@ -268,6 +270,20 @@ export const useProductStore = defineStore("product", () => {
         }
     }
 
+    async function createCategory(data) {
+        try {
+            const response = await apiPost("/Categories", data, false);
+            toastStore.addSuccessToast("تم إضافة الفئة بنجاح");
+            await fetchCategories();
+            return response.data;
+        } catch (err) {
+            console.error("Failed to create category:", err);
+            const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء إضافة الفئة";
+            toastStore.addErrorToast(detail);
+            throw err;
+        }
+    }
+
     async function updateCategory(id, data) {
         try {
             await apiPut(`/Categories/${id}`, data, false);
@@ -321,6 +337,7 @@ export const useProductStore = defineStore("product", () => {
         deleteProduct,
         getProductById,
         getCategoryById,
+        createCategory,
         updateCategory,
         deleteCategory,
         fetchUnitConversions

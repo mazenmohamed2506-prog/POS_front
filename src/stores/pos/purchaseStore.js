@@ -12,11 +12,12 @@ export const usePurchaseStore = defineStore("purchase", () => {
     function mapApiPurchaseToFrontend(apiPur) {
         return {
             id: apiPur.id,
-            invoiceNumber: `PUR-${apiPur.id}`,
+            purchaseNo: apiPur.purchaseNo || `PUR-${apiPur.id}`,
             supplier: apiPur.supplierName,
             date: apiPur.invoiceDate,
             total: apiPur.totalAmount,
-            status: "received",
+            status: apiPur.status || "Completed",
+            itemNo: apiPur.itemNo || 0,
             items: (apiPur.items || []).map(i => ({
                 id: i.id,
                 productId: i.productId,

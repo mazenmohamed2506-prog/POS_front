@@ -12,47 +12,13 @@ export const useInventoryStore = defineStore("inventory", () => {
     const productStore = useProductStore();
 
     function processApiInventory(rawInventory, productsList) {
-        const grouped = {};
-        
-        rawInventory.forEach(item => {
-            const pId = item.productId;
-            const batchNum = item.batchNumber || '';
-            const key = `${pId}_${batchNum}`;
-            
-            if (!grouped[key]) {
-                grouped[key] = {
-                    id: key,
-                    productId: pId,
-                    productName: item.productName || '',
-                    sku: `PROD-${pId}`,
-                    batchNumber: batchNum || '—',
-                    expirationDate: item.expirationDate || null,
-                    costPrice: item.costPrice || 0,
-                    shelfStock: 0,
-                    warehouseStock: 0,
-                    shelfStockId: null,
-                    warehouseStockId: null,
-                    unit: "قطعة",
-                };
-            }
-            
-            if (item.location === "StoreShelf") {
-                grouped[key].shelfStock += item.quantity;
-                grouped[key].shelfStockId = item.id;
-            } else if (item.location === "BackWarehouse") {
-                grouped[key].warehouseStock += item.quantity;
-                grouped[key].warehouseStockId = item.id;
-            }
-            
-            // Try to match SKU or Unit from productStore if available
-            const matchedProduct = productsList.find(p => p.id === pId);
-            if (matchedProduct) {
-                grouped[key].sku = matchedProduct.sku || grouped[key].sku;
-                grouped[key].unit = matchedProduct.units?.[0]?.name || grouped[key].unit;
-            }
+        return rawInventory.map(item => {
+            const matchedProduct = productsList.find(p => p.id === item.productId);
+            return {
+                ...item,
+                productName: item.productName || matchedProduct?.name || ''
+            };
         });
-        
-        return Object.values(grouped);
     }
 
     async function fetchInventory() {
