@@ -6,6 +6,14 @@ import { useToastStore } from "@/stores/base/toastStore";
 
 export const useInventoryStore = defineStore("inventory", () => {
     const inventory = ref([]);
+    const stats = ref({
+        totalUnits: 0,
+        healthyStock: 0,
+        lowStock: 0,
+        outOfStock: 0,
+        expiringSoon: 0,
+        expired: 0
+    });
     const loading = ref(false);
     const error = ref(null);
     const toastStore = useToastStore();
@@ -16,12 +24,13 @@ export const useInventoryStore = defineStore("inventory", () => {
             const matchedProduct = productsList.find(p => p.id === item.productId);
             return {
                 ...item,
-                productName: item.productName || matchedProduct?.name || ''
+                productName: item.productName || matchedProduct?.name || '',
+                isActive: item.productIsActive ?? true
             };
         });
     }
 
-    async function fetchInventory() {
+    async function fetchInventory(filters = {}) {
         loading.value = true;
         error.value = null;
         try {
@@ -29,9 +38,24 @@ export const useInventoryStore = defineStore("inventory", () => {
             if (productStore.products.length === 0) {
                 await productStore.fetchProducts();
             }
-            
-            const response = await apiGet("/Inventory");
-            const rawInventory = response.data || [];
+
+            // Build query params – only include productStatus when explicitly set
+            const params = {};
+            if (filters.productStatus !== undefined && filters.productStatus !== null) {
+                params.productStatus = filters.productStatus;
+            }
+
+            const response = await apiGet("/Inventory", { params });
+
+            // Supporting both new wrapper format and legacy array fallback
+            const rawInventory = Array.isArray(response.data)
+                ? response.data
+                : (response.data?.stocks || []);
+
+            if (response.data && !Array.isArray(response.data)) {
+                stats.value = response.data.stats || stats.value;
+            }
+
             inventory.value = processApiInventory(rawInventory, productStore.products);
         } catch (err) {
             console.error("Failed to fetch inventory:", err);
@@ -149,6 +173,7 @@ export const useInventoryStore = defineStore("inventory", () => {
 
     return {
         inventory,
+        stats,
         loading,
         error,
         fetchInventory,

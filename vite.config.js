@@ -48,5 +48,8 @@ export default defineConfig({
             "@projects": fileURLToPath(new URL("./src/projects", import.meta.url)),
         },
     },
+    server: {
+        open: "/login",
+    },
 });
 /* Developed by: MSDC, Copyright 2026. All rights reserved. ~ el-bob */

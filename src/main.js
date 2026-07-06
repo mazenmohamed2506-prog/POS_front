@@ -15,6 +15,12 @@ import ProgressSpinner from "primevue/progressspinner";
 const savedLocale = localStorage.getItem("selectedLocale") || "ar";
 document.documentElement.setAttribute("dir", savedLocale === "ar" ? "rtl" : "ltr");
 
+// Default to light (white) mode if no theme preference has been saved yet
+if (!localStorage.getItem("vueuse-color-scheme")) {
+    localStorage.setItem("vueuse-color-scheme", "light");
+    document.documentElement.classList.remove("dark");
+}
+
 const app = createApp(App);
 
 app.use(createPinia());

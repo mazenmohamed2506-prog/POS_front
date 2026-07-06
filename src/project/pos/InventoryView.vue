@@ -1,8 +1,9 @@
 <script setup>
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, computed, watch } from "vue";
 import { useInventoryStore } from "@/stores/pos/inventoryStore";
 import { useProductStore } from "@/stores/pos/productStore";
-import { Warehouse, ArrowRightLeft, Search, Plus, Info, HelpCircle, Package, AlertTriangle, CheckCircle2, AlertCircle } from "lucide-vue-next";
+import { Warehouse, ArrowRightLeft, Search, Plus, HelpCircle, Package, AlertTriangle, CheckCircle2, AlertCircle, Clock, Filter } from "lucide-vue-next";
+import InventoryTable from "./InventoryTable.vue";
 
 const inventoryStore = useInventoryStore();
 const productStore = useProductStore();
@@ -15,7 +16,14 @@ const transferItem = ref(null);
 const transferQty = ref(1);
 const transferDirection = ref("toShelf"); // "toShelf" | "toWarehouse"
 const searchQuery = ref("");
-const expandedRows = ref({});
+const activeFilter = ref("all"); // "all" | "healthy" | "low" | "out" | "expiry"
+const productStatusFilter = ref(null); // null = All, true = Active, false = Inactive
+
+const productStatusOptions = [
+    { label: 'الكل', value: null },
+    { label: 'نشط', value: true },
+    { label: 'غير نشط', value: false }
+];
 
 const addStockForm = ref({
     productId: null,
@@ -28,108 +36,38 @@ const addStockForm = ref({
 });
 
 onMounted(() => {
-    inventoryStore.fetchInventory();
+    fetchWithStatusFilter();
     productStore.fetchProducts();
+});
+
+function fetchWithStatusFilter() {
+    const filters = {};
+    if (productStatusFilter.value !== null) {
+        filters.productStatus = productStatusFilter.value;
+    }
+    inventoryStore.fetchInventory(filters);
+}
+
+watch(productStatusFilter, () => {
+    fetchWithStatusFilter();
 });
 
 const filteredInventory = computed(() => {
     const q = searchQuery.value.trim().toLowerCase();
-    if (!q) return inventoryStore.inventory;
-    return inventoryStore.inventory.filter((item) =>
-        (item.productName && item.productName.toLowerCase().includes(q)) ||
-        (item.serialNumber && item.serialNumber.toLowerCase().includes(q)) ||
-        (item.batchNumber && item.batchNumber.toLowerCase().includes(q))
-    );
-});
-
-const groupedInventory = computed(() => {
-    const groups = {};
-    filteredInventory.value.forEach(item => {
-        const key = `${item.productId}_${item.batchNumber}`;
-        if (!groups[key]) {
-            groups[key] = {
-                id: key,
-                productId: item.productId,
-                productName: item.productName,
-                serialNumber: item.serialNumber,
-                batchNumber: item.batchNumber,
-                expirationDate: item.expirationDate,
-                costPrice: item.costPrice,
-                sellingPrice: item.sellingPrice,
-                totalQuantity: 0,
-                locations: []
-            };
-        }
-        groups[key].totalQuantity += item.quantity;
-        groups[key].locations.push(item);
-    });
-    return Object.values(groups);
-});
-
-// ─── Inventory Summary Metrics ───────────────────────────────────────────────
-
-const totalStock = computed(() => {
-    return inventoryStore.inventory.reduce((sum, item) => sum + (item.quantity || 0), 0);
-});
-
-const stockByProduct = computed(() => {
-    const map = new Map();
-    inventoryStore.inventory.forEach(item => {
-        const current = map.get(item.productId) || 0;
-        map.set(item.productId, current + (item.quantity || 0));
-    });
-    return map;
-});
-
-const healthyStockCount = computed(() => {
-    let count = 0;
-    stockByProduct.value.forEach(stock => {
-        if (stock > 5) count++;
-    });
-    return count;
-});
-
-const lowStockCount = computed(() => {
-    let count = 0;
-    stockByProduct.value.forEach(stock => {
-        if (stock > 0 && stock <= 5) count++;
-    });
-    return count;
-});
-
-const outOfStockCount = computed(() => {
-    let count = 0;
-    productStore.products.forEach(p => {
-        if (p.isActive) {
-            const stock = stockByProduct.value.get(p.id) || 0;
-            if (stock === 0) count++;
-        }
-    });
-    return count;
-});
-
-const expiringBatches = computed(() => {
-    let expiringSoon = 0;
-    let expired = 0;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    let items = inventoryStore.inventory;
     
-    inventoryStore.inventory.forEach(item => {
-        if (item.expirationDate && item.quantity > 0) {
-            const expDate = new Date(item.expirationDate);
-            const timeDiff = expDate.getTime() - today.getTime();
-            const daysToExpiration = Math.ceil(timeDiff / (1000 * 3600 * 24));
-            
-            if (daysToExpiration < 0) {
-                expired++;
-            } else if (daysToExpiration <= 30) {
-                expiringSoon++;
-            }
-        }
-    });
+    if (q) {
+        items = items.filter((item) =>
+            (item.productName && item.productName.toLowerCase().includes(q)) ||
+            (item.serialNumber && item.serialNumber.toLowerCase().includes(q)) ||
+            (item.batchNumber && item.batchNumber.toLowerCase().includes(q))
+        );
+    }
     
-    return { expiringSoon, expired };
+    return items;
 });
+
+// ─── Inventory Summary Metrics (now provided by backend stats) ───────────────
 
 const openTransfer = (item, direction = "toShelf") => {
     transferItem.value = item;
@@ -152,18 +90,6 @@ const handleTransfer = async () => {
 const maxTransferQty = () => {
     if (!transferItem.value) return 0;
     return transferItem.value.quantity || 0;
-};
-
-const getStockSeverity = (stock) => {
-    if (stock <= 0) return "danger";
-    if (stock <= 5) return "warn";
-    return "success";
-};
-
-const getStockLabel = (stock) => {
-    if (stock <= 0) return "نفذ المخزون";
-    if (stock <= 5) return `منخفض (${stock})`;
-    return `متوفر (${stock})`;
 };
 
 const openAddStock = () => {
@@ -241,74 +167,78 @@ const formatDate = (dateStr) => {
     <div class="inventory-page">
         <!-- Header -->
         <div class="inventory-header">
-            <div class="flex items-center gap-3">
+            <div class="header-start">
                 <div class="header-icon-wrap">
-                    <Warehouse :size="28" class="text-primary-500" />
+                    <Warehouse :size="26" />
                 </div>
-                <div>
+                <div class="header-text">
                     <h1 class="inventory-title">إدارة المخزون</h1>
                     <p class="inventory-subtitle">متابعة ونقل البضائع بين المستودع ورفوف البيع</p>
                 </div>
-                <Button icon="pi pi-question-circle" text rounded aria-label="Help" @click="openHelp">
-                    <template #icon><HelpCircle :size="20" class="text-surface-500 hover:text-primary-500 transition-colors" /></template>
-                </Button>
+                <button class="help-btn" @click="openHelp" aria-label="مساعدة">
+                    <HelpCircle :size="18" />
+                </button>
             </div>
-            <Button label="إستلام مخزون" @click="openAddStock">
+            <Button label="إستلام مخزون" @click="openAddStock" class="add-stock-btn">
                 <template #icon><Plus :size="18" /></template>
             </Button>
         </div>
 
         <!-- Inventory Summary Stats Cards -->
         <div class="inventory-stats-grid">
-            <div class="stat-card">
-                <div class="stat-icon blue">
+            <div class="stat-card" :class="{ 'stat-active': activeFilter === 'all' }" @click="activeFilter = 'all'">
+                <div class="stat-icon-circle blue">
                     <Package :size="20" />
                 </div>
-                <div class="stat-info">
+                <div class="stat-body">
+                    <span class="stat-value">{{ inventoryStore.stats.totalUnits }}</span>
                     <span class="stat-label">إجمالي الوحدات</span>
-                    <span class="stat-value">{{ totalStock }}</span>
-                    <span class="stat-sub">في جميع المستودعات والرفوف</span>
                 </div>
+                <div class="stat-accent blue"></div>
             </div>
-            <div class="stat-card">
-                <div class="stat-icon green">
+            <div class="stat-card" :class="{ 'stat-active': activeFilter === 'healthy' }" @click="activeFilter = 'healthy'">
+                <div class="stat-icon-circle green">
                     <CheckCircle2 :size="20" />
                 </div>
-                <div class="stat-info">
+                <div class="stat-body">
+                    <span class="stat-value">{{ inventoryStore.stats.healthyStock }}</span>
                     <span class="stat-label">مخزون سليم</span>
-                    <span class="stat-value">{{ healthyStockCount }}</span>
-                    <span class="stat-sub">منتجات متوفرة (أكثر من 5)</span>
                 </div>
+                <div class="stat-accent green"></div>
             </div>
-            <div class="stat-card">
-                <div class="stat-icon orange">
+            <div class="stat-card" :class="{ 'stat-active': activeFilter === 'low' }" @click="activeFilter = 'low'">
+                <div class="stat-icon-circle orange">
                     <AlertTriangle :size="20" />
                 </div>
-                <div class="stat-info">
+                <div class="stat-body">
+                    <span class="stat-value">{{ inventoryStore.stats.lowStock }}</span>
                     <span class="stat-label">مخزون منخفض</span>
-                    <span class="stat-value">{{ lowStockCount }}</span>
-                    <span class="stat-sub">منتجات (1-5 وحدات)</span>
                 </div>
+                <div class="stat-accent orange"></div>
             </div>
-            <div class="stat-card">
-                <div class="stat-icon red">
+            <div class="stat-card" :class="{ 'stat-active': activeFilter === 'out' }" @click="activeFilter = 'out'">
+                <div class="stat-icon-circle red">
                     <AlertCircle :size="20" />
                 </div>
-                <div class="stat-info">
+                <div class="stat-body">
+                    <span class="stat-value">{{ inventoryStore.stats.outOfStock }}</span>
                     <span class="stat-label">نفذ المخزون</span>
-                    <span class="stat-value">{{ outOfStockCount }}</span>
-                    <span class="stat-sub">منتجات بدون رصيد</span>
                 </div>
+                <div class="stat-accent red"></div>
             </div>
-            <div class="stat-card">
-                <div class="stat-icon amber">
-                    <AlertTriangle :size="20" />
+            <div class="stat-card" :class="{ 'stat-active': activeFilter === 'expiry' }" @click="activeFilter = 'expiry'">
+                <div class="stat-icon-circle amber">
+                    <Clock :size="20" />
                 </div>
-                <div class="stat-info">
-                    <span class="stat-label">تنتهي قريباً / منتهية</span>
-                    <span class="stat-value">{{ expiringBatches.expiringSoon + expiringBatches.expired }}</span>
-                    <span class="stat-sub">{{ expiringBatches.expiringSoon }} قريباً، {{ expiringBatches.expired }} منتهية</span>
+                <div class="stat-body">
+                    <span class="stat-value">{{ inventoryStore.stats.expiringSoon + inventoryStore.stats.expired }}</span>
+                    <span class="stat-label">تنتهي / منتهية</span>
                 </div>
+                <div class="stat-sub-detail">
+                    <span class="sub-chip warn">{{ inventoryStore.stats.expiringSoon }} قريباً</span>
+                    <span class="sub-chip danger">{{ inventoryStore.stats.expired }} منتهية</span>
+                </div>
+                <div class="stat-accent amber"></div>
             </div>
         </div>
 
@@ -316,160 +246,75 @@ const formatDate = (dateStr) => {
         <div class="inventory-card">
             <!-- Filter Bar -->
             <div class="inventory-filter-bar">
-                <div class="relative w-full max-w-xs">
-                    <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400 dark:text-surface-500" />
+                <div class="search-input-wrap">
+                    <Search :size="16" class="search-icon" />
                     <InputText
                         v-model="searchQuery"
-                        placeholder="ابحث باسم المنتج أو الرمز..."
+                        placeholder="ابحث باسم المنتج، رقم الدفعة، أو الرمز..."
                         class="ps-10 pr-4 w-full"
                         autocomplete="off"
                         size="small"
                     />
                 </div>
+                <Select
+                    v-model="productStatusFilter"
+                    :options="productStatusOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    placeholder="حالة المنتج"
+                    class="status-filter-select"
+                    size="small"
+                />
             </div>
 
             <!-- Inventory Table -->
-            <DataTable
-                v-model:expandedRows="expandedRows"
-                :value="groupedInventory"
-                dataKey="id"
+            <InventoryTable 
+                :items="filteredInventory" 
                 :loading="inventoryStore.loading"
-                paginator
-                :rows="10"
-                :rowsPerPageOptions="[10, 15, 25, 50]"
-                emptyMessage="لا توجد بيانات مخزون مطابقة"
-                stripedRows
-                removableSort
-                scrollable
-                class="inventory-table"
-            >
-                <Column expander style="width: 4rem" />
-                <Column field="productName" header="المنتج" sortable style="min-width: 220px">
-                    <template #body="{ data }">
-                        <span class="font-bold text-surface-800 dark:text-surface-100">{{ data.productName }}</span>
-                    </template>
-                </Column>
-                <Column field="batchNumber" sortable style="min-width: 130px">
-                    <template #header>
-                        <div class="flex items-center gap-2">
-                            <span>رقم الدفعة</span>
-                            <i class="pi pi-info-circle text-surface-400 cursor-help" v-tooltip.top="'رقم الدفعة (Batch) هو المعرف الفريد لشحنة أو عملية إنتاج محددة'"></i>
-                        </div>
-                    </template>
-                    <template #body="{ data }">
-                        <span class="text-sm font-semibold font-mono text-surface-650 dark:text-surface-350">{{ data.batchNumber || '—' }}</span>
-                    </template>
-                </Column>
-                <Column field="expirationDate" header="تاريخ الصلاحية" sortable style="min-width: 130px">
-                    <template #body="{ data }">
-                        <span class="text-sm font-medium" :class="{'text-red-500': data.expirationDate && new Date(data.expirationDate) < new Date()}">
-                            {{ formatDate(data.expirationDate) }}
-                        </span>
-                    </template>
-                </Column>
-                <Column field="costPrice" header="سعر التكلفة" sortable style="min-width: 120px">
-                    <template #body="{ data }">
-                        <span class="text-sm font-bold text-surface-700 dark:text-surface-300">{{ data.costPrice?.toFixed(2) || '—' }} EGP</span>
-                    </template>
-                </Column>
-                <Column field="sellingPrice" header="سعر البيع" sortable style="min-width: 120px">
-                    <template #body="{ data }">
-                        <span class="text-sm font-bold text-surface-700 dark:text-surface-300">{{ data.sellingPrice?.toFixed(2) || '—' }} EGP</span>
-                    </template>
-                </Column>
-                <Column field="totalQuantity" header="إجمالي الكمية" sortable style="min-width: 150px">
-                    <template #body="{ data }">
-                        <span class="font-black text-primary-600 dark:text-primary-450">{{ data.totalQuantity }} وحدة</span>
-                        <div class="mt-1">
-                            <Tag
-                                :value="getStockLabel(data.totalQuantity)"
-                                :severity="getStockSeverity(data.totalQuantity)"
-                                class="font-bold text-xs"
-                            />
-                        </div>
-                    </template>
-                </Column>
-
-                <template #expansion="{ data }">
-                    <div class="p-4 bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-lg mx-6 my-2">
-                        <h5 class="mb-3 font-bold text-surface-700 dark:text-surface-200">تفاصيل المخزون حسب الموقع</h5>
-                        <DataTable :value="data.locations" dataKey="id" class="p-datatable-sm">
-                            <Column field="location" header="الموقع" style="min-width: 140px">
-                                <template #body="{ data: locData }">
-                                    <Tag
-                                        :value="locData.location === 'BackWarehouse' ? 'المستودع' : (locData.location === 'StoreShelf' ? 'الرف' : locData.location)"
-                                        :severity="locData.location === 'StoreShelf' ? 'success' : 'info'"
-                                        class="font-bold"
-                                    />
-                                </template>
-                            </Column>
-                            <Column field="quantity" header="الكمية" style="min-width: 100px">
-                                <template #body="{ data: locData }">
-                                    <span class="font-bold">{{ locData.quantity }} وحدة</span>
-                                </template>
-                            </Column>
-                            <Column header="عمليات النقل" style="min-width: 220px; text-align: start">
-                                <template #body="{ data: locData }">
-                                    <div class="flex gap-2">
-                                        <Button
-                                            size="small"
-                                            label="إلى الرف"
-                                            outlined
-                                            :disabled="locData.location === 'StoreShelf' || locData.quantity <= 0"
-                                            @click="openTransfer(locData, 'toShelf')"
-                                        >
-                                            <template #icon><ArrowRightLeft :size="14" class="me-1" /></template>
-                                        </Button>
-                                        <Button
-                                            size="small"
-                                            label="إلى المستودع"
-                                            outlined
-                                            severity="secondary"
-                                            :disabled="locData.location === 'BackWarehouse' || locData.quantity <= 0"
-                                            @click="openTransfer(locData, 'toWarehouse')"
-                                        />
-                                    </div>
-                                </template>
-                            </Column>
-                        </DataTable>
-                    </div>
-                </template>
-            </DataTable>
+                @transfer="(loc, direction) => openTransfer(loc, direction)"
+            />
         </div>
 
         <!-- Transfer Dialog -->
         <Dialog
             v-model:visible="showTransferDialog"
             :header="transferDirection === 'toShelf' ? 'نقل المخزون إلى الرف' : 'نقل المخزون إلى المستودع'"
-            :style="{ width: '420px' }"
+            :style="{ width: '440px' }"
             modal
             dismissableMask
         >
-            <div class="inventory-dialog-form" v-if="transferItem">
-                <div class="transfer-info-card">
-                    <p class="text-sm text-surface-600 dark:text-surface-400">
-                        المنتج: <strong class="text-surface-900 dark:text-surface-100">{{ transferItem.productName }}</strong>
-                    </p>
-                    <p class="text-xs text-surface-500 mt-1">
-                        إتجاه النقل: 
-                        <span class="font-bold text-primary-600 dark:text-primary-400">
-                            {{ transferDirection === 'toShelf' ? 'من المستودع إلى الرف' : 'من الرف إلى المستودع' }}
-                        </span>
-                    </p>
+            <div class="dialog-body" v-if="transferItem">
+                <div class="transfer-product-card">
+                    <div class="transfer-product-name">{{ transferItem.productName }}</div>
+                    <div class="transfer-direction">
+                        <div class="transfer-from">
+                            <span class="transfer-loc-label">من</span>
+                            <span class="transfer-loc-value">{{ transferItem.location === 'BackWarehouse' ? 'المستودع' : 'الرف' }}</span>
+                        </div>
+                        <div class="transfer-arrow">
+                            <ArrowRightLeft :size="18" />
+                        </div>
+                        <div class="transfer-to">
+                            <span class="transfer-loc-label">إلى</span>
+                            <span class="transfer-loc-value">{{ transferDirection === 'toShelf' ? 'الرف' : 'المستودع' }}</span>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="form-field mt-3">
                     <label class="required">
                         الكمية المراد نقلها 
-                        <span class="text-xs font-normal text-surface-450">(الحد الأقصى المتاح: {{ maxTransferQty() }})</span>
+                        <span class="label-hint">(الحد الأقصى: {{ maxTransferQty() }})</span>
                     </label>
                     <InputNumber v-model="transferQty" :min="1" :max="maxTransferQty()" fluid placeholder="أدخل الكمية" />
                 </div>
             </div>
             <template #footer>
-                <div class="flex gap-2 justify-end w-full">
+                <div class="dialog-footer">
                     <Button label="إلغاء" outlined severity="secondary" @click="showTransferDialog = false" />
-                    <Button label="نقل الكمية" @click="handleTransfer" :loading="inventoryStore.loading" :disabled="maxTransferQty() === 0" />
+                    <Button label="نقل الكمية" @click="handleTransfer" :loading="inventoryStore.loading" :disabled="maxTransferQty() === 0">
+                        <template #icon><ArrowRightLeft :size="16" /></template>
+                    </Button>
                 </div>
             </template>
         </Dialog>
@@ -478,11 +323,11 @@ const formatDate = (dateStr) => {
         <Dialog
             v-model:visible="showAddStockDialog"
             header="إستلام مخزون (دفعة جديدة)"
-            :style="{ width: '550px' }"
+            :style="{ width: '560px' }"
             modal
             dismissableMask
         >
-            <div class="inventory-dialog-form">
+            <div class="dialog-body">
                 <div class="form-field">
                     <label class="required">المنتج</label>
                     <Select
@@ -514,12 +359,14 @@ const formatDate = (dateStr) => {
                     </div>
                 </div>
                 
-                <div v-if="addStockForm.productUnitId" class="p-2 mb-2 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-md">
-                    <div class="flex justify-between items-center text-sm">
-                        <span class="text-surface-600 dark:text-surface-400">الكمية الإجمالية بالوحدة الأساسية:</span>
-                        <span class="font-bold text-primary-600 dark:text-primary-400">{{ calculateBaseQuantity }} قطعة</span>
+                <Transition name="fade-slide">
+                    <div v-if="addStockForm.productUnitId" class="base-qty-indicator">
+                        <div class="base-qty-row">
+                            <span class="base-qty-label">الكمية الإجمالية بالوحدة الأساسية</span>
+                            <span class="base-qty-value">{{ calculateBaseQuantity }} قطعة</span>
+                        </div>
                     </div>
-                </div>
+                </Transition>
 
                 <div class="grid grid-cols-2 gap-4">
                     <div class="form-field">
@@ -550,9 +397,11 @@ const formatDate = (dateStr) => {
                 </div>
             </div>
             <template #footer>
-                <div class="flex gap-2 justify-end w-full">
+                <div class="dialog-footer">
                     <Button label="إلغاء" outlined severity="secondary" @click="showAddStockDialog = false" />
-                    <Button label="حفظ الإستلام" @click="submitAddStock" :loading="inventoryStore.loading" :disabled="!addStockForm.productId || !addStockForm.batchNumber || !addStockForm.productUnitId" />
+                    <Button label="حفظ الإستلام" @click="submitAddStock" :loading="inventoryStore.loading" :disabled="!addStockForm.productId || !addStockForm.batchNumber || !addStockForm.productUnitId">
+                        <template #icon><Plus :size="16" /></template>
+                    </Button>
                 </div>
             </template>
         </Dialog>
@@ -565,16 +414,16 @@ const formatDate = (dateStr) => {
             modal
             dismissableMask
         >
-            <div v-if="helpText" class="p-2 space-y-4 text-surface-700 dark:text-surface-300">
+            <div v-if="helpText" class="help-content">
                 <div v-if="typeof helpText === 'object'">
-                    <h3 class="font-bold text-lg mb-2 text-primary-600 dark:text-primary-400">الفروقات الأساسية</h3>
-                    <div class="mb-4">
-                        <h4 class="font-bold text-surface-900 dark:text-surface-100">رمز المنتج (Product Code)</h4>
-                        <p class="text-sm">{{ helpText.productCode || helpText.arabic?.productCode }}</p>
+                    <h3 class="help-section-title">الفروقات الأساسية</h3>
+                    <div class="help-item">
+                        <h4 class="help-item-title">رمز المنتج (Product Code)</h4>
+                        <p class="help-item-text">{{ helpText.productCode || helpText.arabic?.productCode }}</p>
                     </div>
-                    <div>
-                        <h4 class="font-bold text-surface-900 dark:text-surface-100">رقم الدفعة (Batch Code)</h4>
-                        <p class="text-sm">{{ helpText.batchCode || helpText.arabic?.batchCode }}</p>
+                    <div class="help-item">
+                        <h4 class="help-item-title">رقم الدفعة (Batch Code)</h4>
+                        <p class="help-item-text">{{ helpText.batchCode || helpText.arabic?.batchCode }}</p>
                     </div>
                 </div>
                 <div v-else>
@@ -592,6 +441,7 @@ const formatDate = (dateStr) => {
 </template>
 
 <style scoped>
+/* ─── Page Layout ───────────────────────────────────────── */
 .inventory-page {
     padding: 1.5rem;
     display: flex;
@@ -609,7 +459,7 @@ const formatDate = (dateStr) => {
     }
 }
 
-/* Header */
+/* ─── Header ────────────────────────────────────────────── */
 .inventory-header {
     display: flex;
     align-items: center;
@@ -619,130 +469,213 @@ const formatDate = (dateStr) => {
     gap: 1rem;
 }
 
+.header-start {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+}
+
 .header-icon-wrap {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 3.25rem;
-    height: 3.25rem;
-    border-radius: 1rem;
-    background: var(--p-surface-0);
-    border: 1px solid var(--p-surface-200);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    width: 3rem;
+    height: 3rem;
+    border-radius: 0.875rem;
+    background: linear-gradient(135deg, var(--p-primary-500), var(--p-primary-600));
+    color: white;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
 }
 
-.dark .header-icon-wrap {
-    background: var(--p-surface-900);
-    border-color: var(--p-surface-800);
+.header-text {
+    display: flex;
+    flex-direction: column;
 }
 
 .inventory-title {
-    font-size: 1.5rem;
+    font-size: 1.4rem;
     font-weight: 800;
     color: var(--p-surface-900);
     margin: 0;
+    line-height: 1.2;
 }
-
-.dark .inventory-title {
-    color: var(--p-surface-0);
-}
+.dark .inventory-title { color: var(--p-surface-0); }
 
 .inventory-subtitle {
-    font-size: 0.875rem;
-    color: var(--p-surface-500);
+    font-size: 0.825rem;
+    color: var(--p-surface-450);
     margin: 0.125rem 0 0;
+    font-weight: 500;
 }
 
-/* Inventory Stats Grid */
+.help-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: 1px solid var(--p-surface-200);
+    border-radius: 0.625rem;
+    background: var(--p-surface-0);
+    color: var(--p-surface-400);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.dark .help-btn {
+    background: var(--p-surface-800);
+    border-color: var(--p-surface-700);
+    color: var(--p-surface-500);
+}
+.help-btn:hover {
+    border-color: var(--p-primary-300);
+    color: var(--p-primary-500);
+    background: var(--p-primary-50);
+}
+.dark .help-btn:hover {
+    border-color: var(--p-primary-700);
+    color: var(--p-primary-400);
+    background: rgba(59, 130, 246, 0.1);
+}
+
+/* ─── Stats Grid ────────────────────────────────────────── */
 .inventory-stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1.25rem;
-    margin-bottom: 0.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.875rem;
 }
 
 .stat-card {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 1rem;
-    padding: 1.25rem;
+    gap: 0.875rem;
+    padding: 1.125rem 1rem;
     border-radius: 1rem;
     background: var(--p-surface-0);
-    border: 1px solid var(--p-surface-200);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+    border: 1px solid var(--p-surface-150);
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
 }
-
 .dark .stat-card {
     background: var(--p-surface-900);
     border-color: var(--p-surface-800);
 }
 
-.stat-icon {
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+.dark .stat-card:hover {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.stat-card.stat-active {
+    border-color: var(--p-primary-300);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08);
+}
+.dark .stat-card.stat-active {
+    border-color: var(--p-primary-600);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.stat-accent {
+    position: absolute;
+    bottom: 0;
+    inset-inline-start: 0;
+    inset-inline-end: 0;
+    height: 3px;
+    border-radius: 0 0 1rem 1rem;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+}
+.stat-card.stat-active .stat-accent,
+.stat-card:hover .stat-accent { opacity: 1; }
+
+.stat-accent.blue { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+.stat-accent.green { background: linear-gradient(90deg, #10b981, #34d399); }
+.stat-accent.orange { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.stat-accent.red { background: linear-gradient(90deg, #ef4444, #f87171); }
+.stat-accent.amber { background: linear-gradient(90deg, #ea580c, #fb923c); }
+
+.stat-icon-circle {
     display: flex;
     align-items: center;
     justify-content: center;
     width: 2.75rem;
     height: 2.75rem;
     border-radius: 0.75rem;
+    flex-shrink: 0;
 }
 
-.stat-icon.blue {
-    background: rgba(59, 130, 246, 0.1);
-    color: #3b82f6;
-}
+.stat-icon-circle.blue  { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+.stat-icon-circle.green { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+.stat-icon-circle.orange { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.stat-icon-circle.red   { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+.stat-icon-circle.amber { background: rgba(234, 88, 12, 0.1); color: #ea580c; }
 
-.stat-icon.red {
-    background: rgba(239, 68, 68, 0.1);
-    color: #ef4444;
-}
-
-.stat-icon.orange, .stat-icon.amber {
-    background: rgba(245, 158, 11, 0.1);
-    color: #f59e0b;
-}
-
-.stat-icon.green {
-    background: rgba(16, 185, 129, 0.1);
-    color: #10b981;
-}
-
-.stat-info {
+.stat-body {
     display: flex;
     flex-direction: column;
-}
-
-.stat-label {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--p-surface-500);
+    min-width: 0;
 }
 
 .stat-value {
     font-size: 1.5rem;
-    font-weight: 800;
+    font-weight: 850;
     color: var(--p-surface-900);
-    line-height: 1.2;
-    margin: 0.125rem 0;
+    line-height: 1.1;
+}
+.dark .stat-value { color: var(--p-surface-0); }
+
+.stat-label {
+    font-size: 0.775rem;
+    font-weight: 600;
+    color: var(--p-surface-450);
+    margin-top: 0.125rem;
 }
 
-.dark .stat-value {
-    color: var(--p-surface-0);
+.stat-sub-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-inline-start: auto;
 }
 
-.stat-sub {
-    font-size: 0.75rem;
-    color: var(--p-surface-400);
+.sub-chip {
+    font-size: 0.675rem;
+    font-weight: 700;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    white-space: nowrap;
 }
 
-/* Card Wrapper */
+.sub-chip.warn {
+    background: #fef3c7;
+    color: #b45309;
+}
+.dark .sub-chip.warn {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+}
+
+.sub-chip.danger {
+    background: #fef2f2;
+    color: #dc2626;
+}
+.dark .sub-chip.danger {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+}
+
+/* ─── Card Wrapper ──────────────────────────────────────── */
 .inventory-card {
     border-radius: 1rem;
-    border: 1px solid var(--p-surface-200);
+    border: 1px solid var(--p-surface-150);
     background: var(--p-surface-0);
     overflow: hidden;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.02);
 }
-
 .dark .inventory-card {
     background: var(--p-surface-900);
     border-color: var(--p-surface-800);
@@ -753,36 +686,125 @@ const formatDate = (dateStr) => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1rem 1.25rem;
-    border-bottom: 1px solid var(--p-surface-200);
-    background: var(--p-surface-50);
+    padding: 0.875rem 1.25rem;
+    border-bottom: 1px solid var(--p-surface-100);
+    background: var(--p-surface-25);
+    gap: 0.75rem;
 }
-
 .dark .inventory-filter-bar {
     border-color: var(--p-surface-800);
     background: var(--p-surface-950);
 }
 
-/* Dialog Form */
-.inventory-dialog-form {
+.search-input-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 22rem;
+}
+
+.search-icon {
+    position: absolute;
+    inset-inline-start: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--p-surface-400);
+    pointer-events: none;
+}
+
+.status-filter-select {
+    min-width: 9rem;
+    flex-shrink: 0;
+}
+
+/* ─── Dialog Styles ─────────────────────────────────────── */
+.dialog-body {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    padding: 0.5rem 0;
+    padding: 0.25rem 0;
 }
 
-.transfer-info-card {
-    padding: 0.875rem 1rem;
-    border-radius: 0.5rem;
+.dialog-footer {
+    display: flex;
+    gap: 0.625rem;
+    justify-content: flex-end;
+    width: 100%;
+}
+
+/* Transfer Dialog Card */
+.transfer-product-card {
+    padding: 1rem 1.125rem;
+    border-radius: 0.75rem;
     background: var(--p-surface-50);
+    border: 1px solid var(--p-surface-150);
+}
+.dark .transfer-product-card {
+    background: var(--p-surface-850);
+    border-color: var(--p-surface-750);
+}
+
+.transfer-product-name {
+    font-size: 0.95rem;
+    font-weight: 750;
+    color: var(--p-surface-900);
+    margin-bottom: 0.75rem;
+}
+.dark .transfer-product-name { color: var(--p-surface-50); }
+
+.transfer-direction {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.transfer-from, .transfer-to {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.625rem;
+    border-radius: 0.625rem;
+    background: var(--p-surface-0);
     border: 1px solid var(--p-surface-200);
 }
-
-.dark .transfer-info-card {
-    background: var(--p-surface-950);
-    border-color: var(--p-surface-850);
+.dark .transfer-from, .dark .transfer-to {
+    background: var(--p-surface-900);
+    border-color: var(--p-surface-700);
 }
 
+.transfer-loc-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--p-surface-400);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.transfer-loc-value {
+    font-size: 0.875rem;
+    font-weight: 750;
+    color: var(--p-surface-800);
+}
+.dark .transfer-loc-value { color: var(--p-surface-150); }
+
+.transfer-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 9999px;
+    background: var(--p-primary-50);
+    color: var(--p-primary-600);
+    flex-shrink: 0;
+}
+.dark .transfer-arrow {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--p-primary-400);
+}
+
+/* ─── Form Fields ───────────────────────────────────────── */
 .form-field {
     display: flex;
     flex-direction: column;
@@ -790,13 +812,112 @@ const formatDate = (dateStr) => {
 }
 
 .form-field label {
-    font-size: 0.875rem;
+    font-size: 0.85rem;
     font-weight: 700;
     color: var(--p-surface-700);
 }
+.dark .form-field label { color: var(--p-surface-200); }
 
-.dark .form-field label {
-    color: var(--p-surface-200);
+.label-hint {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--p-surface-400);
+}
+
+/* Base Quantity Indicator */
+.base-qty-indicator {
+    padding: 0.75rem 1rem;
+    border-radius: 0.625rem;
+    background: var(--p-primary-50);
+    border: 1px solid var(--p-primary-100);
+}
+.dark .base-qty-indicator {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.2);
+}
+
+.base-qty-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.base-qty-label {
+    font-size: 0.825rem;
+    font-weight: 600;
+    color: var(--p-surface-600);
+}
+.dark .base-qty-label { color: var(--p-surface-350); }
+
+.base-qty-value {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--p-primary-600);
+}
+.dark .base-qty-value { color: var(--p-primary-400); }
+
+/* ─── Help Content ──────────────────────────────────────── */
+.help-content {
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    color: var(--p-surface-700);
+}
+.dark .help-content { color: var(--p-surface-300); }
+
+.help-section-title {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--p-primary-600);
+    margin: 0 0 0.5rem;
+}
+.dark .help-section-title { color: var(--p-primary-400); }
+
+.help-item {
+    padding: 0.875rem 1rem;
+    border-radius: 0.75rem;
+    background: var(--p-surface-50);
+    border: 1px solid var(--p-surface-100);
+}
+.dark .help-item {
+    background: var(--p-surface-850);
+    border-color: var(--p-surface-750);
+}
+
+.help-item-title {
+    font-size: 0.9rem;
+    font-weight: 750;
+    color: var(--p-surface-900);
+    margin: 0 0 0.375rem;
+}
+.dark .help-item-title { color: var(--p-surface-100); }
+
+.help-item-text {
+    font-size: 0.85rem;
+    line-height: 1.6;
+    margin: 0;
+}
+
+/* ─── Transitions ───────────────────────────────────────── */
+.fade-slide-enter-active {
+    animation: fadeSlide 0.3s ease;
+}
+.fade-slide-leave-active {
+    animation: fadeSlide 0.2s ease reverse;
+}
+
+@keyframes fadeSlide {
+    0% {
+        opacity: 0;
+        transform: translateY(-4px);
+        max-height: 0;
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+        max-height: 100px;
+    }
 }
 
 :deep(.p-datatable-tbody > tr > td) {

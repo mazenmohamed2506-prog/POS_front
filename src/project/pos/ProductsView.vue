@@ -7,7 +7,8 @@ import { usePosStore } from "@/stores/pos/posStore";
 import {
     Package, Plus, Pencil, Trash2, Search, Star,
     PlusCircle, ArrowLeft, Eye,
-    LayoutGrid, CheckCircle2, XCircle, AlertCircle
+    LayoutGrid, CheckCircle2, XCircle, AlertCircle,
+    ChevronDown, Hash, Barcode, DollarSign, Tag as TagIcon, Layers, RefreshCw
 } from "lucide-vue-next";
 
 // Category combobox state
@@ -269,85 +270,101 @@ const viewConversions = async (product) => {
     <div class="products-page">
         <!-- Header -->
         <div class="products-header">
-            <div class="flex items-center gap-3">
+            <div class="header-start">
                 <div class="header-icon-wrap">
-                    <Package :size="28" class="text-primary-500" />
+                    <Package :size="26" />
                 </div>
-                <div>
+                <div class="header-text">
                     <h1 class="products-title">إدارة المنتجات</h1>
                     <p class="products-subtitle">عرض وإضافة وتعديل بيانات المنتجات والأسعار</p>
                 </div>
             </div>
-            <Button v-if="posStore.role === 'Manager' || posStore.role === 'SuperAdmin'" label="إضافة منتج" @click="openNewProduct">
-                <template #icon>
-                    <Plus :size="18" />
-                </template>
-            </Button>
+            <div class="header-actions">
+                <Button v-if="posStore.role === 'Manager' || posStore.role === 'SuperAdmin'" label="إضافة منتج" @click="openNewProduct" class="add-product-btn">
+                    <template #icon><Plus :size="18" /></template>
+                </Button>
+            </div>
         </div>
 
         <!-- Catalog Overview Stats Cards -->
         <div class="products-stats-grid">
             <div class="stat-card">
-                <div class="stat-icon blue">
+                <div class="stat-icon-circle blue">
                     <Package :size="20" />
                 </div>
-                <div class="stat-info">
-                    <span class="stat-label">إجمالي المنتجات</span>
+                <div class="stat-body">
                     <span class="stat-value">{{ totalProducts }}</span>
-                    <span class="stat-sub">جميع المنتجات المسجلة</span>
+                    <span class="stat-label">إجمالي المنتجات</span>
                 </div>
+                <div class="stat-accent blue"></div>
             </div>
             <div class="stat-card">
-                <div class="stat-icon green">
+                <div class="stat-icon-circle green">
                     <CheckCircle2 :size="20" />
                 </div>
-                <div class="stat-info">
-                    <span class="stat-label">المنتجات النشطة</span>
+                <div class="stat-body">
                     <span class="stat-value">{{ activeProducts }}</span>
-                    <span class="stat-sub">متاحة للبيع</span>
+                    <span class="stat-label">منتجات نشطة</span>
                 </div>
+                <div class="stat-accent green"></div>
             </div>
             <div class="stat-card">
-                <div class="stat-icon red">
+                <div class="stat-icon-circle red">
                     <XCircle :size="20" />
                 </div>
-                <div class="stat-info">
-                    <span class="stat-label">المنتجات غير النشطة</span>
+                <div class="stat-body">
                     <span class="stat-value">{{ inactiveProducts }}</span>
-                    <span class="stat-sub">غير معروضة للبيع</span>
+                    <span class="stat-label">غير نشطة</span>
                 </div>
+                <div class="stat-accent red"></div>
             </div>
             <div class="stat-card">
-                <div class="stat-icon orange">
+                <div class="stat-icon-circle orange">
                     <AlertCircle :size="20" />
                 </div>
-                <div class="stat-info">
-                    <span class="stat-label">بيانات غير مكتملة</span>
+                <div class="stat-body">
                     <span class="stat-value">{{ incompleteProducts }}</span>
-                    <span class="stat-sub">بدون باركود أو السعر 0</span>
+                    <span class="stat-label">بيانات ناقصة</span>
                 </div>
+                <span class="stat-hint">بدون باركود أو سعر</span>
+                <div class="stat-accent orange"></div>
             </div>
         </div>
 
         <!-- Error Banner -->
-        <div v-if="productStore.error" class="mb-4 p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-lg flex items-center justify-between">
-            <span>{{ productStore.error }}</span>
-            <Button label="إعادة المحاولة" size="small" severity="danger" text @click="productStore.fetchProducts()" />
-        </div>
+        <Transition name="fade-slide">
+            <div v-if="productStore.error" class="error-banner">
+                <div class="error-banner-content">
+                    <AlertCircle :size="18" />
+                    <span>{{ productStore.error }}</span>
+                </div>
+                <Button label="إعادة المحاولة" size="small" severity="danger" text @click="productStore.fetchProducts()">
+                    <template #icon><RefreshCw :size="14" /></template>
+                </Button>
+            </div>
+        </Transition>
 
         <!-- Table Container Card -->
         <div class="products-card">
             <!-- Filter TopBar -->
-            <div class="products-filter-bar flex justify-between items-center flex-wrap gap-3">
-                <div class="relative w-full max-w-xs">
-                    <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400 dark:text-surface-500" />
+            <div class="products-filter-bar">
+                <div class="search-input-wrap">
+                    <Search :size="16" class="search-icon" />
                     <InputText
                         v-model="filters.global.value"
-                        placeholder="         بحث سريع عن صنف..."
+                        placeholder="بحث سريع عن المنتج، الباركود، أو الفئة..."
                         class="ps-10 pr-4 w-full"
                         autocomplete="off"
                         size="small"
                     />
+                </div>
+                <div class="filter-actions">
+                    <Button label="إدارة الفئات" size="small" outlined severity="secondary" @click="openManageCategories">
+                        <template #icon><LayoutGrid :size="14" /></template>
+                    </Button>
+                    <Button label="إدارة الوحدات" size="small" outlined severity="secondary" @click="openManageUnits">
+                        <template #icon><Layers :size="14" /></template>
+                    </Button>
                 </div>
             </div>
 
@@ -366,52 +383,64 @@ const viewConversions = async (product) => {
                 scrollable
                 class="products-table"
             >
-                <Column field="name" header="اسم المنتج" sortable style="min-width: 220px">
+                <Column field="name" header="المنتج" sortable style="min-width: 240px">
                     <template #body="{ data }">
-                        <span class="font-bold text-surface-800 dark:text-surface-100">{{ data.name }}</span>
-                    </template>
-                </Column>
-                <Column field="sku" header="رمز المنتج" sortable style="min-width: 140px">
-                    <template #body="{ data }">
-                        <span class="text-sm font-semibold font-mono text-surface-600 dark:text-surface-400">{{ data.sku }}</span>
+                        <div class="product-name-cell">
+                            <div class="product-avatar">
+                                <Package :size="16" />
+                            </div>
+                            <div class="product-name-info">
+                                <span class="product-name-text">{{ data.name }}</span>
+                                <span class="product-sku-text">
+                                    <Hash :size="11" />
+                                    {{ data.sku || '—' }}
+                                </span>
+                            </div>
+                        </div>
                     </template>
                 </Column>
 
                 <Column field="category" header="الفئة" sortable style="min-width: 130px">
                     <template #body="{ data }">
-                        <Tag :value="data.category" severity="info" class="font-medium" />
+                        <span class="category-chip" v-if="data.category">
+                            <TagIcon :size="12" />
+                            {{ data.category }}
+                        </span>
+                        <span v-else class="text-surface-300 dark:text-surface-600 text-sm">—</span>
                     </template>
                 </Column>
-                 <Column field="costPrice" header="سعر الشراء" sortable style="min-width: 130px">
+
+                <Column field="costPrice" header="سعر الشراء" sortable style="min-width: 130px">
                     <template #body="{ data }">
-                        <span class="font-black text-primary-600 dark:text-primary-450">{{ data.costPrice?.toFixed(2) }} EGP</span>
+                        <span class="price-cell cost">{{ data.costPrice?.toFixed(2) || '0.00' }} <small>EGP</small></span>
                     </template>
                 </Column>
+
                 <Column field="sellingPrice" header="سعر البيع" sortable style="min-width: 130px">
                     <template #body="{ data }">
-                        <span class="font-black text-primary-600 dark:text-primary-450">{{ data.sellingPrice?.toFixed(2) }} EGP</span>
+                        <span class="price-cell sell">{{ data.sellingPrice?.toFixed(2) || '0.00' }} <small>EGP</small></span>
                     </template>
                 </Column>
+
                 <Column field="itemDiscount" header="الخصم" sortable style="min-width: 110px">
                     <template #body="{ data }">
-                        <span :class="data.itemDiscount > 0 ? 'text-red-500 font-bold' : 'text-surface-400'">
-                            {{ data.itemDiscount > 0 ? data.itemDiscount.toFixed(2) + ' EGP' : '—' }}
+                        <span v-if="data.itemDiscount > 0" class="discount-badge">
+                            -{{ data.itemDiscount.toFixed(2) }}
                         </span>
+                        <span v-else class="text-surface-300 dark:text-surface-600 text-sm">—</span>
                     </template>
                 </Column>
 
-
-
-                <Column header="إجراءات" style="min-width: 130px; text-align: center">
+                <Column header="إجراءات" style="min-width: 140px; text-align: center">
                     <template #body="{ data }">
-                        <div class="flex gap-1 justify-center">
-                            <button class="action-view-btn text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 p-1.5 rounded-md border border-primary-200 dark:border-primary-800 transition-colors" @click="openProductDetails(data)" title="عرض التفاصيل">
+                        <div class="actions-cell">
+                            <button class="act-btn act-view" @click="openProductDetails(data)" title="عرض التفاصيل">
                                 <Eye :size="15" />
                             </button>
-                            <button class="action-edit-btn" @click="openEditProduct(data)" title="تعديل">
+                            <button class="act-btn act-edit" @click="openEditProduct(data)" title="تعديل">
                                 <Pencil :size="15" />
                             </button>
-                            <button class="action-delete-btn" @click="deleteProduct(data)" title="حذف">
+                            <button class="act-btn act-delete" @click="deleteProduct(data)" title="حذف">
                                 <Trash2 :size="15" />
                             </button>
                         </div>
@@ -424,11 +453,11 @@ const viewConversions = async (product) => {
         <Dialog
             v-model:visible="showProductDialog"
             :header="editingProduct ? 'تعديل بيانات المنتج' : 'إضافة منتج جديد'"
-            :style="{ width: '520px' }"
+            :style="{ width: '560px' }"
             modal
             dismissableMask
         >
-            <div class="product-dialog-form">
+            <div class="dialog-body">
 
                 <div class="grid grid-cols-2 gap-4">
                     <div class="form-field">
@@ -444,7 +473,6 @@ const viewConversions = async (product) => {
                 <div class="form-field">
                     <div class="flex justify-between items-center mb-1">
                         <label class="required">الفئة</label>
-                        <Button label="إدارة الفئات" size="small" severity="info" outlined @click="openManageCategories" />
                     </div>
                     <Select 
                         v-model="productForm.category" 
@@ -460,25 +488,29 @@ const viewConversions = async (product) => {
                 
                 <!-- Units section -->
                 <div class="units-section">
-                    <div class="flex justify-between items-center mb-2">
-                        <label class="font-bold text-surface-700 dark:text-surface-200">وحدات المنتج <span class="text-xs font-normal text-surface-500">(يجب أن توجد وحدة أساسية واحدة بمعامل 1)</span></label>
-                        <div class="flex gap-2">
-                            <Button label="إدارة الوحدات" size="small" severity="info" outlined @click="openManageUnits" />
-                            <Button label="إضافة وحدة" size="small" outlined @click="addUnitLine">
-                                <template #icon><Plus :size="14" /></template>
-                            </Button>
+                    <div class="units-section-header">
+                        <div class="units-section-title">
+                            <Layers :size="16" />
+                            <span>وحدات المنتج</span>
+                            <span class="units-hint">يجب أن توجد وحدة أساسية بمعامل 1</span>
                         </div>
+                        <Button label="إضافة وحدة" size="small" outlined @click="addUnitLine">
+                            <template #icon><Plus :size="14" /></template>
+                        </Button>
                     </div>
                     
                     <div class="units-list">
-                        <div v-for="(unit, idx) in productForm.units" :key="idx" class="unit-card" :class="{'border-primary-400 bg-primary-50 dark:bg-primary-900/10': unit.factor === 1}">
-                            <div class="flex justify-between items-center mb-2">
-                                <div class="flex items-center gap-2">
-                                    <span class="font-bold text-sm">وحدة #{{ idx + 1 }}</span>
-                                    <Tag v-if="unit.factor === 1" value="وحدة أساسية" severity="success" class="text-[10px] px-1 py-0 h-4 leading-none"><template #icon><Star :size="10" class="mr-1" /></template></Tag>
+                        <div v-for="(unit, idx) in productForm.units" :key="idx" class="unit-card" :class="{'unit-card-base': unit.factor === 1}">
+                            <div class="unit-card-header">
+                                <div class="unit-card-title">
+                                    <span class="unit-number">#{{ idx + 1 }}</span>
+                                    <span v-if="unit.factor === 1" class="base-unit-badge">
+                                        <Star :size="10" />
+                                        أساسية
+                                    </span>
                                 </div>
-                                <button class="action-delete-btn !w-6 !h-6" @click="removeUnitLine(idx)" :disabled="productForm.units.length === 1" title="حذف">
-                                    <Trash2 :size="12" />
+                                <button class="unit-remove-btn" @click="removeUnitLine(idx)" :disabled="productForm.units.length === 1" title="حذف">
+                                    <Trash2 :size="13" />
                                 </button>
                             </div>
                             <div class="grid grid-cols-2 gap-3 mb-3">
@@ -503,7 +535,7 @@ const viewConversions = async (product) => {
                             </div>
                             <div class="grid grid-cols-2 gap-3">
                                 <div class="form-field">
-                                    <label>باركود الوحدة (اختياري)</label>
+                                    <label>باركود الوحدة</label>
                                     <InputText v-model="unit.barcode" size="small" fluid placeholder="باركود هذه الوحدة" />
                                 </div>
                                 <div class="form-field">
@@ -516,9 +548,11 @@ const viewConversions = async (product) => {
                 </div>
             </div>
             <template #footer>
-                <div class="flex gap-2 w-full justify-end">
+                <div class="dialog-footer">
                     <Button label="إلغاء" outlined severity="secondary" @click="showProductDialog = false" />
-                    <Button label="حفظ المنتج" @click="saveProduct" :loading="productStore.loading" :disabled="!productForm.name || productForm.units.length === 0" />
+                    <Button label="حفظ المنتج" @click="saveProduct" :loading="productStore.loading" :disabled="!productForm.name || productForm.units.length === 0">
+                        <template #icon><CheckCircle2 :size="16" /></template>
+                    </Button>
                 </div>
             </template>
         </Dialog>
@@ -531,25 +565,25 @@ const viewConversions = async (product) => {
             modal
             dismissableMask
         >
-            <div v-if="unitConversions" class="py-2">
-                <div class="mb-4 bg-primary-50 dark:bg-primary-900/20 p-3 rounded-lg border border-primary-200 dark:border-primary-800">
-                    <p class="font-bold text-surface-800 dark:text-surface-200">
-                        المنتج: <span class="text-primary-600 dark:text-primary-400">{{ unitConversions.product }}</span>
-                    </p>
-                    <p class="text-sm mt-1 text-surface-600 dark:text-surface-400">
-                        الوحدة الأساسية: <span class="font-bold">{{ unitConversions.baseUnit }}</span>
+            <div v-if="unitConversions" class="dialog-body">
+                <div class="conv-product-card">
+                    <p class="conv-product-name">{{ unitConversions.product }}</p>
+                    <p class="conv-base-unit">
+                        الوحدة الأساسية: <strong>{{ unitConversions.baseUnit }}</strong>
                     </p>
                 </div>
                 
-                <h4 class="font-bold mb-2 text-surface-700 dark:text-surface-300">التحويلات المتاحة:</h4>
-                <div class="flex flex-col gap-2">
-                    <div v-for="(conv, idx) in unitConversions.conversions" :key="idx" 
-                         class="p-3 bg-surface-50 dark:bg-surface-900 rounded border border-surface-200 dark:border-surface-800 flex justify-between items-center">
-                        <div class="flex items-center gap-2">
-                            <span class="font-bold">{{ conv.unit }}</span>
-                            <Tag v-if="conv.factor === 1" value="أساسية" severity="success" class="text-[10px] px-1 py-0 h-4 leading-none" />
+                <div class="conv-section-title">التحويلات المتاحة</div>
+                <div class="conv-list">
+                    <div v-for="(conv, idx) in unitConversions.conversions" :key="idx" class="conv-item">
+                        <div class="conv-item-start">
+                            <span class="conv-unit-name">{{ conv.unit }}</span>
+                            <span v-if="conv.factor === 1" class="base-unit-badge">
+                                <Star :size="10" />
+                                أساسية
+                            </span>
                         </div>
-                        <span class="text-surface-600 dark:text-surface-400 text-sm font-mono">{{ conv.description }}</span>
+                        <span class="conv-description">{{ conv.description }}</span>
                     </div>
                 </div>
             </div>
@@ -557,7 +591,7 @@ const viewConversions = async (product) => {
                 <ProgressSpinner strokeWidth="4" class="w-8 h-8" />
             </div>
             <template #footer>
-                <div class="flex justify-end w-full">
+                <div class="dialog-footer">
                     <Button label="إغلاق" outlined severity="secondary" @click="showConversionsDialog = false" />
                 </div>
             </template>
@@ -567,55 +601,80 @@ const viewConversions = async (product) => {
         <Dialog
             v-model:visible="showDetailsDialog"
             header="تفاصيل المنتج"
-            :style="{ width: '500px' }"
+            :style="{ width: '520px' }"
             modal
             dismissableMask
         >
-            <div v-if="selectedProductDetails" class="p-1 flex flex-col gap-4">
-                <div class="bg-surface-50 dark:bg-surface-900 p-4 rounded-lg border border-surface-200 dark:border-surface-800">
-                    <h3 class="font-bold text-lg mb-1">{{ selectedProductDetails.name }}</h3>
-                    <p class="text-sm text-surface-500 font-mono mb-2">SKU: {{ selectedProductDetails.sku }}</p>
-                    <Tag :value="selectedProductDetails.category" severity="info" class="font-medium" />
+            <div v-if="selectedProductDetails" class="dialog-body">
+                <!-- Product Header Card -->
+                <div class="detail-header-card">
+                    <div class="detail-header-top">
+                        <div class="detail-product-avatar">
+                            <Package :size="22" />
+                        </div>
+                        <div class="detail-product-info">
+                            <h3 class="detail-product-name">{{ selectedProductDetails.name }}</h3>
+                            <div class="detail-meta-row">
+                                <span class="detail-sku">
+                                    <Hash :size="12" />
+                                    {{ selectedProductDetails.sku }}
+                                </span>
+                                <span class="category-chip" v-if="selectedProductDetails.category">
+                                    <TagIcon :size="11" />
+                                    {{ selectedProductDetails.category }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <h4 class="font-bold text-surface-700 dark:text-surface-300 mt-2 border-b pb-2 dark:border-surface-800">الوحدات والأسعار</h4>
+                <!-- Units -->
+                <div class="detail-section-title">
+                    <Layers :size="16" />
+                    <span>الوحدات والأسعار</span>
+                </div>
                 
-                <div class="flex flex-col gap-3">
+                <div class="detail-units-list">
                     <div v-for="(unit, idx) in selectedProductDetails.units" :key="idx" 
-                         class="p-4 bg-white dark:bg-surface-950 rounded-lg border border-surface-200 dark:border-surface-800 shadow-sm relative overflow-hidden"
-                         :class="{'border-l-4 border-l-primary-500': unit.factor === 1}">
+                         class="detail-unit-card"
+                         :class="{'detail-unit-base': unit.factor === 1}">
                          
-                        <div class="flex justify-between items-start mb-2">
-                            <div class="flex items-center gap-2">
-                                <span class="font-bold text-md">{{ unit.name }}</span>
-                                <Tag v-if="unit.factor === 1" value="وحدة أساسية" severity="success" class="text-[10px] px-1 py-0 h-4 leading-none"></Tag>
-                                <span v-else class="text-xs bg-surface-100 dark:bg-surface-800 px-1.5 py-0.5 rounded text-surface-600 dark:text-surface-400">معامل: {{ unit.factor }}</span>
+                        <div class="detail-unit-header">
+                            <div class="detail-unit-name-row">
+                                <span class="detail-unit-name">{{ unit.name }}</span>
+                                <span v-if="unit.factor === 1" class="base-unit-badge">
+                                    <Star :size="10" />
+                                    أساسية
+                                </span>
+                                <span v-else class="factor-chip">معامل: {{ unit.factor }}</span>
                             </div>
                         </div>
                         
-                        <div class="text-xs text-surface-500 font-mono mb-4 bg-surface-50 dark:bg-surface-900 px-2 py-1.5 rounded">
-                            الباركود: {{ unit.barcode || selectedProductDetails.barcode || '—' }}
+                        <div class="detail-barcode" v-if="unit.barcode || selectedProductDetails.barcode">
+                            <Barcode :size="13" />
+                            <span>{{ unit.barcode || selectedProductDetails.barcode }}</span>
                         </div>
 
-                        <div class="grid grid-cols-2 gap-3 text-sm">
-                            <div class="flex flex-col bg-surface-50 dark:bg-surface-900/50 p-2 rounded">
-                                <span class="text-surface-500 text-[11px] mb-1">سعر الشراء</span>
-                                <span class="font-bold text-surface-800 dark:text-surface-200">{{ unit.costPrice?.toFixed(2) ?? unit.cost?.toFixed(2) ?? '0.00' }} <span class="text-[10px]">EGP</span></span>
+                        <div class="detail-prices-row">
+                            <div class="detail-price-box cost">
+                                <span class="dpb-label">سعر الشراء</span>
+                                <span class="dpb-value">{{ unit.costPrice?.toFixed(2) ?? unit.cost?.toFixed(2) ?? '0.00' }} <small>EGP</small></span>
                             </div>
-                            <div class="flex flex-col bg-primary-50 dark:bg-primary-900/20 p-2 rounded">
-                                <span class="text-primary-600 dark:text-primary-400 text-[11px] mb-1">سعر البيع</span>
-                                <span class="font-black text-primary-700 dark:text-primary-300">{{ unit.sellingPrice?.toFixed(2) ?? unit.price?.toFixed(2) ?? '0.00' }} <span class="text-[10px]">EGP</span></span>
+                            <div class="detail-price-box sell">
+                                <span class="dpb-label">سعر البيع</span>
+                                <span class="dpb-value">{{ unit.sellingPrice?.toFixed(2) ?? unit.price?.toFixed(2) ?? '0.00' }} <small>EGP</small></span>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
             <template #footer>
-                <div class="flex justify-end w-full">
+                <div class="dialog-footer">
                     <Button label="إغلاق" outlined severity="secondary" @click="showDetailsDialog = false" />
                 </div>
             </template>
         </Dialog>
+
         <!-- Manage Categories Dialog -->
         <Dialog
             v-model:visible="showManageCategoriesDialog"
@@ -624,36 +683,37 @@ const viewConversions = async (product) => {
             modal
             dismissableMask
         >
-            <div class="flex flex-col gap-4 py-2">
-                <div class="flex gap-2 items-end">
-                    <div class="form-field flex-1">
+            <div class="dialog-body">
+                <div class="manage-input-row">
+                    <div class="form-field" style="flex:1">
                         <label>{{ editingCategory ? 'تعديل فئة' : 'إضافة فئة جديدة' }}</label>
                         <InputText v-model="categoryForm.name" fluid placeholder="اسم الفئة" @keyup.enter="saveCategory" />
                     </div>
-                    <Button :label="editingCategory ? 'حفظ' : 'إضافة'" :icon="editingCategory ? 'pi pi-check' : 'pi pi-plus'" @click="saveCategory" :disabled="!categoryForm.name || productStore.loading" />
-                    <Button v-if="editingCategory" icon="pi pi-times" severity="secondary" outlined @click="editingCategory = null; categoryForm.name = ''" title="إلغاء التعديل" />
+                    <Button :label="editingCategory ? 'حفظ' : 'إضافة'" @click="saveCategory" :disabled="!categoryForm.name || productStore.loading">
+                        <template #icon><component :is="editingCategory ? CheckCircle2 : Plus" :size="16" /></template>
+                    </Button>
+                    <Button v-if="editingCategory" severity="secondary" outlined @click="editingCategory = null; categoryForm.name = ''" title="إلغاء التعديل">
+                        <template #icon><XCircle :size="16" /></template>
+                    </Button>
                 </div>
 
-                <div class="border rounded-lg border-surface-200 dark:border-surface-800 overflow-hidden mt-4">
-                    <DataTable :value="productStore.categories" :loading="productStore.loading" scrollable scrollHeight="300px" emptyMessage="لا توجد فئات">
-                        <Column field="name" header="اسم الفئة"></Column>
-                        <Column header="إجراءات" style="width: 100px">
-                            <template #body="{ data }">
-                                <div class="flex gap-1 justify-end">
-                                    <button class="action-edit-btn !w-7 !h-7" @click="editCategory(data)" title="تعديل">
-                                        <Pencil :size="14" />
-                                    </button>
-                                    <button class="action-delete-btn !w-7 !h-7" @click="removeCategory(data)" title="حذف">
-                                        <Trash2 :size="14" />
-                                    </button>
-                                </div>
-                            </template>
-                        </Column>
-                    </DataTable>
+                <div class="manage-list-wrap">
+                    <div v-if="productStore.categories?.length === 0" class="manage-empty">لا توجد فئات بعد</div>
+                    <div v-for="cat in productStore.categories" :key="cat.id" class="manage-list-item">
+                        <span class="manage-item-name">{{ cat.name }}</span>
+                        <div class="manage-item-actions">
+                            <button class="act-btn act-edit" @click="editCategory(cat)" title="تعديل">
+                                <Pencil :size="14" />
+                            </button>
+                            <button class="act-btn act-delete" @click="removeCategory(cat)" title="حذف">
+                                <Trash2 :size="14" />
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
             <template #footer>
-                <div class="flex justify-end w-full">
+                <div class="dialog-footer">
                     <Button label="إغلاق" outlined severity="secondary" @click="showManageCategoriesDialog = false" />
                 </div>
             </template>
@@ -667,36 +727,37 @@ const viewConversions = async (product) => {
             modal
             dismissableMask
         >
-            <div class="flex flex-col gap-4 py-2">
-                <div class="flex gap-2 items-end">
-                    <div class="form-field flex-1">
+            <div class="dialog-body">
+                <div class="manage-input-row">
+                    <div class="form-field" style="flex:1">
                         <label>{{ editingUnit ? 'تعديل وحدة' : 'إضافة وحدة جديدة' }}</label>
                         <InputText v-model="unitForm.name" fluid placeholder="اسم الوحدة" @keyup.enter="saveUnit" />
                     </div>
-                    <Button :label="editingUnit ? 'حفظ' : 'إضافة'" :icon="editingUnit ? 'pi pi-check' : 'pi pi-plus'" @click="saveUnit" :disabled="!unitForm.name || unitStore.loading" />
-                    <Button v-if="editingUnit" icon="pi pi-times" severity="secondary" outlined @click="editingUnit = null; unitForm.name = ''" title="إلغاء التعديل" />
+                    <Button :label="editingUnit ? 'حفظ' : 'إضافة'" @click="saveUnit" :disabled="!unitForm.name || unitStore.loading">
+                        <template #icon><component :is="editingUnit ? CheckCircle2 : Plus" :size="16" /></template>
+                    </Button>
+                    <Button v-if="editingUnit" severity="secondary" outlined @click="editingUnit = null; unitForm.name = ''" title="إلغاء التعديل">
+                        <template #icon><XCircle :size="16" /></template>
+                    </Button>
                 </div>
 
-                <div class="border rounded-lg border-surface-200 dark:border-surface-800 overflow-hidden mt-4">
-                    <DataTable :value="unitStore.units" :loading="unitStore.loading" scrollable scrollHeight="300px" emptyMessage="لا توجد وحدات">
-                        <Column field="name" header="اسم الوحدة"></Column>
-                        <Column header="إجراءات" style="width: 100px">
-                            <template #body="{ data }">
-                                <div class="flex gap-1 justify-end">
-                                    <button class="action-edit-btn !w-7 !h-7" @click="editUnit(data)" title="تعديل">
-                                        <Pencil :size="14" />
-                                    </button>
-                                    <button class="action-delete-btn !w-7 !h-7" @click="removeUnit(data)" title="حذف">
-                                        <Trash2 :size="14" />
-                                    </button>
-                                </div>
-                            </template>
-                        </Column>
-                    </DataTable>
+                <div class="manage-list-wrap">
+                    <div v-if="unitStore.units?.length === 0" class="manage-empty">لا توجد وحدات بعد</div>
+                    <div v-for="u in unitStore.units" :key="u.id" class="manage-list-item">
+                        <span class="manage-item-name">{{ u.name }}</span>
+                        <div class="manage-item-actions">
+                            <button class="act-btn act-edit" @click="editUnit(u)" title="تعديل">
+                                <Pencil :size="14" />
+                            </button>
+                            <button class="act-btn act-delete" @click="removeUnit(u)" title="حذف">
+                                <Trash2 :size="14" />
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
             <template #footer>
-                <div class="flex justify-end w-full">
+                <div class="dialog-footer">
                     <Button label="إغلاق" outlined severity="secondary" @click="showManageUnitsDialog = false" />
                 </div>
             </template>
@@ -705,6 +766,7 @@ const viewConversions = async (product) => {
 </template>
 
 <style scoped>
+/* ─── Page Layout ───────────────────────────────────────── */
 .products-page {
     padding: 1.5rem;
     display: flex;
@@ -716,13 +778,10 @@ const viewConversions = async (product) => {
 }
 
 @media (max-width: 768px) {
-    .products-page {
-        padding: 0.75rem;
-        gap: 1rem;
-    }
+    .products-page { padding: 0.75rem; gap: 1rem; }
 }
 
-/* Header */
+/* ─── Header ────────────────────────────────────────────── */
 .products-header {
     display: flex;
     align-items: center;
@@ -732,49 +791,174 @@ const viewConversions = async (product) => {
     gap: 1rem;
 }
 
+.header-start {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+}
+
 .header-icon-wrap {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 3.25rem;
-    height: 3.25rem;
-    border-radius: 1rem;
-    background: var(--p-surface-0);
-    border: 1px solid var(--p-surface-200);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    width: 3rem;
+    height: 3rem;
+    border-radius: 0.875rem;
+    background: linear-gradient(135deg, var(--p-primary-500), var(--p-primary-600));
+    color: white;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
 }
 
-.dark .header-icon-wrap {
+.header-text {
+    display: flex;
+    flex-direction: column;
+}
+
+.products-title {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: var(--p-surface-900);
+    margin: 0;
+    line-height: 1.2;
+}
+.dark .products-title { color: var(--p-surface-0); }
+
+.products-subtitle {
+    font-size: 0.825rem;
+    color: var(--p-surface-450);
+    margin: 0.125rem 0 0;
+    font-weight: 500;
+}
+
+.header-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* ─── Stats Grid ────────────────────────────────────────── */
+.products-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.875rem;
+}
+
+.stat-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 1.125rem 1rem;
+    border-radius: 1rem;
+    background: var(--p-surface-0);
+    border: 1px solid var(--p-surface-150);
+    overflow: hidden;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.dark .stat-card {
     background: var(--p-surface-900);
     border-color: var(--p-surface-800);
 }
 
-.products-title {
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+.dark .stat-card:hover {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.stat-accent {
+    position: absolute;
+    bottom: 0;
+    inset-inline-start: 0;
+    inset-inline-end: 0;
+    height: 3px;
+    border-radius: 0 0 1rem 1rem;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+}
+.stat-card:hover .stat-accent { opacity: 1; }
+.stat-accent.blue { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+.stat-accent.green { background: linear-gradient(90deg, #10b981, #34d399); }
+.stat-accent.red { background: linear-gradient(90deg, #ef4444, #f87171); }
+.stat-accent.orange { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+
+.stat-icon-circle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 0.75rem;
+    flex-shrink: 0;
+}
+.stat-icon-circle.blue  { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+.stat-icon-circle.green { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+.stat-icon-circle.red   { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+.stat-icon-circle.orange { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+
+.stat-body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.stat-value {
     font-size: 1.5rem;
-    font-weight: 800;
+    font-weight: 850;
     color: var(--p-surface-900);
-    margin: 0;
+    line-height: 1.1;
+}
+.dark .stat-value { color: var(--p-surface-0); }
+
+.stat-label {
+    font-size: 0.775rem;
+    font-weight: 600;
+    color: var(--p-surface-450);
+    margin-top: 0.125rem;
 }
 
-.dark .products-title {
-    color: var(--p-surface-0);
+.stat-hint {
+    font-size: 0.675rem;
+    font-weight: 500;
+    color: var(--p-surface-350);
+    margin-inline-start: auto;
+    white-space: nowrap;
 }
 
-.products-subtitle {
+/* ─── Error Banner ──────────────────────────────────────── */
+.error-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.875rem 1.25rem;
+    border-radius: 0.75rem;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #b91c1c;
+}
+.dark .error-banner {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.25);
+    color: #fca5a5;
+}
+
+.error-banner-content {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
     font-size: 0.875rem;
-    color: var(--p-surface-500);
-    margin: 0.125rem 0 0;
+    font-weight: 600;
 }
 
-/* Table Container Card */
+/* ─── Card & Filter Bar ─────────────────────────────────── */
 .products-card {
     border-radius: 1rem;
-    border: 1px solid var(--p-surface-200);
+    border: 1px solid var(--p-surface-150);
     background: var(--p-surface-0);
     overflow: hidden;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.02);
 }
-
 .dark .products-card {
     background: var(--p-surface-900);
     border-color: var(--p-surface-800);
@@ -785,102 +969,233 @@ const viewConversions = async (product) => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1rem 1.25rem;
-    border-bottom: 1px solid var(--p-surface-200);
-    background: var(--p-surface-50);
+    padding: 0.875rem 1.25rem;
+    border-bottom: 1px solid var(--p-surface-100);
+    background: var(--p-surface-25);
+    gap: 0.75rem;
+    flex-wrap: wrap;
 }
-
 .dark .products-filter-bar {
     border-color: var(--p-surface-800);
     background: var(--p-surface-950);
 }
 
-/* Action Buttons */
-.action-edit-btn,
-.action-delete-btn,
-.action-info-btn {
+.search-input-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 22rem;
+}
+
+.search-icon {
+    position: absolute;
+    inset-inline-start: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--p-surface-400);
+    pointer-events: none;
+}
+
+.filter-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* ─── Table Cells ───────────────────────────────────────── */
+.product-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.product-avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.625rem;
+    background: var(--p-surface-100);
+    color: var(--p-surface-500);
+    flex-shrink: 0;
+}
+.dark .product-avatar {
+    background: var(--p-surface-800);
+    color: var(--p-surface-400);
+}
+
+.product-name-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
+}
+
+.product-name-text {
+    font-size: 0.9rem;
+    font-weight: 750;
+    color: var(--p-surface-900);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dark .product-name-text { color: var(--p-surface-50); }
+
+.product-sku-text {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.725rem;
+    font-weight: 500;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    color: var(--p-surface-400);
+}
+
+.category-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.625rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 650;
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+}
+.dark .category-chip {
+    background: rgba(37, 99, 235, 0.1);
+    color: #60a5fa;
+    border-color: rgba(37, 99, 235, 0.25);
+}
+
+.price-cell {
+    font-size: 0.875rem;
+    font-weight: 800;
+}
+.price-cell small {
+    font-size: 0.65rem;
+    font-weight: 600;
+    opacity: 0.6;
+}
+.price-cell.cost {
+    color: var(--p-surface-700);
+}
+.dark .price-cell.cost { color: var(--p-surface-300); }
+.price-cell.sell {
+    color: var(--p-primary-600);
+}
+.dark .price-cell.sell { color: var(--p-primary-400); }
+
+.discount-badge {
+    display: inline-flex;
+    padding: 0.2rem 0.5rem;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 750;
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+}
+.dark .discount-badge {
+    background: rgba(239, 68, 68, 0.1);
+    color: #f87171;
+    border-color: rgba(239, 68, 68, 0.25);
+}
+
+/* ─── Action Buttons ────────────────────────────────────── */
+.actions-cell {
+    display: flex;
+    gap: 0.375rem;
+    justify-content: center;
+}
+
+.act-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 2rem;
     height: 2rem;
-    border-radius: 0.375rem;
-    border: 1px solid var(--p-surface-300);
-    background: var(--p-surface-0);
+    border-radius: 0.5rem;
+    border: 1px solid;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all 0.2s ease;
+    background: transparent;
 }
 
-.action-edit-btn {
-    color: var(--p-surface-650);
+.act-btn.act-view {
+    color: #3b82f6;
+    border-color: #bfdbfe;
+    background: #eff6ff;
+}
+.dark .act-btn.act-view {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.25);
+    color: #60a5fa;
+}
+.act-btn.act-view:hover {
+    background: #dbeafe;
+    border-color: #93c5fd;
+}
+.dark .act-btn.act-view:hover {
+    background: rgba(59, 130, 246, 0.2);
 }
 
-.action-info-btn {
-    color: var(--p-blue-500);
+.act-btn.act-edit {
+    color: var(--p-surface-550);
+    border-color: var(--p-surface-250);
+    background: var(--p-surface-0);
 }
-
-.dark .action-edit-btn,
-.dark .action-info-btn {
+.dark .act-btn.act-edit {
     background: var(--p-surface-800);
     border-color: var(--p-surface-700);
+    color: var(--p-surface-300);
 }
-.dark .action-edit-btn { color: var(--p-surface-300); }
-.dark .action-info-btn { color: var(--p-blue-400); }
-
-.action-edit-btn:hover {
-    background: var(--p-primary-50);
-    border-color: var(--p-primary-300);
+.act-btn.act-edit:hover {
     color: var(--p-primary-600);
+    border-color: var(--p-primary-200);
+    background: var(--p-primary-50);
 }
-
-.action-info-btn:hover {
-    background: rgba(59, 130, 246, 0.1);
-    border-color: rgba(59, 130, 246, 0.3);
-    color: var(--p-blue-600);
-}
-
-.dark .action-edit-btn:hover {
-    background: rgba(99, 102, 241, 0.15);
-    border-color: rgba(99, 102, 241, 0.3);
+.dark .act-btn.act-edit:hover {
     color: var(--p-primary-400);
+    border-color: rgba(99, 102, 241, 0.3);
+    background: rgba(99, 102, 241, 0.12);
 }
 
-.dark .action-info-btn:hover {
-    background: rgba(59, 130, 246, 0.2);
-    border-color: rgba(59, 130, 246, 0.4);
-    color: var(--p-blue-300);
-}
-
-.action-delete-btn {
+.act-btn.act-delete {
     color: #ef4444;
     border-color: #fecaca;
     background: #fef2f2;
 }
-
-.dark .action-delete-btn {
-    background: rgba(239, 68, 68, 0.1);
-    border-color: rgba(239, 68, 68, 0.3);
+.dark .act-btn.act-delete {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.25);
     color: #fca5a5;
 }
-
-.action-delete-btn:hover {
+.act-btn.act-delete:hover {
     background: #fee2e2;
     border-color: #fca5a5;
 }
-
-.dark .action-delete-btn:hover {
-    background: rgba(239, 68, 68, 0.2);
+.dark .act-btn.act-delete:hover {
+    background: rgba(239, 68, 68, 0.18);
     border-color: #f87171;
 }
 
-/* Dialog Form Styling */
-.product-dialog-form {
+/* ─── Dialog Body ───────────────────────────────────────── */
+.dialog-body {
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
-    padding: 0.5rem 0;
+    gap: 1rem;
+    padding: 0.25rem 0;
 }
 
+.dialog-footer {
+    display: flex;
+    gap: 0.625rem;
+    justify-content: flex-end;
+    width: 100%;
+}
+
+/* ─── Form Fields ───────────────────────────────────────── */
 .form-field {
     display: flex;
     flex-direction: column;
@@ -888,37 +1203,41 @@ const viewConversions = async (product) => {
 }
 
 .form-field label {
-    font-size: 0.875rem;
+    font-size: 0.85rem;
     font-weight: 700;
     color: var(--p-surface-700);
 }
+.dark .form-field label { color: var(--p-surface-200); }
 
-.dark .form-field label {
-    color: var(--p-surface-200);
-}
-
-/* Discount Field */
-.discount-field-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-}
-
-.discount-field-hint {
-    font-size: 0.75rem;
-    color: var(--p-surface-400);
-    font-weight: 500;
-}
-
-/* Units section */
+/* ─── Units Section ─────────────────────────────────────── */
 .units-section {
     margin-top: 0.5rem;
-    border-top: 1px solid var(--p-surface-200);
+    border-top: 1px solid var(--p-surface-150);
     padding-top: 1rem;
 }
+.dark .units-section { border-color: var(--p-surface-800); }
 
-.dark .units-section {
-    border-color: var(--p-surface-800);
+.units-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.units-section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 750;
+    color: var(--p-surface-700);
+}
+.dark .units-section-title { color: var(--p-surface-200); }
+
+.units-hint {
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--p-surface-400);
 }
 
 .units-list {
@@ -927,198 +1246,429 @@ const viewConversions = async (product) => {
     gap: 0.75rem;
     max-height: 400px;
     overflow-y: auto;
-    padding-inline-end: 0.5rem;
+    padding-inline-end: 0.25rem;
 }
 
 .unit-card {
     padding: 1rem;
-    border-radius: 0.5rem;
+    border-radius: 0.875rem;
     border: 1px solid var(--p-surface-200);
     background: var(--p-surface-50);
-    position: relative;
-    transition: border-color 0.2s, background-color 0.2s;
+    transition: all 0.2s ease;
 }
-
 .dark .unit-card {
-    border-color: var(--p-surface-700);
-    background: var(--p-surface-900);
+    border-color: var(--p-surface-750);
+    background: var(--p-surface-850);
 }
 
-/* Category Combobox */
-.category-combobox {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.add-category-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.375rem 0.75rem;
-    border-radius: 0.5rem;
-    border: 1px dashed var(--p-primary-300);
+.unit-card-base {
+    border-color: var(--p-primary-200);
     background: var(--p-primary-50);
-    color: var(--p-primary-600);
-    font-size: 0.8125rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s;
-    align-self: flex-start;
+}
+.dark .unit-card-base {
+    border-color: rgba(var(--p-primary-500-rgb, 59, 130, 246), 0.25);
+    background: rgba(var(--p-primary-500-rgb, 59, 130, 246), 0.06);
 }
 
-.add-category-btn:hover {
-    background: var(--p-primary-100);
-    border-color: var(--p-primary-400);
-    color: var(--p-primary-700);
+.unit-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
 }
 
-.dark .add-category-btn {
-    background: rgba(99, 102, 241, 0.1);
-    border-color: rgba(99, 102, 241, 0.35);
-    color: var(--p-primary-400);
-}
-
-.dark .add-category-btn:hover {
-    background: rgba(99, 102, 241, 0.2);
-    border-color: rgba(99, 102, 241, 0.5);
-    color: var(--p-primary-300);
-}
-
-.new-category-input-wrap {
+.unit-card-title {
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
 
-.back-to-select-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.25rem;
-    height: 2.25rem;
-    min-width: 2.25rem;
-    border-radius: 0.5rem;
-    border: 1px solid var(--p-surface-300);
-    background: var(--p-surface-0);
-    color: var(--p-surface-600);
-    cursor: pointer;
-    transition: all 0.15s;
-}
-
-.back-to-select-btn:hover {
-    background: var(--p-surface-100);
-    border-color: var(--p-surface-400);
-    color: var(--p-surface-800);
-}
-
-.dark .back-to-select-btn {
-    background: var(--p-surface-800);
-    border-color: var(--p-surface-700);
-    color: var(--p-surface-400);
-}
-
-.dark .back-to-select-btn:hover {
-    background: var(--p-surface-700);
-    color: var(--p-surface-200);
-}
-
-.new-category-hint {
-    font-size: 0.75rem;
-    color: var(--p-primary-500);
-    font-weight: 500;
-    margin: 0;
-    padding-inline-start: 2.75rem;
-}
-
-.dark .new-category-hint {
-    color: var(--p-primary-400);
-}
-
-/* Products Stats Grid */
-.products-stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 1.25rem;
-    margin-bottom: 0.5rem;
-}
-
-.stat-card {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 1.25rem;
-    border-radius: 1rem;
-    background: var(--p-surface-0);
-    border: 1px solid var(--p-surface-200);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
-}
-
-.dark .stat-card {
-    background: var(--p-surface-900);
-    border-color: var(--p-surface-800);
-}
-
-.stat-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.75rem;
-    height: 2.75rem;
-    border-radius: 0.75rem;
-}
-
-.stat-icon.blue {
-    background: rgba(59, 130, 246, 0.1);
-    color: #3b82f6;
-}
-
-.stat-icon.red {
-    background: rgba(239, 68, 68, 0.1);
-    color: #ef4444;
-}
-
-.stat-icon.orange {
-    background: rgba(245, 158, 11, 0.1);
-    color: #f59e0b;
-}
-
-.stat-icon.green {
-    background: rgba(16, 185, 129, 0.1);
-    color: #10b981;
-}
-
-.stat-info {
-    display: flex;
-    flex-direction: column;
-}
-
-.stat-label {
+.unit-number {
     font-size: 0.8rem;
-    font-weight: 600;
+    font-weight: 800;
     color: var(--p-surface-500);
 }
 
-.stat-value {
-    font-size: 1.5rem;
+.base-unit-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    background: #ecfdf5;
+    color: #059669;
+    border: 1px solid #a7f3d0;
+}
+.dark .base-unit-badge {
+    background: rgba(16, 185, 129, 0.1);
+    color: #34d399;
+    border-color: rgba(16, 185, 129, 0.25);
+}
+
+.unit-remove-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.375rem;
+    border: 1px solid #fecaca;
+    background: #fef2f2;
+    color: #ef4444;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.unit-remove-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.unit-remove-btn:not(:disabled):hover { background: #fee2e2; border-color: #fca5a5; }
+.dark .unit-remove-btn {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.25);
+    color: #fca5a5;
+}
+
+/* ─── Conversions Dialog ────────────────────────────────── */
+.conv-product-card {
+    padding: 1rem;
+    border-radius: 0.75rem;
+    background: var(--p-primary-50);
+    border: 1px solid var(--p-primary-100);
+}
+.dark .conv-product-card {
+    background: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.2);
+}
+
+.conv-product-name {
+    font-size: 0.95rem;
+    font-weight: 750;
+    color: var(--p-surface-900);
+    margin: 0 0 0.25rem;
+}
+.dark .conv-product-name { color: var(--p-surface-50); }
+
+.conv-base-unit {
+    font-size: 0.825rem;
+    color: var(--p-surface-500);
+    margin: 0;
+}
+.conv-base-unit strong {
+    color: var(--p-primary-600);
+}
+.dark .conv-base-unit strong { color: var(--p-primary-400); }
+
+.conv-section-title {
+    font-size: 0.8rem;
+    font-weight: 750;
+    color: var(--p-surface-500);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding-bottom: 0.375rem;
+    border-bottom: 1px dashed var(--p-surface-200);
+}
+.dark .conv-section-title { border-color: var(--p-surface-750); }
+
+.conv-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.conv-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    border-radius: 0.625rem;
+    background: var(--p-surface-50);
+    border: 1px solid var(--p-surface-150);
+    transition: background-color 0.15s;
+}
+.dark .conv-item {
+    background: var(--p-surface-850);
+    border-color: var(--p-surface-750);
+}
+
+.conv-item-start {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.conv-unit-name {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--p-surface-800);
+}
+.dark .conv-unit-name { color: var(--p-surface-150); }
+
+.conv-description {
+    font-size: 0.8rem;
+    font-weight: 500;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--p-surface-450);
+}
+
+/* ─── Detail Dialog ─────────────────────────────────────── */
+.detail-header-card {
+    padding: 1.125rem;
+    border-radius: 0.875rem;
+    background: var(--p-surface-50);
+    border: 1px solid var(--p-surface-150);
+}
+.dark .detail-header-card {
+    background: var(--p-surface-850);
+    border-color: var(--p-surface-750);
+}
+
+.detail-header-top {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+}
+
+.detail-product-avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 0.75rem;
+    background: linear-gradient(135deg, var(--p-primary-500), var(--p-primary-600));
+    color: white;
+    flex-shrink: 0;
+}
+
+.detail-product-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    min-width: 0;
+}
+
+.detail-product-name {
+    font-size: 1.1rem;
     font-weight: 800;
     color: var(--p-surface-900);
-    line-height: 1.2;
-    margin: 0.125rem 0;
+    margin: 0;
+}
+.dark .detail-product-name { color: var(--p-surface-50); }
+
+.detail-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    flex-wrap: wrap;
 }
 
-.dark .stat-value {
-    color: var(--p-surface-0);
-}
-
-.stat-sub {
+.detail-sku {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
     font-size: 0.75rem;
+    font-weight: 500;
+    font-family: 'JetBrains Mono', monospace;
     color: var(--p-surface-400);
+}
+
+.detail-section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 750;
+    color: var(--p-surface-500);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding-bottom: 0.375rem;
+    border-bottom: 1px dashed var(--p-surface-200);
+}
+.dark .detail-section-title { border-color: var(--p-surface-750); color: var(--p-surface-400); }
+
+.detail-units-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+}
+
+.detail-unit-card {
+    border: 1px solid var(--p-surface-200);
+    border-radius: 0.875rem;
+    background: var(--p-surface-0);
+    padding: 1rem;
+    transition: all 0.2s ease;
+}
+.dark .detail-unit-card {
+    background: var(--p-surface-850);
+    border-color: var(--p-surface-750);
+}
+
+.detail-unit-base {
+    border-inline-start: 3px solid var(--p-primary-500);
+}
+
+.detail-unit-header {
+    margin-bottom: 0.625rem;
+}
+
+.detail-unit-name-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.detail-unit-name {
+    font-size: 0.95rem;
+    font-weight: 750;
+    color: var(--p-surface-800);
+}
+.dark .detail-unit-name { color: var(--p-surface-100); }
+
+.factor-chip {
+    font-size: 0.675rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    border-radius: 0.375rem;
+    background: var(--p-surface-100);
+    color: var(--p-surface-500);
+}
+.dark .factor-chip {
+    background: var(--p-surface-800);
+    color: var(--p-surface-400);
+}
+
+.detail-barcode {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--p-surface-450);
+    padding: 0.375rem 0.625rem;
+    background: var(--p-surface-50);
+    border-radius: 0.375rem;
+    margin-bottom: 0.625rem;
+}
+.dark .detail-barcode {
+    background: var(--p-surface-900);
+}
+
+.detail-prices-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.625rem;
+}
+
+.detail-price-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.625rem 0.75rem;
+    border-radius: 0.625rem;
+}
+
+.detail-price-box.cost {
+    background: var(--p-surface-50);
+}
+.dark .detail-price-box.cost { background: var(--p-surface-900); }
+
+.detail-price-box.sell {
+    background: var(--p-primary-50);
+}
+.dark .detail-price-box.sell { background: rgba(59, 130, 246, 0.08); }
+
+.dpb-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--p-surface-400);
+}
+.detail-price-box.sell .dpb-label {
+    color: var(--p-primary-500);
+}
+
+.dpb-value {
+    font-size: 0.95rem;
+    font-weight: 850;
+    color: var(--p-surface-800);
+}
+.dark .dpb-value { color: var(--p-surface-150); }
+.detail-price-box.sell .dpb-value {
+    color: var(--p-primary-700);
+}
+.dark .detail-price-box.sell .dpb-value { color: var(--p-primary-300); }
+
+.dpb-value small {
+    font-size: 0.65rem;
+    font-weight: 600;
+    opacity: 0.6;
+}
+
+/* ─── Manage Categories / Units Dialog ──────────────────── */
+.manage-input-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.5rem;
+}
+
+.manage-list-wrap {
+    border: 1px solid var(--p-surface-200);
+    border-radius: 0.75rem;
+    overflow: hidden;
+    max-height: 300px;
+    overflow-y: auto;
+    margin-top: 0.75rem;
+}
+.dark .manage-list-wrap {
+    border-color: var(--p-surface-750);
+}
+
+.manage-empty {
+    padding: 2rem;
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--p-surface-400);
+    font-weight: 500;
+}
+
+.manage-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--p-surface-100);
+    transition: background-color 0.15s ease;
+}
+.dark .manage-list-item { border-color: var(--p-surface-800); }
+.manage-list-item:last-child { border-bottom: none; }
+.manage-list-item:hover {
+    background: var(--p-surface-50);
+}
+.dark .manage-list-item:hover { background: var(--p-surface-850); }
+
+.manage-item-name {
+    font-size: 0.875rem;
+    font-weight: 650;
+    color: var(--p-surface-800);
+}
+.dark .manage-item-name { color: var(--p-surface-150); }
+
+.manage-item-actions {
+    display: flex;
+    gap: 0.375rem;
+}
+
+/* ─── Transitions ───────────────────────────────────────── */
+.fade-slide-enter-active { animation: fadeSlide 0.3s ease; }
+.fade-slide-leave-active { animation: fadeSlide 0.2s ease reverse; }
+
+@keyframes fadeSlide {
+    0% { opacity: 0; transform: translateY(-6px); }
+    100% { opacity: 1; transform: translateY(0); }
 }
 
 :deep(.p-datatable-tbody > tr > td) {
     border-bottom: none !important;
 }
-
-
 </style>
