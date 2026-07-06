@@ -4,9 +4,54 @@ import { useInventoryStore } from "@/stores/pos/inventoryStore";
 import { useProductStore } from "@/stores/pos/productStore";
 import { Warehouse, ArrowRightLeft, Search, Plus, HelpCircle, Package, AlertTriangle, CheckCircle2, AlertCircle, Clock, Filter } from "lucide-vue-next";
 import InventoryTable from "./InventoryTable.vue";
+import HelpDrawer from "@/components/HelpDrawer.vue";
 
 const inventoryStore = useInventoryStore();
 const productStore = useProductStore();
+
+// ── Help Drawer ──
+const showHelp = ref(false);
+const inventoryHelpSections = [
+    {
+        title: 'عرض المخزون',
+        icon: Package,
+        color: '#dbeafe',
+        iconColor: '#2563eb',
+        steps: [
+            { title: 'بطاقات التصفية', desc: 'اضغط على أي بطاقة إحصاءية لتصفية المخزون (سليم، منخفض، منفد)' },
+            { title: 'البحث في المخزون', desc: 'اكتب اسم المنتج أو رمزه للبحث السريع' },
+            { title: 'عرض الباتشات', desc: 'كل صف يمثل دفعة منفصلة مع تاريخ الانتهاء ورقم الدفعة' },
+        ]
+    },
+    {
+        title: 'نقل المخزون',
+        icon: ArrowRightLeft,
+        color: '#fef3c7',
+        iconColor: '#d97706',
+        steps: [
+            { title: 'اضغط أيقونة النقل', desc: 'اختر الصف ثم اضغط زر النقل' },
+            { title: 'حدد الاتجاه', desc: 'من المستودع إلى الرف أو العكس' },
+            { title: 'حدد الكمية', desc: 'أدخل الكمية المراد نقلها واضغط تأكيد' },
+        ]
+    },
+    {
+        title: 'إضافة مخزون',
+        icon: Plus,
+        color: '#d1fae5',
+        iconColor: '#059669',
+        steps: [
+            { title: 'إستلام مخزون جديد', desc: 'اضغط "إستلام مخزون" واختر المنتج والكمية' },
+            { title: 'تحديد الموقع', desc: 'اختر رف البيع أو المستودع كموقع التخزين' },
+            { title: 'إدخال بيانات الدفعة', desc: 'يمكنك إدخال رقم الدفعة وتاريخ الانتهاء لتتبع الصلاحية' },
+        ]
+    },
+];
+const inventoryHelpTips = [
+    'المخزون ينقسم إلى رف البيع والمستودع',
+    'اللون الأحمر = منتج نفد، البرتقالي = مخزون منخفض',
+    'نقل من المستودع إلى الرف لتوفير المنتجات للبيع',
+    'تاريخ الانتهاء يظهر بلون أحمر إذا كان قريباً، تحقق منها بانتظام',
+];
 
 const showTransferDialog = ref(false);
 const showAddStockDialog = ref(false);
@@ -175,7 +220,7 @@ const formatDate = (dateStr) => {
                     <h1 class="inventory-title">إدارة المخزون</h1>
                     <p class="inventory-subtitle">متابعة ونقل البضائع بين المستودع ورفوف البيع</p>
                 </div>
-                <button class="help-btn" @click="openHelp" aria-label="مساعدة">
+                <button class="help-btn" @click="showHelp = true" aria-label="مساعدة">
                     <HelpCircle :size="18" />
                 </button>
             </div>
@@ -183,6 +228,17 @@ const formatDate = (dateStr) => {
                 <template #icon><Plus :size="18" /></template>
             </Button>
         </div>
+
+        <!-- Help Drawer -->
+        <HelpDrawer
+            v-model="showHelp"
+            page-title="إدارة المخزون"
+            page-subtitle="متابعة ونقل البضائع بين المستودع ورفوف البيع"
+            :page-icon="Warehouse"
+            header-gradient="linear-gradient(135deg, #f97316 0%, #ef4444 100%)"
+            :sections="inventoryHelpSections"
+            :tips="inventoryHelpTips"
+        />
 
         <!-- Inventory Summary Stats Cards -->
         <div class="inventory-stats-grid">
@@ -251,7 +307,7 @@ const formatDate = (dateStr) => {
                     <InputText
                         v-model="searchQuery"
                         placeholder="ابحث باسم المنتج، رقم الدفعة، أو الرمز..."
-                        class="ps-10 pr-4 w-full"
+                        class="pr-10 pl-4 w-full search-input"
                         autocomplete="off"
                         size="small"
                     />
@@ -704,11 +760,15 @@ const formatDate = (dateStr) => {
 
 .search-icon {
     position: absolute;
-    inset-inline-start: 0.75rem;
+    right: 0.75rem;
     top: 50%;
     transform: translateY(-50%);
     color: var(--p-surface-400);
     pointer-events: none;
+}
+
+.search-input {
+    padding-right: 2.75rem !important;
 }
 
 .status-filter-select {

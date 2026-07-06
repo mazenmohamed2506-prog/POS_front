@@ -29,6 +29,7 @@ declare module 'vue' {
     EditButton: typeof import('./src/components/editButton.vue')['default']
     FileUpload: typeof import('./src/volt/FileUpload.vue')['default']
     FileUploadValid: typeof import('./src/components/validationFields/FileUploadValid.vue')['default']
+    HelpDrawer: typeof import('./src/components/HelpDrawer.vue')['default']
     InputNumber: typeof import('./src/volt/InputNumber.vue')['default']
     InputNumberValid: typeof import('./src/components/validationFields/InputNumberValid.vue')['default']
     InputOtp: typeof import('./src/volt/InputOtp.vue')['default']

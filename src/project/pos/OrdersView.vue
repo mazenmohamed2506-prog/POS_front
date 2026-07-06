@@ -1,9 +1,42 @@
 <script setup>
 import { ref, computed, onMounted } from "vue";
 import { useOrderStore } from "@/stores/pos/orderStore";
-import { ClipboardList, Search, Eye } from "lucide-vue-next";
+import { ClipboardList, Search, Eye, HelpCircle } from "lucide-vue-next";
+import HelpDrawer from "@/components/HelpDrawer.vue";
 
 const orderStore = useOrderStore();
+
+// ── Help Drawer ──
+const showHelp = ref(false);
+const ordersHelpSections = [
+    {
+        title: 'عرض الطلبيات',
+        icon: ClipboardList,
+        color: '#dbeafe',
+        iconColor: '#2563eb',
+        steps: [
+            { title: 'قائمة الطلبيات', desc: 'تظهر جميع الطلبيات مرتبة من الأحدث إلى الأقدم' },
+            { title: 'البحث في الطلبيات', desc: 'ابحث برقم الطلب أو اسم الكاشير أو طريقة الدفع' },
+            { title: 'حالة الطلب', desc: 'مكتمل = أخضر، معلق = أصفر، ملغي = أحمر، مسترد = رمادي' },
+        ]
+    },
+    {
+        title: 'عرض تفاصيل طلب',
+        icon: Eye,
+        color: '#d1fae5',
+        iconColor: '#059669',
+        steps: [
+            { title: 'اضغط أيقونة العين', desc: 'تفتح نافذة تفاصيل الطلب بالكامل' },
+            { title: 'قائمة الأصناف', desc: 'تعرض كل منتج مباع مع الكمية والسعر والمجموع' },
+            { title: 'المبالغ والتواريخ', desc: 'تجد مجموع الفاتورة وتاريخ البيع في التفاصيل' },
+        ]
+    },
+];
+const ordersHelpTips = [
+    'يمكن البحث برقم الطلب لعرض فاتورة محددة',
+    'الطلبيات المستردة مرتبطة بعملية مرتجع سابقة',
+    'الإجمالي في أعلى الصفحة يشمل جميع الفترات',
+];
 
 const searchQuery = ref("");
 const selectedOrder = ref(null);
@@ -93,19 +126,35 @@ const getPaymentLabel = (method) => {
                 </div>
             </div>
             
-            <div class="orders-header-stats" v-if="orderStore.orders.length > 0">
-                <div class="stat-chip">
-                    <span class="stat-chip-label">إجمالي الطلبات</span>
-                    <span class="stat-chip-value">{{ orderStore.orders.length }} طلب</span>
-                </div>
-                <div class="stat-chip stat-chip-green">
-                    <span class="stat-chip-label">إجمالي المبيعات</span>
-                    <span class="stat-chip-value font-extrabold text-green-600 dark:text-green-400">
-                        {{ formatCurrency(orderStore.orders.reduce((sum, o) => sum + (o.total || 0), 0)) }}
-                    </span>
+            <div class="flex items-center gap-2">
+                <button class="help-icon-btn" @click="showHelp = true" title="دليل الاستخدام">
+                    <HelpCircle :size="18" />
+                </button>
+                <div class="orders-header-stats" v-if="orderStore.orders.length > 0">
+                    <div class="stat-chip">
+                        <span class="stat-chip-label">إجمالي الطلبات</span>
+                        <span class="stat-chip-value">{{ orderStore.orders.length }} طلب</span>
+                    </div>
+                    <div class="stat-chip stat-chip-green">
+                        <span class="stat-chip-label">إجمالي المبيعات</span>
+                        <span class="stat-chip-value font-extrabold text-green-600 dark:text-green-400">
+                            {{ formatCurrency(orderStore.orders.reduce((sum, o) => sum + (o.total || 0), 0)) }}
+                        </span>
+                    </div>
                 </div>
             </div>
         </div>
+
+        <!-- Help Drawer -->
+        <HelpDrawer
+            v-model="showHelp"
+            page-title="سجل الطلبيات"
+            page-subtitle="متابعة الفواتير والمبيعات"
+            :page-icon="ClipboardList"
+            header-gradient="linear-gradient(135deg, #059669 0%, #0ea5e9 100%)"
+            :sections="ordersHelpSections"
+            :tips="ordersHelpTips"
+        />
 
         <!-- Table Container Card -->
         <div class="orders-card">

@@ -1,9 +1,42 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import { usePosStore } from "@/stores/pos/posStore";
-import { RotateCcw, Search } from "lucide-vue-next";
+import { RotateCcw, Search, HelpCircle } from "lucide-vue-next";
+import HelpDrawer from "@/components/HelpDrawer.vue";
 
 const posStore = usePosStore();
+
+// ── Help Drawer ──
+const showHelp = ref(false);
+const returnsHelpSections = [
+    {
+        title: 'كيفية إجراء مرتجع',
+        icon: RotateCcw,
+        color: '#fef3c7',
+        iconColor: '#d97706',
+        steps: [
+            { title: 'ابحث عن الطلب', desc: 'ابحث برقم الطلب أو طريقة الدفع' },
+            { title: 'اضغط زر المرتجع', desc: 'اختر الطلب واضغط زر "مرتجع" لفتح نافذة المرتجع' },
+            { title: 'حدد الأصناف والكميات', desc: 'اختر المنتجات المراد إرجاعها وحدد كمية كل صنف' },
+            { title: 'تأكيد المرتجع', desc: 'اضغط "تأكيد" لإتمام عملية الإرجاع واسترداد المبلغ' },
+        ]
+    },
+    {
+        title: 'قواعد المرتجعات',
+        icon: HelpCircle,
+        color: '#dbeafe',
+        iconColor: '#2563eb',
+        steps: [
+            { title: 'طلبيات المرتجع فقط', desc: 'لا يمكن إرجاع طلبيات المرتجع السابقة' },
+            { title: 'كمية جزئية', desc: 'يمكن إرجاع جزء من الطلبية وليس بالضرورة كلها' },
+        ]
+    },
+];
+const returnsHelpTips = [
+    'المرتجع يعيد المخزون تلقائياً إلى رف البيع',
+    'تأكد من رقم الطلب قبل إجراء المرتجع',
+    'يمكن إرجاع جزء من منتجات الطلبية فقط',
+];
 
 const showReturnDialog = ref(false);
 const selectedOrder = ref(null);
@@ -72,7 +105,21 @@ const filteredOrders = computed(() => {
                     <p class="returns-subtitle">إرجاع المنتجات المباعة وتحديث المخزون واسترداد المبالغ</p>
                 </div>
             </div>
+            <button class="help-icon-btn" @click="showHelp = true" title="دليل الاستخدام">
+                <HelpCircle :size="18" />
+            </button>
         </div>
+
+        <!-- Help Drawer -->
+        <HelpDrawer
+            v-model="showHelp"
+            page-title="المرتجعات"
+            page-subtitle="إرجاع المنتجات واسترداد المبالغ"
+            :page-icon="RotateCcw"
+            header-gradient="linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)"
+            :sections="returnsHelpSections"
+            :tips="returnsHelpTips"
+        />
 
         <!-- Table Container Card -->
         <div class="returns-card">

@@ -1,9 +1,41 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import { useUserStore } from "@/stores/pos/userStore";
-import { Users, Plus, Pencil, Trash2, Search } from "lucide-vue-next";
+import { Users, Plus, Pencil, Trash2, Search, HelpCircle } from "lucide-vue-next";
+import HelpDrawer from "@/components/HelpDrawer.vue";
 
 const userStore = useUserStore();
+
+// ── Help Drawer ──
+const showHelp = ref(false);
+const usersHelpSections = [
+    {
+        title: 'إدارة الحسابات',
+        icon: Users,
+        color: '#dbeafe',
+        iconColor: '#2563eb',
+        steps: [
+            { title: 'قائمة المستخدمين', desc: 'تعرض جميع مستخدمي النظام مع أدوارهم وتواريخ الإنشاء' },
+            { title: 'البحث', desc: 'ابحث باسم المستخدم للبحث السريع' },
+        ]
+    },
+    {
+        title: 'إضافة وتعديل مستخدم',
+        icon: Plus,
+        color: '#d1fae5',
+        iconColor: '#059669',
+        steps: [
+            { title: 'إضافة مستخدم جديد', desc: 'اضغط "إضافة مستخدم" وحدد الاسم وكلمة المرور والدور' },
+            { title: 'تحديد الدور', desc: 'كاشير = صلاحية بيع فقط، مدير = جميع الصلاحيات' },
+            { title: 'تعديل وحذف', desc: 'اضغط أيقونة التعديل أو الحذف لإدارة الحسابات' },
+        ]
+    },
+];
+const usersHelpTips = [
+    'المدير وحده يمكنه إدارة المستخدمين',
+    'لا يمكن حذف حسابك الخاص بك',
+    'غيّر كلمات المرور بانتظام للحماية',
+];
 
 const showUserDialog = ref(false);
 const editingUser = ref(null);
@@ -73,12 +105,28 @@ const confirmDelete = async (user) => {
                     <p class="users-subtitle">إدارة حسابات الكاشير والمدراء وتعيين الصلاحيات</p>
                 </div>
             </div>
-            <Button label="إضافة مستخدم" @click="openNewUser">
-                <template #icon>
-                    <Plus :size="18" />
-                </template>
-            </Button>
+            <div class="flex items-center gap-2">
+                <button class="help-icon-btn" @click="showHelp = true" title="دليل الاستخدام">
+                    <HelpCircle :size="18" />
+                </button>
+                <Button label="إضافة مستخدم" @click="openNewUser">
+                    <template #icon>
+                        <Plus :size="18" />
+                    </template>
+                </Button>
+            </div>
         </div>
+
+        <!-- Help Drawer -->
+        <HelpDrawer
+            v-model="showHelp"
+            page-title="إدارة المستخدمين"
+            page-subtitle="إدارة حسابات الكاشير والمدراء"
+            :page-icon="Users"
+            header-gradient="linear-gradient(135deg, #7c3aed 0%, #2563eb 100%)"
+            :sections="usersHelpSections"
+            :tips="usersHelpTips"
+        />
 
         <!-- Table Container Card -->
         <div class="users-card">

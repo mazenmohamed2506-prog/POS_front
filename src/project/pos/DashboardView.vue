@@ -19,13 +19,57 @@ import {
     CalendarRange,
     X,
     ChevronDown,
-    CheckCircle
+    CheckCircle,
+    HelpCircle
 } from "lucide-vue-next";
+import HelpDrawer from "@/components/HelpDrawer.vue";
 
 const posStore = usePosStore();
 const dashboardStore = useDashboardStore();
 const productStore = useProductStore();
 const inventoryStore = useInventoryStore();
+
+// ── Help Drawer ──
+const showHelp = ref(false);
+const dashboardHelpSections = [
+    {
+        title: 'الإحصائيات السريعة',
+        icon: TrendingUp,
+        color: '#dbeafe',
+        iconColor: '#2563eb',
+        steps: [
+            { title: 'بطاقات الملخص', desc: 'تعرض أرقام سريعة للمبيعات والمرتجعات والمشتريات والمخزون' },
+            { title: 'مؤشر التغيير', desc: 'السهم الأخضر يعني نمو، والأحمر يعني انخفاض مقارنة بالفترة السابقة' },
+            { title: 'تفاصيل أكثر', desc: 'انتقل إلى الصفحات المختصة من خلال قائمة التنقل الجانبية' },
+        ]
+    },
+    {
+        title: 'فلترة التاريخ',
+        icon: CalendarRange,
+        color: '#fef3c7',
+        iconColor: '#d97706',
+        steps: [
+            { title: 'اختر فترة زمنية', desc: 'اضغط على زر التاريخ واختر فترة جاهزة أو خصص نطاقاً مخصصاً' },
+            { title: 'تطبيق الفلتر', desc: 'تتحدّث جميع الإحصائيات تلقائياً بعد تحديد الفترة' },
+            { title: 'مسح الفلتر', desc: 'اضغط X بجانب زر التاريخ لإعادة عرض كل البيانات' },
+        ]
+    },
+    {
+        title: 'أحدث الطلبيات وأكثر المنتجات مبيعاً',
+        icon: ShoppingBag,
+        color: '#d1fae5',
+        iconColor: '#059669',
+        steps: [
+            { title: 'جدول أحدث الطلبيات', desc: 'يعرض آخر 10 طلبيات مع حالاتها ومبالغها' },
+            { title: 'ترتيب المنتجات', desc: 'جدول أكثر المنتجات مبيعاً مرتب تنازلياً' },
+        ]
+    },
+];
+const dashboardHelpTips = [
+    'تحدث البيانات فور إجراء أي عملية بيع أو شراء',
+    'المبيعات الصافية = مجموع المبيعات - المرتجعات',
+    'المنتجات ذات المخزون المنخفض تحتاج إعادة توريد سريعاً',
+];
 
 onMounted(() => {
     dashboardStore.fetchStats();
@@ -271,7 +315,11 @@ const formatDate = (dateStr) => {
                 </div>
             </div>
 
-            <!-- Date Filter Control -->
+            <!-- Help & Date Filter -->
+            <div class="flex items-center gap-2">
+                <button class="help-icon-btn" @click="showHelp = true" title="دليل الاستخدام">
+                    <HelpCircle :size="18" />
+                </button>
             <div class="filter-control" v-click-outside="() => (showDatePicker = false)">
                 <button
                     class="filter-btn"
@@ -355,7 +403,19 @@ const formatDate = (dateStr) => {
                     </div>
                 </Transition>
             </div>
+            </div>  <!-- end flex items-center gap-2 -->
         </div>
+
+        <!-- Help Drawer -->
+        <HelpDrawer
+            v-model="showHelp"
+            page-title="لوحة التحكم"
+            page-subtitle="إحصائيات وتقارير المتجر"
+            :page-icon="LayoutDashboard"
+            header-gradient="linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)"
+            :sections="dashboardHelpSections"
+            :tips="dashboardHelpTips"
+        />
 
         <!-- Active filter pill -->
         <Transition name="fade">

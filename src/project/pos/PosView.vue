@@ -2,7 +2,8 @@
 import { ref, onMounted, nextTick, computed } from "vue";
 import { usePosStore } from "@/stores/pos/posStore";
 import { useToastStore } from "@/stores/base/toastStore";
-import { Barcode, Trash2, Plus, Minus, CreditCard, Banknote, ShoppingCart, XCircle, Search, RotateCcw, Receipt, Package, AlertTriangle } from "lucide-vue-next";
+import { Barcode, Trash2, Plus, Minus, CreditCard, Banknote, ShoppingCart, XCircle, Search, RotateCcw, Receipt, Package, AlertTriangle, HelpCircle } from "lucide-vue-next";
+import HelpDrawer from "@/components/HelpDrawer.vue";
 
 const posStore = ref(null);
 posStore.value = usePosStore();
@@ -17,6 +18,53 @@ const searchQuery = ref("");
 
 // ── POS Mode: 'sell' or 'returns' ──
 const posMode = ref("sell");
+
+// ── Help Drawer ──
+const showHelp = ref(false);
+const posHelpSections = [
+    {
+        title: 'شاشة البيع',
+        icon: ShoppingCart,
+        color: '#ede9fe',
+        iconColor: '#7c3aed',
+        steps: [
+            { title: 'اختر وضع البيع', desc: 'اضغط على "شاشة البيع" في أعلى القائمة' },
+            { title: 'أضف المنتجات', desc: 'امسح الباركود أو ابحث بالاسم ثم اضغط على البطاقة' },
+            { title: 'راجع السلة', desc: 'تحقق من الكميات والأسعار في قائمة السلة على اليسار' },
+            { title: 'اختر طريقة الدفع', desc: 'اضغط "دفع نقدي" أو "بطاقة" لإتمام عملية البيع' },
+        ]
+    },
+    {
+        title: 'وضع المرتجعات',
+        icon: RotateCcw,
+        color: '#fef3c7',
+        iconColor: '#d97706',
+        steps: [
+            { title: 'انتقل لوضع المرتجعات', desc: 'اضغط على "المرتجعات" في شريط التبديل العلوي' },
+            { title: 'ابحث عن الطلب', desc: 'أدخل رقم الطلب أو بيانات العميل للبحث' },
+            { title: 'اختر الأصناف المرتجعة', desc: 'حدد المنتجات المراد إرجاعها والكميات المطلوبة' },
+            { title: 'أكد المرتجع', desc: 'اضغط تأكيد لإتمام عملية الإرجاع واسترداد المبلغ' },
+        ]
+    },
+    {
+        title: 'إدارة السلة',
+        icon: Package,
+        color: '#d1fae5',
+        iconColor: '#059669',
+        steps: [
+            { title: 'تعديل الكميات', desc: 'استخدم + و - بجانب كل منتج لضبط الكمية' },
+            { title: 'حذف عنصر', desc: 'اضغط على أيقونة الحذف لإزالة منتج من السلة' },
+            { title: 'تفريغ السلة', desc: 'اضغط "تفريغ" في أعلى السلة لحذف جميع العناصر' },
+        ]
+    },
+];
+const posHelpTips = [
+    'تأكد من فتح وردية قبل البدء في البيع',
+    'يمكنك مسح الباركود مباشرة وسيُضاف المنتج تلقائياً',
+    'استخدم الفئات للتصفية السريعة للمنتجات',
+    'المنتجات المنفدة تظهر بلون مختلف ولا يمكن إضافتها',
+    'يمكن تطبيق خصم على الفاتورة كلها قبل الدفع',
+];
 
 // ── Returns state ──
 const orderSearchQuery = ref("");
@@ -186,6 +234,17 @@ const getStockClass = (stock) => {
 
 <template>
     <div class="pos-container">
+        <!-- Help Drawer -->
+        <HelpDrawer
+            v-model="showHelp"
+            page-title="شاشة نقطة البيع"
+            page-subtitle="دليل البيع والمرتجعات"
+            :page-icon="ShoppingCart"
+            header-gradient="linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)"
+            :sections="posHelpSections"
+            :tips="posHelpTips"
+        />
+
         <!-- ═══ LEFT PANEL: Cart & Checkout ═══ -->
         <div class="pos-cart-panel">
             <!-- Cart Header -->
@@ -202,15 +261,24 @@ const getStockClass = (stock) => {
                         <span class="cart-header-count empty" v-else>فارغة</span>
                     </div>
                 </div>
-                <button
-                    v-if="posStore.cart.length > 0"
-                    class="pos-clear-btn"
-                    @click="posStore.clearCart()"
-                    title="مسح السلة"
-                >
-                    <XCircle :size="14" />
-                    <span>تفريغ</span>
-                </button>
+                <div class="cart-header-actions">
+                    <button
+                        class="pos-help-btn"
+                        @click="showHelp = true"
+                        title="دليل الاستخدام"
+                    >
+                        <HelpCircle :size="16" />
+                    </button>
+                    <button
+                        v-if="posStore.cart.length > 0"
+                        class="pos-clear-btn"
+                        @click="posStore.clearCart()"
+                        title="مسح السلة"
+                    >
+                        <XCircle :size="14" />
+                        <span>تفريغ</span>
+                    </button>
+                </div>
             </div>
 
             <!-- Cart Items List -->
@@ -630,6 +698,32 @@ const getStockClass = (stock) => {
 
 .cart-header-count.empty {
     opacity: 0.6;
+}
+
+.cart-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.pos-help-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(8px);
+    color: white;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.pos-help-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(1.1);
 }
 
 .pos-clear-btn {
@@ -1113,7 +1207,7 @@ const getStockClass = (stock) => {
 .mode-segmented {
     display: flex;
     position: relative;
-    background: var(--p-surface-100);
+    background: var(--p-surface-150, var(--p-surface-200));
     border-radius: 0.625rem;
     padding: 0.25rem;
     gap: 0.25rem;
@@ -1127,7 +1221,7 @@ const getStockClass = (stock) => {
     position: absolute;
     top: 0.25rem;
     bottom: 0.25rem;
-    left: 0.25rem;
+    inset-inline-start: 0.25rem;
     width: calc(50% - 0.375rem);
     border-radius: 0.5rem;
     background: linear-gradient(135deg, var(--p-primary-500), var(--p-primary-600));
@@ -1137,7 +1231,7 @@ const getStockClass = (stock) => {
 }
 
 .mode-slider-returns {
-    left: calc(50% + 0.125rem);
+    inset-inline-start: calc(50% + 0.125rem);
     background: linear-gradient(135deg, #f59e0b, #d97706);
     box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
 }
@@ -1152,17 +1246,30 @@ const getStockClass = (stock) => {
     border: none;
     border-radius: 0.5rem;
     background: transparent;
-    color: var(--p-surface-500);
-    font-size: 0.85rem;
-    font-weight: 750;
+    color: var(--p-surface-700);
+    font-size: 0.875rem;
+    font-weight: 800;
     cursor: pointer;
-    transition: color 0.2s;
+    transition: all 0.25s ease;
     position: relative;
     z-index: 1;
 }
 
+.dark .mode-btn {
+    color: var(--p-surface-300);
+}
+
+.mode-btn:hover:not(.mode-active) {
+    color: var(--p-surface-900);
+}
+
+.dark .mode-btn:hover:not(.mode-active) {
+    color: var(--p-surface-100);
+}
+
 .mode-btn.mode-active {
     color: white;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
 /* ── Search Bar ── */
@@ -1191,7 +1298,7 @@ const getStockClass = (stock) => {
 
 .search-icon {
     position: absolute;
-    start: 0.75rem;
+    right: 0.75rem;
     top: 50%;
     transform: translateY(-50%);
     color: var(--p-surface-400);
@@ -1199,8 +1306,8 @@ const getStockClass = (stock) => {
     pointer-events: none;
 }
 
-.search-field :deep(.p-inputtext) {
-    padding-inline-start: 2.25rem;
+.search-input {
+    padding-right: 2.75rem !important;
 }
 
 /* ── Categories ── */

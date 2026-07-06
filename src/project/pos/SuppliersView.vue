@@ -2,10 +2,42 @@
 import { ref, onMounted } from "vue";
 import { useSupplierStore } from "@/stores/pos/supplierStore";
 import { usePosStore } from "@/stores/pos/posStore";
-import { Truck, Plus, Pencil, Trash2, Search } from "lucide-vue-next";
+import { Truck, Plus, Pencil, Trash2, Search, HelpCircle } from "lucide-vue-next";
+import HelpDrawer from "@/components/HelpDrawer.vue";
 
 const supplierStore = useSupplierStore();
 const posStore = usePosStore();
+
+// ── Help Drawer ──
+const showHelp = ref(false);
+const suppliersHelpSections = [
+    {
+        title: 'إدارة الموردين',
+        icon: Truck,
+        color: '#dbeafe',
+        iconColor: '#2563eb',
+        steps: [
+            { title: 'قائمة الموردين', desc: 'تعرض جميع الموردين مع بيانات التواصل والرقم الضريبي' },
+            { title: 'بحث سريع', desc: 'اكتب اسم المورد للبحث السريع في الجدول' },
+        ]
+    },
+    {
+        title: 'إضافة وتعديل مورد',
+        icon: Plus,
+        color: '#d1fae5',
+        iconColor: '#059669',
+        steps: [
+            { title: 'إضافة مورد جديد', desc: 'اضغط "إضافة مورد" واملأ بيانات المورد' },
+            { title: 'تعديل بيانات', desc: 'اضغط أيقونة التعديل لتحديث بيانات المورد' },
+            { title: 'حذف مورد', desc: 'اضغط أيقونة الحذف وقم بتأكيد الحذف' },
+        ]
+    },
+];
+const suppliersHelpTips = [
+    'احتفظ بتحديث بيانات الموردين دورياً',
+    'الرقم الضريبي مهم لاحتساب ضريبة الشراء',
+    'لا يمكن حذف مورد مرتبط بفواتير شراء',
+];
 
 const showSupplierDialog = ref(false);
 const editingSupplier = ref(null);
@@ -80,12 +112,28 @@ const confirmDelete = async (supplier) => {
                     <p class="suppliers-subtitle">إضافة وتعديل بيانات الموردين</p>
                 </div>
             </div>
-            <Button label="إضافة مورد" @click="openNewSupplier">
-                <template #icon>
-                    <Plus :size="18" />
-                </template>
-            </Button>
+            <div class="flex items-center gap-2">
+                <button class="help-icon-btn" @click="showHelp = true" title="دليل الاستخدام">
+                    <HelpCircle :size="18" />
+                </button>
+                <Button label="إضافة مورد" @click="openNewSupplier">
+                    <template #icon>
+                        <Plus :size="18" />
+                    </template>
+                </Button>
+            </div>
         </div>
+
+        <!-- Help Drawer -->
+        <HelpDrawer
+            v-model="showHelp"
+            page-title="إدارة الموردين"
+            page-subtitle="إضافة وتعديل بيانات الموردين"
+            :page-icon="Truck"
+            header-gradient="linear-gradient(135deg, #10b981 0%, #0ea5e9 100%)"
+            :sections="suppliersHelpSections"
+            :tips="suppliersHelpTips"
+        />
 
         <!-- Table Container Card -->
         <div class="suppliers-card">

@@ -4,15 +4,60 @@ import { usePurchaseStore } from "@/stores/pos/purchaseStore";
 import { useProductStore } from "@/stores/pos/productStore";
 import { useSupplierStore } from "@/stores/pos/supplierStore";
 import {
-    Receipt, Plus, Trash2, Eye, Search,
+    Receipt, Plus, Trash2, Eye, Search, HelpCircle,
     ShoppingBag, Hash, Calendar, Package,
     Layers, CheckCircle2, DollarSign, Truck,
     ClipboardList
 } from "lucide-vue-next";
+import HelpDrawer from "@/components/HelpDrawer.vue";
 
 const purchaseStore = usePurchaseStore();
 const productStore = useProductStore();
 const supplierStore = useSupplierStore();
+
+// ── Help Drawer ──
+const showHelp = ref(false);
+const purchasesHelpSections = [
+    {
+        title: 'عرض المشتريات',
+        icon: ClipboardList,
+        color: '#dbeafe',
+        iconColor: '#2563eb',
+        steps: [
+            { title: 'قائمة الفواتير', desc: 'تعرض جميع فواتير الشراء مرتبة من الأحدث إلى الأقدم' },
+            { title: 'البحث', desc: 'ابحث برقم الفاتورة أو اسم المورد' },
+            { title: 'عرض التفاصيل', desc: 'اضغط على أيقونة العين لرؤية محتويات الفاتورة كاملة' },
+        ]
+    },
+    {
+        title: 'إضافة فاتورة شراء',
+        icon: Plus,
+        color: '#d1fae5',
+        iconColor: '#059669',
+        steps: [
+            { title: 'فاتورة جديدة', desc: 'اضغط "فاتورة جديدة" واملأ بيانات المورد والأصناف' },
+            { title: 'إضافة أصناف', desc: 'اضغط "إضافة صنف" لإضافة منتجات متعددة للفاتورة' },
+            { title: 'حفظ الفاتورة', desc: 'بعد مراجعة البيانات اضغط حفظ لتسجيل الفاتورة وتحديث المخزون' },
+        ]
+    },
+    {
+        title: 'تتبع تفاصيل الصنف',
+        icon: Package,
+        color: '#fef3c7',
+        iconColor: '#d97706',
+        steps: [
+            { title: 'الفئة والمنتج', desc: 'حدد الفئة أولاً ثم اختر المنتج من القائمة المفلترة' },
+            { title: 'الوحدة والكمية', desc: 'اختر وحدة الشراء وأدخل الكمية وسعر التكلفة' },
+            { title: 'الدفعة والصلاحية', desc: 'أدخل رقم الدفعة وتاريخ الصلاحية لتتبع المخزون بشكل متكامل' },
+        ]
+    },
+];
+const purchasesHelpTips = [
+    'فاتورة الشراء تضيف المخزون تلقائياً بعد الحفظ',
+    'يمكنك إضافة أكثر من صنف في نفس الفاتورة',
+    'تأكد من صحة الوحدة ومعامل التحويل قبل الحفظ',
+    'سعر التكلفة يتحدد تلقائياً من بيانات الوحدة',
+];
 
 const showPurchaseDialog = ref(false);
 const showDetailDialog = ref(false);
@@ -178,10 +223,26 @@ const getStatusConfig = (status) => {
                     <p class="purchases-subtitle">تسجيل وإدارة فواتير شراء المنتجات من الموردين</p>
                 </div>
             </div>
-            <Button label="فاتورة جديدة" @click="openNewPurchase">
-                <template #icon><Plus :size="18" /></template>
-            </Button>
+            <div class="flex items-center gap-2">
+                <button class="help-icon-btn" @click="showHelp = true" title="دليل الاستخدام">
+                    <HelpCircle :size="18" />
+                </button>
+                <Button label="فاتورة جديدة" @click="openNewPurchase">
+                    <template #icon><Plus :size="18" /></template>
+                </Button>
+            </div>
         </div>
+
+        <!-- Help Drawer -->
+        <HelpDrawer
+            v-model="showHelp"
+            page-title="فواتير المشتريات"
+            page-subtitle="تسجيل ومتابعة فواتير الشراء"
+            :page-icon="Receipt"
+            header-gradient="linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)"
+            :sections="purchasesHelpSections"
+            :tips="purchasesHelpTips"
+        />
 
         <!-- Stats Cards -->
         <div class="purchases-stats-grid">
@@ -226,7 +287,7 @@ const getStatusConfig = (status) => {
                     <InputText
                         v-model="searchQuery"
                         placeholder="ابحث برقم الفاتورة أو المورد..."
-                        class="ps-10 pr-4 w-full"
+                        class="pr-10 pl-4 w-full search-input"
                         autocomplete="off"
                         size="small"
                     />
@@ -723,11 +784,15 @@ const getStatusConfig = (status) => {
 
 .search-icon {
     position: absolute;
-    inset-inline-start: 0.75rem;
+    right: 0.75rem;
     top: 50%;
     transform: translateY(-50%);
     color: var(--p-surface-400);
     pointer-events: none;
+}
+
+.search-input {
+    padding-right: 2.75rem !important;
 }
 
 /* ─── Table Cells ───────────────────────────────────────── */

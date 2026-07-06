@@ -238,3 +238,39 @@ html[dir="rtl"] *:not(.pi):not(.pi *) {
     opacity: 0;
     transform: scale(0.95);
 }
+
+/* ── Global Help Icon Button ── */
+.help-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1.5px solid var(--p-surface-200);
+    background: var(--p-surface-50);
+    color: var(--p-surface-500);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.help-icon-btn:hover {
+    background: var(--p-primary-50);
+    border-color: var(--p-primary-300);
+    color: var(--p-primary-600);
+    transform: scale(1.08);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.18);
+}
+
+.dark .help-icon-btn {
+    background: var(--p-surface-800);
+    border-color: var(--p-surface-700);
+    color: var(--p-surface-400);
+}
+
+.dark .help-icon-btn:hover {
+    background: var(--p-surface-700);
+    border-color: var(--p-primary-500);
+    color: var(--p-primary-400);
+}

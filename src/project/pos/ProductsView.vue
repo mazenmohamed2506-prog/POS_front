@@ -6,14 +6,59 @@ import { useToastStore } from "@/stores/base/toastStore";
 import { usePosStore } from "@/stores/pos/posStore";
 import {
     Package, Plus, Pencil, Trash2, Search, Star,
-    PlusCircle, ArrowLeft, Eye,
+    PlusCircle, ArrowLeft, Eye, HelpCircle,
     LayoutGrid, CheckCircle2, XCircle, AlertCircle,
     ChevronDown, Hash, Barcode, DollarSign, Tag as TagIcon, Layers, RefreshCw
 } from "lucide-vue-next";
+import HelpDrawer from "@/components/HelpDrawer.vue";
 
 // Category combobox state
 const isAddingNewCategory = ref(false);
 const newCategoryName = ref("");
+
+// ── Help Drawer ──
+const showHelp = ref(false);
+const productsHelpSections = [
+    {
+        title: 'استعراض المنتجات',
+        icon: Package,
+        color: '#dbeafe',
+        iconColor: '#2563eb',
+        steps: [
+            { title: 'البحث السريع', desc: 'استخدم خانة البحث للعثور باسم المنتج أو الباركود أو الفئة' },
+            { title: 'عرض التفاصيل', desc: 'اضغط على أيقونة العين لمشاهدة تفاصيل المنتج كاملة' },
+            { title: 'ترتيب الأعمدة', desc: 'اضغط على رأس أي عمود لترتيب المنتجات تصاعدياً أو تنازلياً' },
+        ]
+    },
+    {
+        title: 'إضافة وتعديل منتج',
+        icon: Plus,
+        color: '#d1fae5',
+        iconColor: '#059669',
+        steps: [
+            { title: 'إضافة منتج جديد', desc: 'اضغط "إضافة منتج" واملأ بيانات المنتج والوحدات' },
+            { title: 'تعديل منتج موجود', desc: 'اضغط على أيقونة التعديل لتغيير بيانات أو سعر المنتج' },
+            { title: 'حذف منتج', desc: 'اضغط أيقونة الحذف وتأكد من الحذف في رسالة التأكيد' },
+        ]
+    },
+    {
+        title: 'إدارة الفئات والوحدات',
+        icon: Layers,
+        color: '#fef3c7',
+        iconColor: '#d97706',
+        steps: [
+            { title: 'إدارة الفئات', desc: 'اضغط زر الفئات لإضافة أو تعديل فئات المنتجات' },
+            { title: 'إدارة الوحدات', desc: 'أضف وحدات متعددة لكل منتج (قطعة، علبة، كرتون)' },
+            { title: 'تحديد السعر', desc: 'حدد سعر لكل وحدة بشكل مستقل' },
+        ]
+    },
+];
+const productsHelpTips = [
+    'يمكنك إضافة وحدات متعددة لكل منتج (كرتون، قطعة، علبة)',
+    'الباركود فريد لكل وحدة على حدة',
+    'المنتجات غير النشطة لا تظهر في شاشة البيع',
+    'يمكنك تفعيل تتبع تاريخ الانتهاء للمنتجات المرتبطة بالصلاحية',
+];
 
 const productStore = useProductStore();
 const unitStore = useUnitStore();
@@ -280,11 +325,25 @@ const viewConversions = async (product) => {
                 </div>
             </div>
             <div class="header-actions">
+                <button class="help-icon-btn" @click="showHelp = true" title="دليل الاستخدام">
+                    <HelpCircle :size="18" />
+                </button>
                 <Button v-if="posStore.role === 'Manager' || posStore.role === 'SuperAdmin'" label="إضافة منتج" @click="openNewProduct" class="add-product-btn">
                     <template #icon><Plus :size="18" /></template>
                 </Button>
             </div>
         </div>
+
+        <!-- Help Drawer -->
+        <HelpDrawer
+            v-model="showHelp"
+            page-title="إدارة المنتجات"
+            page-subtitle="إضافة وتعديل وحذف المنتجات"
+            :page-icon="Package"
+            header-gradient="linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)"
+            :sections="productsHelpSections"
+            :tips="productsHelpTips"
+        />
 
         <!-- Catalog Overview Stats Cards -->
         <div class="products-stats-grid">
@@ -353,7 +412,7 @@ const viewConversions = async (product) => {
                     <InputText
                         v-model="filters.global.value"
                         placeholder="بحث سريع عن المنتج، الباركود، أو الفئة..."
-                        class="ps-10 pr-4 w-full"
+                        class="pr-10 pl-4 w-full search-input"
                         autocomplete="off"
                         size="small"
                     />
@@ -988,11 +1047,15 @@ const viewConversions = async (product) => {
 
 .search-icon {
     position: absolute;
-    inset-inline-start: 0.75rem;
+    right: 0.75rem;
     top: 50%;
     transform: translateY(-50%);
     color: var(--p-surface-400);
     pointer-events: none;
+}
+
+.search-input {
+    padding-right: 2.75rem !important;
 }
 
 .filter-actions {
