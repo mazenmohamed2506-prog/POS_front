@@ -448,13 +448,13 @@ const formatDate = (dateStr) => {
 
             <!-- Total Purchases -->
             <div class="kpi-card kpi-purchases">
-                <div class="kpi-icon-wrap kpi-icon-blue">
+                <div class="kpi-icon-wrap kpi-icon-Purple">
                     <ShoppingBag :size="22" />
                 </div>
                 <div class="kpi-info">
                     <span class="kpi-label">المشتريات</span>
                     <span class="kpi-value">{{ formatCurrency(purchasesTotal) }}</span>
-                    <span class="kpi-sub text-blue-600 dark:text-blue-400">
+                    <span class="kpi-sub text-Purple-600 dark:text-Purple-400">
                         {{ purchasesCount }} فاتورة مستلمة
                     </span>
                 </div>
@@ -477,13 +477,13 @@ const formatDate = (dateStr) => {
 
             <!-- Products Count -->
             <div class="kpi-card kpi-products">
-                <div class="kpi-icon-wrap kpi-icon-purple">
+                <div class="kpi-icon-wrap kpi-icon-Purple">
                     <Package :size="22" />
                 </div>
                 <div class="kpi-info">
                     <span class="kpi-label">المنتجات</span>
                     <span class="kpi-value">{{ totalProducts }}</span>
-                    <span class="kpi-sub" :class="outOfStockCount > 0 ? 'text-red-500 font-semibold' : 'text-purple-600 dark:text-purple-400'">
+                    <span class="kpi-sub" :class="outOfStockCount > 0 ? 'text-red-500 font-semibold' : 'text-Purple-600 dark:text-Purple-400'">
                         <AlertTriangle v-if="outOfStockCount > 0" :size="14" class="inline me-1" />
                         {{ outOfStockCount }} منتج نفذ من الرف
                     </span>
@@ -523,8 +523,8 @@ const formatDate = (dateStr) => {
                             <span class="payment-legend-count">({{ cashSalesCount }})</span>
                         </div>
                         <div class="payment-legend-item payment-legend-card">
-                            <div class="legend-color-dot bg-blue-500"></div>
-                            <CreditCard :size="16" class="text-blue-600 dark:text-blue-400" />
+                            <div class="legend-color-dot bg-Purple-500"></div>
+                            <CreditCard :size="16" class="text-Purple-600 dark:text-Purple-400" />
                             <span class="payment-legend-label">بطاقة</span>
                             <span class="payment-legend-value">{{ formatCurrency(cardTotal) }}</span>
                             <span class="payment-legend-count">({{ cardSalesCount }})</span>
@@ -1155,14 +1155,14 @@ const formatDate = (dateStr) => {
     color: #4ade80;
 }
 
-.kpi-icon-blue {
-    background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-    color: #1d4ed8;
+.kpi-icon-Purple {
+    background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
+    color: #7e22ce;
 }
 
-.dark .kpi-icon-blue {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.3) 100%);
-    color: #60a5fa;
+.dark .kpi-icon-Purple {
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(168, 85, 247, 0.3) 100%);
+    color: #c084fc;
 }
 
 .kpi-icon-amber {
@@ -1175,12 +1175,12 @@ const formatDate = (dateStr) => {
     color: #fbbf24;
 }
 
-.kpi-icon-purple {
+.kpi-icon-Purple {
     background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%);
     color: #7c3aed;
 }
 
-.dark .kpi-icon-purple {
+.dark .kpi-icon-Purple {
     background: linear-gradient(135deg, rgba(124, 58, 237, 0.15) 0%, rgba(124, 58, 237, 0.3) 100%);
     color: #a78bfa;
 }

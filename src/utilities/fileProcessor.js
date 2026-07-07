@@ -59,7 +59,7 @@ function getFileIconClass(fileType) {
     } else if (fileType?.startsWith("image/")) {
         return "text-green-600 dark:text-green-400";
     } else if (fileType?.includes("word") || fileType?.includes("document")) {
-        return "text-blue-600 dark:text-blue-400";
+        return "text-Purple-600 dark:text-Purple-400";
     } else {
         return "text-surface-600 dark:text-surface-400";
     }
@@ -76,7 +76,7 @@ export function getFileTypeClass(fileType) {
     } else if (fileType?.startsWith("image/")) {
         return "text-green-600 dark:text-green-400";
     } else if (fileType?.includes("word") || fileType?.includes("document")) {
-        return "text-blue-600 dark:text-blue-400";
+        return "text-Purple-600 dark:text-Purple-400";
     } else {
         return "text-surface-600 dark:text-surface-400";
     }

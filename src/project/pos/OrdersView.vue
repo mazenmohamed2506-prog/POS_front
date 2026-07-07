@@ -524,29 +524,26 @@ const getPaymentLabel = (method) => {
     width: 2rem;
     height: 2rem;
     border-radius: 0.375rem;
-    border: 1px solid var(--p-surface-300);
-    background: var(--p-surface-0);
-    color: var(--p-surface-500);
+    color: #7c3aed;
+    border: 1px solid #ddd6fe;
+    background: #f5f3ff;
     cursor: pointer;
     transition: all 0.15s;
 }
 
 .dark .order-view-btn {
-    background: var(--p-surface-800);
-    border-color: var(--p-surface-700);
-    color: var(--p-surface-400);
+    background: rgba(124, 58, 237, 0.1);
+    border-color: rgba(124, 58, 237, 0.25);
+    color: #a78bfa;
 }
 
 .order-view-btn:hover {
-    background: var(--p-primary-50);
-    border-color: var(--p-primary-300);
-    color: var(--p-primary-600);
+    background: #ede9fe;
+    border-color: #c4b5fd;
 }
 
 .dark .order-view-btn:hover {
-    background: rgba(99, 102, 241, 0.15);
-    border-color: rgba(99, 102, 241, 0.3);
-    color: var(--p-primary-400);
+    background: rgba(124, 58, 237, 0.2);
 }
 
 /* Detail dialog contents */

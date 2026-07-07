@@ -156,7 +156,7 @@ const getFileTypeClass = (fileType) => {
     } else if (fileType.startsWith("image/")) {
         return "text-green-600 dark:text-green-400";
     } else {
-        return "text-blue-600 dark:text-blue-400";
+        return "text-Purple-600 dark:text-Purple-400";
     }
 };
 </script>

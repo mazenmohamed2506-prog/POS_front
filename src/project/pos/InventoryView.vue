@@ -243,14 +243,14 @@ const formatDate = (dateStr) => {
         <!-- Inventory Summary Stats Cards -->
         <div class="inventory-stats-grid">
             <div class="stat-card" :class="{ 'stat-active': activeFilter === 'all' }" @click="activeFilter = 'all'">
-                <div class="stat-icon-circle blue">
+                <div class="stat-icon-circle Purple">
                     <Package :size="20" />
                 </div>
                 <div class="stat-body">
                     <span class="stat-value">{{ inventoryStore.stats.totalUnits }}</span>
                     <span class="stat-label">إجمالي الوحدات</span>
                 </div>
-                <div class="stat-accent blue"></div>
+                <div class="stat-accent Purple"></div>
             </div>
             <div class="stat-card" :class="{ 'stat-active': activeFilter === 'healthy' }" @click="activeFilter = 'healthy'">
                 <div class="stat-icon-circle green">
@@ -648,7 +648,7 @@ const formatDate = (dateStr) => {
 .stat-card.stat-active .stat-accent,
 .stat-card:hover .stat-accent { opacity: 1; }
 
-.stat-accent.blue { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+.stat-accent.Purple { background: linear-gradient(90deg, #7c3aed, #a78bfa); }
 .stat-accent.green { background: linear-gradient(90deg, #10b981, #34d399); }
 .stat-accent.orange { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
 .stat-accent.red { background: linear-gradient(90deg, #ef4444, #f87171); }
@@ -664,7 +664,7 @@ const formatDate = (dateStr) => {
     flex-shrink: 0;
 }
 
-.stat-icon-circle.blue  { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+.stat-icon-circle.Purple  { background: rgba(124, 58, 237, 0.1); color: #7c3aed; }
 .stat-icon-circle.green { background: rgba(16, 185, 129, 0.1); color: #10b981; }
 .stat-icon-circle.orange { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
 .stat-icon-circle.red   { background: rgba(239, 68, 68, 0.1); color: #ef4444; }

@@ -291,7 +291,7 @@ onMounted(() => {
                 <!-- Metrics Stats Row -->
                 <div class="shift-stats-cards" v-if="shiftStore.shifts.length > 0">
                     <div class="stat-card">
-                        <div class="stat-card-icon bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400">
+                        <div class="stat-card-icon bg-Purple-50 dark:bg-Purple-950/30 text-Purple-600 dark:text-Purple-400">
                             <Clock :size="20" />
                         </div>
                         <div class="stat-card-info">

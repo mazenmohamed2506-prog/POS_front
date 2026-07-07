@@ -51,18 +51,18 @@ html[dir="rtl"] *:not(.pi):not(.pi *) {
 } */
 
 :root {
-    --p-primary-0: #eff6ff;
-    --p-primary-50: #eff6ff;
-    --p-primary-100: #dbeafe;
-    --p-primary-200: #bfdbfe;
-    --p-primary-300: #93c5fd;
-    --p-primary-400: #60a5fa;
-    --p-primary-500: #3b82f6;
-    --p-primary-600: #2563eb;
-    --p-primary-700: #1d4ed8;
-    --p-primary-800: #1e40af;
-    --p-primary-900: #1e3a8a;
-    --p-primary-950: #172554;
+    --p-primary-0: #f5f3ff;
+    --p-primary-50: #f5f3ff;
+    --p-primary-100: #ede9fe;
+    --p-primary-200: #ddd6fe;
+    --p-primary-300: #c4b5fd;
+    --p-primary-400: #a78bfa;
+    --p-primary-500: #8b5cf6;
+    --p-primary-600: #7c3aed;
+    --p-primary-700: #6d28d9;
+    --p-primary-800: #5b21b6;
+    --p-primary-900: #4c1d95;
+    --p-primary-950: #2e1065;
     --p-surface-0: #ffffff;
     --p-surface-50: #fafafa;
     --p-surface-100: #f4f4f5;

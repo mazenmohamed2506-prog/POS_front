@@ -340,7 +340,7 @@ const viewConversions = async (product) => {
             page-title="إدارة المنتجات"
             page-subtitle="إضافة وتعديل وحذف المنتجات"
             :page-icon="Package"
-            header-gradient="linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)"
+            header-gradient="linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)"
             :sections="productsHelpSections"
             :tips="productsHelpTips"
         />
@@ -348,14 +348,14 @@ const viewConversions = async (product) => {
         <!-- Catalog Overview Stats Cards -->
         <div class="products-stats-grid">
             <div class="stat-card">
-                <div class="stat-icon-circle blue">
+                <div class="stat-icon-circle Purple">
                     <Package :size="20" />
                 </div>
                 <div class="stat-body">
                     <span class="stat-value">{{ totalProducts }}</span>
                     <span class="stat-label">إجمالي المنتجات</span>
                 </div>
-                <div class="stat-accent blue"></div>
+                <div class="stat-accent Purple"></div>
             </div>
             <div class="stat-card">
                 <div class="stat-icon-circle green">
@@ -937,7 +937,7 @@ const viewConversions = async (product) => {
     transition: opacity 0.25s ease;
 }
 .stat-card:hover .stat-accent { opacity: 1; }
-.stat-accent.blue { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+.stat-accent.Purple { background: linear-gradient(90deg, #7c3aed, #a78bfa); }
 .stat-accent.green { background: linear-gradient(90deg, #10b981, #34d399); }
 .stat-accent.red { background: linear-gradient(90deg, #ef4444, #f87171); }
 .stat-accent.orange { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
@@ -951,7 +951,7 @@ const viewConversions = async (product) => {
     border-radius: 0.75rem;
     flex-shrink: 0;
 }
-.stat-icon-circle.blue  { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+.stat-icon-circle.Purple  { background: rgba(124, 58, 237, 0.1); color: #7c3aed; }
 .stat-icon-circle.green { background: rgba(16, 185, 129, 0.1); color: #10b981; }
 .stat-icon-circle.red   { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
 .stat-icon-circle.orange { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
@@ -1121,14 +1121,14 @@ const viewConversions = async (product) => {
     border-radius: 9999px;
     font-size: 0.75rem;
     font-weight: 650;
-    background: #eff6ff;
-    color: #2563eb;
-    border: 1px solid #bfdbfe;
+    background: #f5f3ff;
+    color: #7c3aed;
+    border: 1px solid #ddd6fe;
 }
 .dark .category-chip {
-    background: rgba(37, 99, 235, 0.1);
-    color: #60a5fa;
-    border-color: rgba(37, 99, 235, 0.25);
+    background: rgba(124, 58, 237, 0.1);
+    color: #a78bfa;
+    border-color: rgba(124, 58, 237, 0.25);
 }
 
 .price-cell {
@@ -1186,21 +1186,21 @@ const viewConversions = async (product) => {
 }
 
 .act-btn.act-view {
-    color: #3b82f6;
-    border-color: #bfdbfe;
-    background: #eff6ff;
+    color: #7c3aed;
+    border-color: #ddd6fe;
+    background: #f5f3ff;
 }
 .dark .act-btn.act-view {
-    background: rgba(59, 130, 246, 0.1);
-    border-color: rgba(59, 130, 246, 0.25);
-    color: #60a5fa;
+    background: rgba(124, 58, 237, 0.1);
+    border-color: rgba(124, 58, 237, 0.25);
+    color: #a78bfa;
 }
 .act-btn.act-view:hover {
-    background: #dbeafe;
-    border-color: #93c5fd;
+    background: #ede9fe;
+    border-color: #c4b5fd;
 }
 .dark .act-btn.act-view:hover {
-    background: rgba(59, 130, 246, 0.2);
+    background: rgba(124, 58, 237, 0.2);
 }
 
 .act-btn.act-edit {
