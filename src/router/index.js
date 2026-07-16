@@ -102,6 +102,42 @@ const router = createRouter({
                     component: () => import("@/project/pos/PagesView.vue"),
                     meta: { roles: ["Manager", "SuperAdmin"] },
                 },
+                {
+                    path: "stock-count",
+                    name: "StockCount",
+                    component: () => import("@/project/pos/StockCountView.vue"),
+                    meta: { roles: ["Manager", "SuperAdmin"] },
+                },
+                {
+                    path: "damages",
+                    name: "Damages",
+                    component: () => import("@/project/pos/DamagesView.vue"),
+                    meta: { roles: ["Manager", "SuperAdmin"] },
+                },
+                {
+                    path: "receivables",
+                    name: "Receivables",
+                    component: () => import("@/project/pos/ReceivablesView.vue"),
+                    meta: { roles: ["Manager", "SuperAdmin"] },
+                },
+                {
+                    path: "expenses",
+                    name: "Expenses",
+                    component: () => import("@/project/pos/ExpensesView.vue"),
+                    meta: { roles: ["Manager", "SuperAdmin"] },
+                },
+                {
+                    path: "payroll",
+                    name: "Payroll",
+                    component: () => import("@/project/pos/PayrollView.vue"),
+                    meta: { roles: ["Manager", "SuperAdmin"] },
+                },
+                {
+                    path: "reports",
+                    name: "Reports",
+                    component: () => import("@/project/pos/ReportsView.vue"),
+                    meta: { roles: ["Manager", "SuperAdmin"] },
+                },
             ],
         },
         // ── 404 ──

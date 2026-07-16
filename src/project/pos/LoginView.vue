@@ -221,7 +221,15 @@ const handleLogin = async () => {
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    background: linear-gradient(160deg, #4f46e5 0%, #6366f1 30%, #7c3aed 70%, #a855f7 100%);
+    background: url('/login-bg.png') center/cover no-repeat;
+}
+
+.login-hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(160deg, rgba(79, 70, 229, 0.7) 0%, rgba(99, 102, 241, 0.6) 30%, rgba(124, 58, 237, 0.7) 70%, rgba(168, 85, 247, 0.8) 100%);
+    z-index: 1;
 }
 
 .hero-gradient {
@@ -231,6 +239,7 @@ const handleLogin = async () => {
         radial-gradient(ellipse 80% 80% at 30% 20%, rgba(255,255,255,0.12) 0%, transparent 60%),
         radial-gradient(ellipse 60% 50% at 80% 80%, rgba(168,85,247,0.35) 0%, transparent 60%);
     animation: gradientShift 12s ease-in-out infinite alternate;
+    z-index: 1;
 }
 
 @keyframes gradientShift {
@@ -243,6 +252,7 @@ const handleLogin = async () => {
     position: absolute;
     inset: 0;
     overflow: hidden;
+    z-index: 1;
 }
 
 .particle {
@@ -271,6 +281,7 @@ const handleLogin = async () => {
         linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
     background-size: 48px 48px;
+    z-index: 1;
 }
 
 /* Hero content */
@@ -407,7 +418,7 @@ const handleLogin = async () => {
     justify-content: center;
     position: relative;
     padding: 2rem;
-    background: #fafbfc;
+    background: #f3f4f6;
     overflow: hidden;
 }
 
@@ -433,7 +444,15 @@ const handleLogin = async () => {
     position: relative;
     z-index: 1;
     width: 100%;
-    max-width: 420px;
+    max-width: 440px;
+    background: #ffffff;
+    padding: 2.5rem;
+    border-radius: 1.5rem;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
+}
+.dark .login-card-wrapper {
+    background: #1e1e2d;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
 }
 
 /* Mobile logo — visible only on small screens */

@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import { LayoutDashboard, Package, Warehouse, Receipt, ShoppingCart, RotateCcw, ClipboardList, Clock, Settings, Users, FileText, Truck } from "lucide-vue-next";
+import { LayoutDashboard, Package, Warehouse, Receipt, ShoppingCart, RotateCcw, ClipboardList, Clock, Settings, Users, FileText, Truck, ClipboardCheck, AlertTriangle, Wallet, Briefcase, Landmark, PieChart } from "lucide-vue-next";
 
 export const useBaseStore = defineStore("base", () => {
     // ── State ──
@@ -66,6 +66,24 @@ export const useBaseStore = defineStore("base", () => {
                     icon: ClipboardList,
                     to: "/orders",
                 },
+                {
+                    nameAr: "الجرد",
+                    nameEn: "Stock Count",
+                    icon: ClipboardCheck,
+                    to: "/stock-count",
+                },
+                {
+                    nameAr: "التلفيات",
+                    nameEn: "Damages",
+                    icon: AlertTriangle,
+                    to: "/damages",
+                },
+                {
+                    nameAr: "العملاء (ذمم مدينة)",
+                    nameEn: "Receivables",
+                    icon: Landmark,
+                    to: "/receivables",
+                },
             ],
         },
         {
@@ -95,6 +113,24 @@ export const useBaseStore = defineStore("base", () => {
                     nameEn: "Settings",
                     icon: Settings,
                     to: "/settings",
+                },
+                {
+                    nameAr: "المصروفات",
+                    nameEn: "Expenses",
+                    icon: Wallet,
+                    to: "/expenses",
+                },
+                {
+                    nameAr: "المرتبات",
+                    nameEn: "Payroll",
+                    icon: Briefcase,
+                    to: "/payroll",
+                },
+                {
+                    nameAr: "التقارير المالية",
+                    nameEn: "Reports",
+                    icon: PieChart,
+                    to: "/reports",
                 },
             ],
         },

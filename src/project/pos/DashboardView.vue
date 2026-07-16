@@ -72,7 +72,7 @@ const dashboardHelpTips = [
 ];
 
 onMounted(() => {
-    dashboardStore.fetchStats();
+    dashboardStore.fetchAllDashboardMetrics();
     posStore.fetchSettings();
     productStore.fetchProducts();
     inventoryStore.fetchInventory();
@@ -240,7 +240,7 @@ function toLocalDateInputValue(d) {
 function applyFilter() {
     const s = startDateInput.value ? new Date(startDateInput.value).toISOString() : null;
     const e = endDateInput.value   ? new Date(endDateInput.value + "T23:59:59").toISOString() : null;
-    dashboardStore.fetchStats(s, e);
+    dashboardStore.fetchAllDashboardMetrics(s, e);
     showDatePicker.value = false;
 }
 
@@ -282,6 +282,13 @@ const cardTotal       = computed(() => dashboardStore.stats.cardSalesTotal);
 const cardSalesCount  = computed(() => dashboardStore.stats.cardSalesCount);
 const recentOrders    = computed(() => dashboardStore.stats.recentOrders);
 const topProducts     = computed(() => dashboardStore.stats.topProducts);
+
+// ── Financial Metrics ──
+const totalOutstandingBalance = computed(() => dashboardStore.outstandingBalance);
+const totalPaidToSuppliers = computed(() => dashboardStore.totalPaidSuppliers);
+const totalUnpaidPurchases = computed(() => dashboardStore.totalUnpaidPurchases);
+const totalPartiallyPaidPurchases = computed(() => dashboardStore.totalPartiallyPaidPurchases);
+const suppliersOutstandingBalances = computed(() => dashboardStore.suppliersOutstandingBalances);
 
 const formatCurrency = (val) => {
     return new Intl.NumberFormat("ar-EG", {
@@ -425,7 +432,7 @@ const formatDate = (dateStr) => {
                 <button class="filter-banner-clear" @click="clearFilter">
                     <X :size="13" /> مسح الفلتر
                 </button>
-                <div v-if="dashboardStore.loading" class="filter-loading-dot"></div>
+                <div v-if="dashboardStore.isLoading" class="filter-loading-dot"></div>
             </div>
         </Transition>
 
@@ -487,6 +494,53 @@ const formatDate = (dateStr) => {
                         <AlertTriangle v-if="outOfStockCount > 0" :size="14" class="inline me-1" />
                         {{ outOfStockCount }} منتج نفذ من الرف
                     </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Supplier Financials KPI Row -->
+        <div class="kpi-grid mt-6">
+            <!-- Total Outstanding Balance -->
+            <div class="kpi-card kpi-returns">
+                <div class="kpi-icon-wrap kpi-icon-amber">
+                    <DollarSign :size="22" />
+                </div>
+                <div class="kpi-info">
+                    <span class="kpi-label">إجمالي المستحقات (للموردين)</span>
+                    <span class="kpi-value text-amber-600 dark:text-amber-400">{{ formatCurrency(totalOutstandingBalance) }}</span>
+                </div>
+            </div>
+
+            <!-- Total Paid to Suppliers -->
+            <div class="kpi-card kpi-sales">
+                <div class="kpi-icon-wrap kpi-icon-green">
+                    <Banknote :size="22" />
+                </div>
+                <div class="kpi-info">
+                    <span class="kpi-label">إجمالي المدفوع للموردين</span>
+                    <span class="kpi-value text-green-600 dark:text-green-400">{{ formatCurrency(totalPaidToSuppliers) }}</span>
+                </div>
+            </div>
+
+            <!-- Unpaid Purchases -->
+            <div class="kpi-card" style="border-left: 4px solid var(--p-red-500);">
+                <div class="kpi-icon-wrap kpi-icon-red" style="color: var(--p-red-600); background: var(--p-red-50);">
+                    <AlertTriangle :size="22" />
+                </div>
+                <div class="kpi-info">
+                    <span class="kpi-label">فواتير غير مدفوعة</span>
+                    <span class="kpi-value text-red-600 dark:text-red-400">{{ totalUnpaidPurchases }}</span>
+                </div>
+            </div>
+
+            <!-- Partially Paid Purchases -->
+            <div class="kpi-card" style="border-left: 4px solid var(--p-amber-500);">
+                <div class="kpi-icon-wrap kpi-icon-amber">
+                    <CreditCard :size="22" />
+                </div>
+                <div class="kpi-info">
+                    <span class="kpi-label">فواتير مدفوعة جزئياً</span>
+                    <span class="kpi-value text-amber-600 dark:text-amber-400">{{ totalPartiallyPaidPurchases }}</span>
                 </div>
             </div>
         </div>

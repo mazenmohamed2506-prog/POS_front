@@ -65,7 +65,10 @@ const selectedPurchase = ref(null);
 const searchQuery = ref("");
 
 const purchaseForm = ref({
-    supplier: "",
+    supplierId: null,
+    paymentStatus: "UNPAID",
+    paidAmount: 0,
+    paymentMethod: "Cash",
     items: [{ categoryId: null, productId: null, productUnitId: null, qty: 1, cost: 0, batchNumber: "", expirationDate: null }],
 });
 
@@ -146,7 +149,10 @@ const removePurchaseLine = (idx) => {
 
 const openNewPurchase = () => {
     purchaseForm.value = {
-        supplier: "",
+        supplierId: null,
+        paymentStatus: "UNPAID",
+        paidAmount: 0,
+        paymentMethod: "Cash",
         items: [{ categoryId: null, productId: null, productUnitId: null, qty: 1, cost: 0, batchNumber: "", expirationDate: null }],
     };
     showPurchaseDialog.value = true;
@@ -173,7 +179,11 @@ const savePurchase = async () => {
     });
 
     const payload = {
-        supplierName: purchaseForm.value.supplier || "مورد عام",
+        supplierId: purchaseForm.value.supplierId,
+        totalAmount: purchaseTotal.value,
+        paymentStatus: purchaseForm.value.paymentStatus,
+        paidAmount: purchaseForm.value.paidAmount,
+        paymentMethod: purchaseForm.value.paymentMethod,
         items: itemsPayload
     };
 
@@ -206,6 +216,13 @@ const getStatusConfig = (status) => {
     if (status === 'received') return { label: 'مستلم', class: 'status-success' };
     if (status === 'pending') return { label: 'معلق', class: 'status-warning' };
     if (status === 'cancelled') return { label: 'ملغي', class: 'status-danger' };
+    return { label: status || '—', class: 'status-info' };
+};
+
+const getPaymentStatusConfig = (status) => {
+    if (status === 'PAID') return { label: 'مدفوع', class: 'status-success' };
+    if (status === 'PARTIALLY_PAID') return { label: 'مدفوع جزئياً', class: 'status-warning' };
+    if (status === 'UNPAID') return { label: 'غير مدفوع', class: 'status-danger' };
     return { label: status || '—', class: 'status-info' };
 };
 </script>
@@ -352,6 +369,23 @@ const getStatusConfig = (status) => {
                         </span>
                     </template>
                 </Column>
+                <Column field="paymentStatus" header="حالة الدفع" style="min-width: 140px">
+                    <template #body="{ data }">
+                        <span class="status-chip" :class="getPaymentStatusConfig(data.paymentStatus).class">
+                            {{ getPaymentStatusConfig(data.paymentStatus).label }}
+                        </span>
+                    </template>
+                </Column>
+                <Column field="paidAmount" header="المدفوع" style="min-width: 120px">
+                    <template #body="{ data }">
+                        <span class="total-cell" style="color: var(--p-emerald-500);">{{ formatCurrency(data.paidAmount) }}</span>
+                    </template>
+                </Column>
+                <Column field="remainingAmount" header="المتبقي" style="min-width: 120px">
+                    <template #body="{ data }">
+                        <span class="total-cell" style="color: var(--p-red-500);">{{ formatCurrency(data.remainingAmount) }}</span>
+                    </template>
+                </Column>
                 <Column header="عرض" style="min-width: 80px; text-align: center">
                     <template #body="{ data }">
                         <button class="act-btn act-view" @click="viewDetails(data)" title="عرض التفاصيل">
@@ -457,17 +491,52 @@ const getStatusConfig = (status) => {
             dismissableMask
         >
             <div class="dialog-body">
-                <div class="form-field">
-                    <label class="required">اسم المورد</label>
-                    <Select
-                        v-model="purchaseForm.supplier"
-                        :options="supplierStore.suppliers"
-                        optionLabel="name"
-                        optionValue="name"
-                        filter
-                        fluid
-                        placeholder="اختر المورد"
-                    />
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div class="form-field">
+                        <label class="required">اسم المورد</label>
+                        <Select
+                            v-model="purchaseForm.supplierId"
+                            :options="supplierStore.suppliers"
+                            optionLabel="name"
+                            optionValue="id"
+                            filter
+                            fluid
+                            placeholder="اختر المورد"
+                        />
+                    </div>
+                    <div class="form-field">
+                        <label class="required">حالة الدفع</label>
+                        <Select
+                            v-model="purchaseForm.paymentStatus"
+                            :options="[{label: 'مدفوع', value: 'PAID'}, {label: 'مدفوع جزئياً', value: 'PARTIALLY_PAID'}, {label: 'غير مدفوع', value: 'UNPAID'}]"
+                            optionLabel="label"
+                            optionValue="value"
+                            fluid
+                            placeholder="اختر حالة الدفع"
+                        />
+                    </div>
+                    <div class="form-field" v-if="purchaseForm.paymentStatus === 'PARTIALLY_PAID'">
+                        <label class="required">المبلغ المدفوع</label>
+                        <InputNumber
+                            v-model="purchaseForm.paidAmount"
+                            mode="currency"
+                            currency="EGP"
+                            locale="ar-EG"
+                            fluid
+                            placeholder="أدخل المبلغ المدفوع"
+                        />
+                    </div>
+                    <div class="form-field">
+                        <label class="required">طريقة الدفع</label>
+                        <Select
+                            v-model="purchaseForm.paymentMethod"
+                            :options="[{label: 'نقدي (كاش)', value: 'Cash'}, {label: 'تحويل بنكي', value: 'BankTransfer'}, {label: 'بطاقة بنكية', value: 'Card'}]"
+                            optionLabel="label"
+                            optionValue="value"
+                            fluid
+                            placeholder="اختر طريقة الدفع"
+                        />
+                    </div>
                 </div>
 
                 <!-- Item Lines -->

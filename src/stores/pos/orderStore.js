@@ -4,16 +4,15 @@ import { apiGet, apiPost } from "@/utilities/fetchApi";
 import { useToastStore } from "@/stores/base/toastStore";
 
 export const useOrderStore = defineStore("order", () => {
-    const orders = ref([]);
-    const loading = ref(false);
+    // Required State
+    const ordersList = ref([]);
+    const currentOrder = ref(null);
+    const isLoading = ref(false);
     const error = ref(null);
     const toastStore = useToastStore();
 
     /**
      * Map API order DTO to frontend model
-     * API response fields:
-     *   id, invoiceNumber, userId, orderDate, subTotal,
-     *   invoiceDiscount, totalTax, finalAmount, status, paymentMethod
      */
     function mapApiOrderToFrontend(apiOrder) {
         return {
@@ -39,77 +38,72 @@ export const useOrderStore = defineStore("order", () => {
         };
     }
 
-    /**
-     * Fetch all orders from the API
-     */
-    async function fetchOrders() {
-        loading.value = true;
+    // 1. fetchOrders (GET /api/orders)
+    async function fetchOrders(params = {}) {
+        isLoading.value = true;
         error.value = null;
         try {
-            const response = await apiGet("/Order");
+            const response = await apiGet("/orders", { params });
             const rawOrders = response.data || [];
-            orders.value = rawOrders.map(mapApiOrderToFrontend);
+            ordersList.value = rawOrders.map(mapApiOrderToFrontend);
+            return ordersList.value;
         } catch (err) {
             console.error("Failed to fetch orders:", err);
             error.value = err.message || "Failed to load orders";
-            // Don't show toast for 404 (no orders yet)
             if (err.response?.status !== 404) {
                 toastStore.addErrorToast("حدث خطأ أثناء تحميل الطلبات");
             }
+            throw err;
         } finally {
-            loading.value = false;
+            isLoading.value = false;
         }
     }
 
-    /**
-     * Create an order via the API
-     * @param {Object} orderData - { invoiceDiscount, paymentMethod, items: [{ productUnitId, quantity, itemDiscount }] }
-     * @returns {Object} The created order mapped to frontend model
-     */
-    async function createOrder(orderData) {
-        loading.value = true;
+    // 2. fetchOrderById (GET /api/orders/{id})
+    async function fetchOrderById(id) {
+        isLoading.value = true;
         error.value = null;
         try {
-            const payload = {
-                invoiceDiscount: orderData.invoiceDiscount ?? 0,
-                paymentMethod: orderData.paymentMethod || "cash",
-                items: orderData.items.map(item => ({
-                    productUnitId: item.productUnitId,
-                    quantity: item.quantity,
-                    itemDiscount: item.itemDiscount ?? 0,
-                })),
-            };
+            const response = await apiGet(`/orders/${id}`);
+            const mappedOrder = response.data ? mapApiOrderToFrontend(response.data) : null;
+            currentOrder.value = mappedOrder;
+            return mappedOrder;
+        } catch (err) {
+            console.error("Failed to fetch order:", err);
+            error.value = err.message || "Failed to load order";
+            toastStore.addErrorToast("حدث خطأ أثناء تحميل الطلب");
+            throw err;
+        } finally {
+            isLoading.value = false;
+        }
+    }
 
-            const response = await apiPost("/Order/checkout", payload, false);
+    // 3. checkoutOrder (POST /api/orders/checkout)
+    async function checkoutOrder(payload) {
+        isLoading.value = true;
+        error.value = null;
+        try {
+            const response = await apiPost("/orders/checkout", payload, false);
             toastStore.addSuccessToast("تم إتمام عملية البيع بنجاح");
-
+            
             // Refresh orders list
             await fetchOrders();
-
+            
             return response.data ? mapApiOrderToFrontend(response.data) : null;
         } catch (err) {
-            console.error("Failed to create order:", err);
-            const detail = err.response?.data?.detail ||
-                err.response?.data?.message ||
-                err.response?.data ||
-                "حدث خطأ أثناء إنشاء الطلب";
+            console.error("Failed to checkout order:", err);
+            const detail = err.response?.data?.detail || err.response?.data?.message || err.response?.data || "حدث خطأ أثناء إنشاء الطلب";
             error.value = typeof detail === "string" ? detail : JSON.stringify(detail);
             toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء إنشاء الطلب");
             throw err;
         } finally {
-            loading.value = false;
+            isLoading.value = false;
         }
     }
 
-    /**
-     * Checkout: convenience wrapper around createOrder
-     * Maps cart items to the API format
-     * @param {Array} cartItems - Cart items with { id, productUnitId, qty, price, discount? }
-     * @param {string} paymentMethod - "cash" or "card"
-     * @param {number} invoiceDiscount - Overall invoice discount
-     */
+    // Alias wrapper for posStore.js which expects a specific signature
     async function checkout(cartItems, paymentMethod = "cash", invoiceDiscount = 0) {
-        const orderData = {
+        const payload = {
             invoiceDiscount,
             paymentMethod,
             items: cartItems.map(item => ({
@@ -118,35 +112,50 @@ export const useOrderStore = defineStore("order", () => {
                 itemDiscount: item.discount ?? 0,
             })),
         };
-
-        return await createOrder(orderData);
+        return await checkoutOrder(payload);
     }
 
-    /**
-     * Get a single order by ID
-     */
-    async function getOrderById(id) {
-        loading.value = true;
+    // 4. returnOrder (POST /api/orders/{id}/return)
+    async function returnOrder(id, payload) {
+        isLoading.value = true;
         error.value = null;
         try {
-            const response = await apiGet(`/Order/${id}`);
-            return response.data ? mapApiOrderToFrontend(response.data) : null;
+            const response = await apiPost(`/orders/${id}/return`, payload, false);
+            toastStore.addSuccessToast("تم تسجيل الاسترجاع بنجاح");
+            
+            // Refresh orders list
+            await fetchOrders();
+            
+            return response.data;
         } catch (err) {
-            console.error("Failed to fetch order:", err);
-            error.value = err.message || "Failed to load order";
+            console.error("Failed to return order:", err);
+            const detail = err.response?.data?.detail || err.response?.data?.message || err.response?.data || "حدث خطأ أثناء الاسترجاع";
+            error.value = typeof detail === "string" ? detail : JSON.stringify(detail);
+            toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء الاسترجاع");
             throw err;
         } finally {
-            loading.value = false;
+            isLoading.value = false;
         }
     }
 
+    // Aliases for compatibility
+    const orders = ordersList;
+    const loading = isLoading;
+
     return {
+        // State
+        ordersList,
         orders,
+        currentOrder,
+        isLoading,
         loading,
         error,
+
+        // Actions
         fetchOrders,
-        createOrder,
+        fetchOrderById,
+        checkoutOrder,
         checkout,
-        getOrderById,
+        returnOrder
     };
 });

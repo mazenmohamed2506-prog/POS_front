@@ -2,12 +2,26 @@
 import { ref, onMounted, computed, watch } from "vue";
 import { useInventoryStore } from "@/stores/pos/inventoryStore";
 import { useProductStore } from "@/stores/pos/productStore";
-import { Warehouse, ArrowRightLeft, Search, Plus, HelpCircle, Package, AlertTriangle, CheckCircle2, AlertCircle, Clock, Filter } from "lucide-vue-next";
+import { useReportStore } from "@/stores/pos/reportStore";
+import { Warehouse, ArrowRightLeft, Search, Plus, HelpCircle, Package, AlertTriangle, CheckCircle2, AlertCircle, Clock, Filter, FileText, List } from "lucide-vue-next";
 import InventoryTable from "./InventoryTable.vue";
 import HelpDrawer from "@/components/HelpDrawer.vue";
 
 const inventoryStore = useInventoryStore();
 const productStore = useProductStore();
+const reportStore = useReportStore();
+
+const reportForm = ref({
+    startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0]
+});
+
+const generateReport = () => {
+    reportStore.fetchInventoryReport({
+        startDate: new Date(reportForm.value.startDate).toISOString(),
+        endDate: new Date(reportForm.value.endDate + 'T23:59:59').toISOString()
+    });
+};
 
 // ── Help Drawer ──
 const showHelp = ref(false);
@@ -240,6 +254,14 @@ const formatDate = (dateStr) => {
             :tips="inventoryHelpTips"
         />
 
+        <Tabs value="data">
+            <TabList>
+                <Tab value="data"><List class="inline-block me-2" :size="16" />سجل المخزون</Tab>
+                <Tab value="report"><FileText class="inline-block me-2" :size="16" />تقرير المخزون</Tab>
+            </TabList>
+            
+            <TabPanels>
+                <TabPanel value="data" class="px-0 py-4">
         <!-- Inventory Summary Stats Cards -->
         <div class="inventory-stats-grid">
             <div class="stat-card" :class="{ 'stat-active': activeFilter === 'all' }" @click="activeFilter = 'all'">
@@ -330,6 +352,36 @@ const formatDate = (dateStr) => {
                 @transfer="(loc, direction) => openTransfer(loc, direction)"
             />
         </div>
+                </TabPanel>
+
+                <TabPanel value="report" class="px-0 py-4">
+                    <div class="content-card p-4 mb-4">
+                        <div class="flex flex-col md:flex-row items-end gap-4">
+                            <div class="flex-1">
+                                <label class="font-bold block mb-2">من تاريخ</label>
+                                <InputText type="date" v-model="reportForm.startDate" class="w-full" />
+                            </div>
+                            <div class="flex-1">
+                                <label class="font-bold block mb-2">إلى تاريخ</label>
+                                <InputText type="date" v-model="reportForm.endDate" class="w-full" />
+                            </div>
+                            <div>
+                                <Button label="توليد التقرير" @click="generateReport" :loading="reportStore.isLoading" icon="pi pi-file-excel" />
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div v-if="reportStore.inventoryData" class="content-card p-4">
+                        <h3 class="text-lg font-bold mb-4">نتيجة تقرير المخزون</h3>
+                        <pre dir="ltr" class="bg-surface-50 dark:bg-surface-900 p-4 rounded-lg overflow-auto text-sm border border-surface-200 dark:border-surface-700">{{ JSON.stringify(reportStore.inventoryData, null, 2) }}</pre>
+                    </div>
+                    <div v-else-if="!reportStore.isLoading" class="content-card p-8 text-center border-dashed">
+                        <FileText :size="48" class="text-surface-300 mx-auto mb-4" />
+                        <p class="text-surface-500">قم بتحديد الفترة الزمنية واضغط على توليد التقرير لعرض النتائج.</p>
+                    </div>
+                </TabPanel>
+            </TabPanels>
+        </Tabs>
 
         <!-- Transfer Dialog -->
         <Dialog

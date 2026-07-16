@@ -42,7 +42,21 @@ export const useSupplierStore = defineStore("supplier", () => {
         error.value = null;
         try {
             const response = await apiGet(`/Suppliers/${id}`);
-            return response.data ? mapApiSupplierToFrontend(response.data) : null;
+            if (!response.data) return null;
+            
+            // Check if the response contains the wrapper object (new API structure)
+            if (response.data.supplier) {
+                return {
+                    supplier: mapApiSupplierToFrontend(response.data.supplier),
+                    financialSummary: response.data.financialSummary || {},
+                    outstandingBalance: response.data.outstandingBalance || 0,
+                    purchases: response.data.purchases || [],
+                    paymentHistory: response.data.paymentHistory || []
+                };
+            }
+            
+            // Fallback for old API structure
+            return mapApiSupplierToFrontend(response.data);
         } catch (err) {
             console.error("Failed to fetch supplier:", err);
             error.value = err.message || "Failed to load supplier";
@@ -121,6 +135,25 @@ export const useSupplierStore = defineStore("supplier", () => {
         }
     }
 
+
+    async function recordPayment(paymentData) {
+        loading.value = true;
+        error.value = null;
+        try {
+            await apiPost("/suppliers/payments", paymentData, false);
+            toastStore.addSuccessToast("تم تسجيل الدفعة بنجاح");
+            await fetchSuppliers();
+        } catch (err) {
+            console.error("Failed to record payment:", err);
+            const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء تسجيل الدفعة";
+            toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء تسجيل الدفعة");
+            throw err;
+        } finally {
+            loading.value = false;
+        }
+    }
+
+
     return {
         suppliers,
         loading,
@@ -130,5 +163,6 @@ export const useSupplierStore = defineStore("supplier", () => {
         createSupplier,
         updateSupplier,
         deleteSupplier,
+        recordPayment,
     };
 });

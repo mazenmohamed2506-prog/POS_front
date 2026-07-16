@@ -5,7 +5,15 @@ import { useProductStore } from "./productStore";
 import { useToastStore } from "@/stores/base/toastStore";
 
 export const useInventoryStore = defineStore("inventory", () => {
-    const inventory = ref([]);
+    // Required State
+    const inventoryItems = ref([]);
+    const currentItem = ref(null);
+    const workflowData = ref(null);
+    const explanations = ref({});
+    const isLoading = ref(false);
+    const error = ref(null);
+
+    // Existing State to preserve UI KPIs
     const stats = ref({
         totalUnits: 0,
         healthyStock: 0,
@@ -14,8 +22,7 @@ export const useInventoryStore = defineStore("inventory", () => {
         expiringSoon: 0,
         expired: 0
     });
-    const loading = ref(false);
-    const error = ref(null);
+
     const toastStore = useToastStore();
     const productStore = useProductStore();
 
@@ -30,16 +37,15 @@ export const useInventoryStore = defineStore("inventory", () => {
         });
     }
 
+    // 1. fetchInventory (GET /api/Inventory)
     async function fetchInventory(filters = {}) {
-        loading.value = true;
+        isLoading.value = true;
         error.value = null;
         try {
-            // Make sure we have latest product definitions to resolve SKU / units
             if (productStore.products.length === 0) {
                 await productStore.fetchProducts();
             }
 
-            // Build query params – only include productStatus when explicitly set
             const params = {};
             if (filters.productStatus !== undefined && filters.productStatus !== null) {
                 params.productStatus = filters.productStatus;
@@ -47,80 +53,87 @@ export const useInventoryStore = defineStore("inventory", () => {
 
             const response = await apiGet("/Inventory", { params });
 
-            // Supporting both new wrapper format and legacy array fallback
             const rawInventory = Array.isArray(response.data)
                 ? response.data
                 : (response.data?.stocks || []);
 
-            if (response.data && !Array.isArray(response.data)) {
-                stats.value = response.data.stats || stats.value;
+            if (response.data && !Array.isArray(response.data) && response.data.stats) {
+                stats.value = response.data.stats;
             }
 
-            inventory.value = processApiInventory(rawInventory, productStore.products);
+            inventoryItems.value = processApiInventory(rawInventory, productStore.products);
         } catch (err) {
             console.error("Failed to fetch inventory:", err);
             error.value = err.message || "Failed to load inventory";
             toastStore.addErrorToast("حدث خطأ أثناء تحميل المخزون");
         } finally {
-            loading.value = false;
+            isLoading.value = false;
         }
     }
 
-    async function addInventory(data) {
-        loading.value = true;
+    // 2. fetchInventoryById (GET /api/Inventory/{id})
+    async function fetchInventoryById(id) {
+        isLoading.value = true;
         error.value = null;
         try {
-            await apiPost("/Inventory", data, false);
+            const response = await apiGet(`/Inventory/${id}`);
+            currentItem.value = response.data;
+            return response.data;
+        } catch (err) {
+            console.error("Failed to fetch inventory item:", err);
+            error.value = err.message || "Failed to load inventory item";
+            throw err;
+        } finally {
+            isLoading.value = false;
+        }
+    }
+
+    // 3. addInventory (POST /api/Inventory)
+    async function addInventory(payload) {
+        isLoading.value = true;
+        error.value = null;
+        try {
+            await apiPost("/Inventory", payload, false);
             toastStore.addSuccessToast("تم إضافة المخزون بنجاح");
             await fetchInventory();
         } catch (err) {
             console.error("Failed to add inventory:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء إضافة المخزون";
+            error.value = detail;
             toastStore.addErrorToast(detail);
             throw err;
         } finally {
-            loading.value = false;
+            isLoading.value = false;
         }
     }
 
-    async function addInventoryStock(data) {
-        // Alias for backwards compatibility or clarity
-        return await addInventory(data);
+    // Alias for existing UI components until updated
+    async function addInventoryStock(payload) {
+        return await addInventory(payload);
     }
 
-    async function getInventoryById(id) {
-        loading.value = true;
+    // 4. updateInventory (PUT /api/Inventory/{id})
+    async function updateInventory(id, payload) {
+        isLoading.value = true;
         error.value = null;
         try {
-            const response = await apiGet(`/Inventory/${id}`);
-            return response.data || null;
-        } catch (err) {
-            console.error("Failed to fetch inventory item:", err);
-            throw err;
-        } finally {
-            loading.value = false;
-        }
-    }
-
-    async function updateInventory(id, data) {
-        loading.value = true;
-        error.value = null;
-        try {
-            await apiPut(`/Inventory/${id}`, data, false);
+            await apiPut(`/Inventory/${id}`, payload, false);
             toastStore.addSuccessToast("تم تعديل المخزون بنجاح");
             await fetchInventory();
         } catch (err) {
             console.error("Failed to update inventory:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء تعديل المخزون";
+            error.value = detail;
             toastStore.addErrorToast(detail);
             throw err;
         } finally {
-            loading.value = false;
+            isLoading.value = false;
         }
     }
 
+    // 5. deleteInventory (DELETE /api/Inventory/{id})
     async function deleteInventory(id) {
-        loading.value = true;
+        isLoading.value = true;
         error.value = null;
         try {
             await apiDelete(`/Inventory/${id}`, {}, false);
@@ -129,23 +142,26 @@ export const useInventoryStore = defineStore("inventory", () => {
         } catch (err) {
             console.error("Failed to delete inventory:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء حذف المخزون";
+            error.value = detail;
             toastStore.addErrorToast(detail);
             throw err;
         } finally {
-            loading.value = false;
+            isLoading.value = false;
         }
     }
 
-    async function transferStock(productId, qty, fromLocation = "BackWarehouse", toLocation = "StoreShelf", inventoryStockId = null) {
-        loading.value = true;
+    // 6. transferInventory (POST /api/Inventory/transfer)
+    async function transferInventory(productId, quantity, fromLocation = "BackWarehouse", toLocation = "StoreShelf", inventoryStockId = null) {
+        isLoading.value = true;
         error.value = null;
         try {
-            const payload = {
-                productId: productId,
-                quantity: qty,
-                fromLocation: fromLocation,
-                toLocation: toLocation,
-                inventoryStockId: inventoryStockId
+            // Support passing payload directly or distinct args
+            const payload = typeof productId === 'object' ? productId : {
+                productId,
+                quantity,
+                fromLocation,
+                toLocation,
+                inventoryStockId
             };
             
             await apiPost("/Inventory/transfer", payload, false);
@@ -154,36 +170,123 @@ export const useInventoryStore = defineStore("inventory", () => {
         } catch (err) {
             console.error("Failed to transfer stock:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء نقل المخزون";
+            error.value = detail;
             toastStore.addErrorToast(detail);
             throw err;
         } finally {
-            loading.value = false;
+            isLoading.value = false;
         }
     }
 
-    async function fetchInventoryExplanation() {
+    // Alias for backward compatibility
+    async function transferStock(...args) {
+        return await transferInventory(...args);
+    }
+
+    // 7. receiveManagerInventory (POST /api/manager/inventory/receive)
+    async function receiveManagerInventory(payload) {
+        isLoading.value = true;
+        error.value = null;
         try {
-            const response = await apiGet("/Inventory/explanation");
+            await apiPost("/manager/inventory/receive", payload, false);
+            toastStore.addSuccessToast("تم استلام المخزون بنجاح");
+            await fetchInventory();
+        } catch (err) {
+            console.error("Failed to receive inventory:", err);
+            const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء استلام المخزون";
+            error.value = detail;
+            toastStore.addErrorToast(detail);
+            throw err;
+        } finally {
+            isLoading.value = false;
+        }
+    }
+
+    // 8. fetchReceivingWorkflow (GET /api/Inventory/receiving-workflow)
+    async function fetchReceivingWorkflow() {
+        isLoading.value = true;
+        error.value = null;
+        try {
+            const response = await apiGet("/Inventory/receiving-workflow");
+            workflowData.value = response.data;
             return response.data;
         } catch (err) {
-            console.error("Failed to fetch inventory explanation:", err);
-            return null;
+            console.error("Failed to fetch receiving workflow:", err);
+            error.value = err.message || "Failed to load receiving workflow";
+            throw err;
+        } finally {
+            isLoading.value = false;
         }
     }
 
+    // 9. fetchExplanation (GET /api/Inventory/explanation)
+    async function fetchExplanation() {
+        isLoading.value = true;
+        error.value = null;
+        try {
+            const response = await apiGet("/Inventory/explanation");
+            explanations.value.general = response.data;
+            return response.data;
+        } catch (err) {
+            console.error("Failed to fetch explanation:", err);
+            error.value = err.message || "Failed to fetch explanation";
+            return null;
+        } finally {
+            isLoading.value = false;
+        }
+    }
+
+    // Alias for backward compatibility
+    async function fetchInventoryExplanation() {
+        return await fetchExplanation();
+    }
+
+    // 10. fetchConversionExplanation (GET /api/Inventory/explain-conversion/{productId})
+    async function fetchConversionExplanation(productId) {
+        isLoading.value = true;
+        error.value = null;
+        try {
+            const response = await apiGet(`/Inventory/explain-conversion/${productId}`);
+            explanations.value[productId] = response.data;
+            return response.data;
+        } catch (err) {
+            console.error("Failed to fetch conversion explanation:", err);
+            error.value = err.message || "Failed to fetch conversion explanation";
+            throw err;
+        } finally {
+            isLoading.value = false;
+        }
+    }
+
+    // Export compatibility aliases
+    const loading = isLoading;
+    const inventory = inventoryItems;
+
     return {
+        // State
+        inventoryItems,
         inventory,
-        stats,
+        currentItem,
+        workflowData,
+        explanations,
+        isLoading,
         loading,
         error,
+        stats,
+
+        // Actions
         fetchInventory,
+        fetchInventoryById,
         addInventory,
         addInventoryStock,
-        getInventoryById,
         updateInventory,
         deleteInventory,
+        transferInventory,
         transferStock,
-        fetchInventoryExplanation
+        receiveManagerInventory,
+        fetchReceivingWorkflow,
+        fetchExplanation,
+        fetchInventoryExplanation,
+        fetchConversionExplanation
     };
 });
-

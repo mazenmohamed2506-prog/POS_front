@@ -13,9 +13,13 @@ export const usePurchaseStore = defineStore("purchase", () => {
         return {
             id: apiPur.id,
             purchaseNo: apiPur.purchaseNo || `PUR-${apiPur.id}`,
+            supplierId: apiPur.supplierId,
             supplier: apiPur.supplierName,
             date: apiPur.invoiceDate,
             total: apiPur.totalAmount,
+            paidAmount: apiPur.paidAmount,
+            remainingAmount: apiPur.remainingAmount,
+            paymentStatus: apiPur.paymentStatus,
             status: apiPur.status || "Completed",
             itemNo: apiPur.itemNo || 0,
             items: (apiPur.items || []).map(i => ({
