@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { apiGet, apiPost } from "@/utilities/fetchApi";
+import { apiGet, apiPost, apiPut } from "@/utilities/fetchApi";
 import { useToastStore } from "@/stores/base/toastStore";
 
 export const usePayrollStore = defineStore("payroll", () => {
@@ -47,6 +47,29 @@ export const usePayrollStore = defineStore("payroll", () => {
             const detail = err.response?.data?.detail || err.response?.data?.message || err.response?.data || "حدث خطأ أثناء تسجيل الموظف";
             error.value = typeof detail === "string" ? detail : JSON.stringify(detail);
             toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء تسجيل الموظف");
+            throw err;
+        } finally {
+            isLoading.value = false;
+        }
+    }
+
+    // 2b. updateEmployee (PUT /api/Payroll/employees/{id})
+    async function updateEmployee(id, payload) {
+        isLoading.value = true;
+        error.value = null;
+        try {
+            const response = await apiPut(`/Payroll/employees/${id}`, payload, false);
+            toastStore.addSuccessToast("تم تحديث بيانات الموظف بنجاح");
+            
+            // Reactivity: Refresh employees list
+            await fetchEmployees();
+            
+            return response.data;
+        } catch (err) {
+            console.error("Failed to update employee:", err);
+            const detail = err.response?.data?.detail || err.response?.data?.message || err.response?.data || "حدث خطأ أثناء تحديث بيانات الموظف";
+            error.value = typeof detail === "string" ? detail : JSON.stringify(detail);
+            toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء تحديث بيانات الموظف");
             throw err;
         } finally {
             isLoading.value = false;
@@ -156,6 +179,7 @@ export const usePayrollStore = defineStore("payroll", () => {
         // Actions
         fetchEmployees,
         addEmployee,
+        updateEmployee,
         generateObligations,
         processPayment,
         fetchSlips,
