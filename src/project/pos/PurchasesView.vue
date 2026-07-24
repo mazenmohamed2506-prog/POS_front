@@ -517,14 +517,17 @@ const getPaymentStatusConfig = (status) => {
                     </div>
                     <div class="form-field" v-if="purchaseForm.paymentStatus === 'PARTIALLY_PAID'">
                         <label class="required">المبلغ المدفوع</label>
-                        <InputNumber
-                            v-model="purchaseForm.paidAmount"
-                            mode="currency"
-                            currency="EGP"
-                            locale="ar-EG"
-                            fluid
-                            placeholder="أدخل المبلغ المدفوع"
-                        />
+                        <div class="relative w-full">
+                            <InputNumber
+                                v-model="purchaseForm.paidAmount"
+                                :min="0"
+                                :minFractionDigits="2"
+                                placeholder="أدخل المبلغ المدفوع"
+                                :inputStyle="{ paddingInlineEnd: '2.5rem' }"
+                                fluid
+                            />
+                            <span class="absolute end-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm pointer-events-none font-semibold select-none">ج.م</span>
+                        </div>
                     </div>
                     <div class="form-field">
                         <label class="required">طريقة الدفع</label>

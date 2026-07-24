@@ -233,13 +233,17 @@ const getCategoryLabel = (val) => {
                 </div>
                 <div class="flex flex-col gap-2">
                     <label class="font-bold required">المبلغ</label>
-                    <InputNumber
-                        v-model="expenseForm.amount"
-                        mode="currency"
-                        currency="EGP"
-                        locale="ar-EG"
-                        fluid
-                    />
+                    <div class="relative w-full">
+                        <InputNumber
+                            v-model="expenseForm.amount"
+                            :min="0"
+                            :minFractionDigits="2"
+                            placeholder="0.00"
+                            :inputStyle="{ paddingInlineEnd: '2.5rem' }"
+                            fluid
+                        />
+                        <span class="absolute end-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm pointer-events-none font-semibold select-none">ج.م</span>
+                    </div>
                 </div>
                 <div class="flex flex-col gap-2">
                     <label class="font-bold required">الفئة</label>

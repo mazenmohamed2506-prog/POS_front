@@ -502,13 +502,17 @@ const confirmDelete = async (supplier) => {
                 </div>
                 <div class="form-field">
                     <label class="required">المبلغ المراد دفعه</label>
-                    <InputNumber
-                        v-model="paymentForm.amount"
-                        mode="currency"
-                        currency="EGP"
-                        locale="ar-EG"
-                        fluid
-                    />
+                    <div class="relative w-full">
+                        <InputNumber
+                            v-model="paymentForm.amount"
+                            :min="0"
+                            :minFractionDigits="2"
+                            placeholder="0.00"
+                            :inputStyle="{ paddingInlineEnd: '2.5rem' }"
+                            fluid
+                        />
+                        <span class="absolute end-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm pointer-events-none font-semibold select-none">ج.م</span>
+                    </div>
                 </div>
                 <div class="form-field">
                     <label class="required">طريقة الدفع</label>
