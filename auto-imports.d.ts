@@ -48,6 +48,8 @@ declare global {
   const isReadonly: typeof import('vue').isReadonly
   const isRef: typeof import('vue').isRef
   const isShallow: typeof import('vue').isShallow
+  const isValidEgyptianPhone: typeof import('./src/utilities/validations.js').isValidEgyptianPhone
+  const isValidEmail: typeof import('./src/utilities/validations.js').isValidEmail
   const markRaw: typeof import('vue').markRaw
   const nextTick: typeof import('vue').nextTick
   const onActivated: typeof import('vue').onActivated

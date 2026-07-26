@@ -37,26 +37,58 @@ export const useSupplierStore = defineStore("supplier", () => {
         }
     }
 
+    async function fetchSupplierBalance(supplierId) {
+        try {
+            const response = await apiGet(`/suppliers/${supplierId}/balance`);
+            return response.data; // { totalPurchases, totalPaid, remainingBalance }
+        } catch (err) {
+            console.error("Failed to fetch supplier balance:", err);
+            return null;
+        }
+    }
+
     async function getSupplierById(id) {
         loading.value = true;
         error.value = null;
         try {
-            const response = await apiGet(`/Suppliers/${id}`);
-            if (!response.data) return null;
-            
-            // Check if the response contains the wrapper object (new API structure)
-            if (response.data.supplier) {
+            const [supplierRes, balanceData] = await Promise.all([
+                apiGet(`/Suppliers/${id}`).catch(err => {
+                    console.error("Failed to fetch supplier main details:", err);
+                    return { data: null };
+                }),
+                fetchSupplierBalance(id)
+            ]);
+
+            const responseData = supplierRes.data;
+
+            if (responseData && responseData.supplier) {
+                const finSummary = {
+                    ...(responseData.financialSummary || {}),
+                    ...(balanceData || {})
+                };
                 return {
-                    supplier: mapApiSupplierToFrontend(response.data.supplier),
-                    financialSummary: response.data.financialSummary || {},
-                    outstandingBalance: response.data.outstandingBalance || 0,
-                    purchases: response.data.purchases || [],
-                    paymentHistory: response.data.paymentHistory || []
+                    supplier: mapApiSupplierToFrontend(responseData.supplier),
+                    financialSummary: finSummary,
+                    outstandingBalance: balanceData?.remainingBalance ?? responseData.outstandingBalance ?? 0,
+                    purchases: responseData.purchases || [],
+                    paymentHistory: responseData.paymentHistory || []
                 };
             }
-            
-            // Fallback for old API structure
-            return mapApiSupplierToFrontend(response.data);
+
+            const supplierData = responseData ? mapApiSupplierToFrontend(responseData) : { id, name: "" };
+            const finSummary = balanceData || {
+                totalPurchases: responseData?.totalPurchases || 0,
+                totalPaid: responseData?.totalPaid || 0,
+                remainingBalance: responseData?.remainingBalance || responseData?.outstandingBalance || 0
+            };
+
+            return {
+                supplier: supplierData,
+                financialSummary: finSummary,
+                outstandingBalance: finSummary.remainingBalance ?? 0,
+                purchases: responseData?.purchases || [],
+                paymentHistory: responseData?.paymentHistory || []
+            };
         } catch (err) {
             console.error("Failed to fetch supplier:", err);
             error.value = err.message || "Failed to load supplier";
@@ -160,6 +192,7 @@ export const useSupplierStore = defineStore("supplier", () => {
         error,
         fetchSuppliers,
         getSupplierById,
+        fetchSupplierBalance,
         createSupplier,
         updateSupplier,
         deleteSupplier,

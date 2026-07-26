@@ -1,14 +1,20 @@
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed, nextTick } from "vue";
 import { useSupplierStore } from "@/stores/pos/supplierStore";
 import { usePosStore } from "@/stores/pos/posStore";
 import { useReportStore } from "@/stores/pos/reportStore";
-import { Truck, Plus, Pencil, Trash2, Search, HelpCircle, Eye, DollarSign, Wallet, CreditCard, Receipt, FileText, List } from "lucide-vue-next";
+import { useToastStore } from "@/stores/base/toastStore";
+import { isValidEmail, isValidEgyptianPhone } from "@/utilities/validations";
+import {
+    Truck, Plus, Pencil, Trash2, Search, HelpCircle, Eye, DollarSign,
+    Wallet, CreditCard, Receipt, FileText, List, Printer, Download, RefreshCw, Phone, Users
+} from "lucide-vue-next";
 import HelpDrawer from "@/components/HelpDrawer.vue";
 
 const supplierStore = useSupplierStore();
 const posStore = usePosStore();
 const reportStore = useReportStore();
+const toastStore = useToastStore();
 
 const reportForm = ref({
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
@@ -20,6 +26,70 @@ const generateReport = () => {
         startDate: new Date(reportForm.value.startDate).toISOString(),
         endDate: new Date(reportForm.value.endDate + 'T23:59:59').toISOString()
     });
+};
+
+// ── Accounts Payable Report Helpers ──
+const isPrintingReport = ref(false);
+const reportSearchQuery = ref("");
+
+const reportItems = computed(() => {
+    const data = reportStore.accountsPayableData;
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    return data.items || data.payables || data.suppliers || data.records || [];
+});
+
+const filteredReportItems = computed(() => {
+    const q = reportSearchQuery.value.trim().toLowerCase();
+    if (!q) return reportItems.value;
+    return reportItems.value.filter(item =>
+        (item.supplierName && item.supplierName.toLowerCase().includes(q)) ||
+        (item.name && item.name.toLowerCase().includes(q)) ||
+        (item.phone && item.phone.toLowerCase().includes(q))
+    );
+});
+
+const reportSummary = computed(() => {
+    const data = reportStore.accountsPayableData;
+    const items = reportItems.value;
+
+    const totalBalance = (data && !Array.isArray(data) && data.totalBalance !== undefined)
+        ? Number(data.totalBalance || 0)
+        : items.reduce((s, i) => s + (i.balance || i.totalDue || i.amount || 0), 0);
+
+    const totalSuppliers = items.length || (data && data.totalSuppliers) || 0;
+
+    return { totalBalance, totalSuppliers };
+});
+
+const printReport = async () => {
+    isPrintingReport.value = true;
+    await nextTick();
+    setTimeout(() => {
+        window.print();
+        setTimeout(() => {
+            isPrintingReport.value = false;
+        }, 500);
+    }, 150);
+};
+
+const exportReportCsv = () => {
+    const items = filteredReportItems.value;
+    if (items.length === 0) return;
+
+    let csvContent = "\uFEFFالمورد,الهاتف,المبلغ المستحق للمورد\n";
+    items.forEach(item => {
+        const name = `"${(item.supplierName || item.name || '').replace(/"/g, '""')}"`;
+        const phone = `"${(item.phone || '').replace(/"/g, '""')}"`;
+        const bal = item.balance ?? item.totalDue ?? item.amount ?? 0;
+        csvContent += `${name},${phone},${bal}\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `تقرير_مستحقات_الموردين_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
 };
 
 // ── Help Drawer ──
@@ -164,6 +234,14 @@ const openEditSupplier = (supplier) => {
 };
 
 const saveSupplier = async () => {
+    if (supplierForm.value.email && !isValidEmail(supplierForm.value.email)) {
+        toastStore.addErrorToast("البريد الإلكتروني غير صحيح (مثال: mail@example.com)");
+        return;
+    }
+    if (supplierForm.value.phone && !isValidEgyptianPhone(supplierForm.value.phone)) {
+        toastStore.addErrorToast("رقم الهاتف غير صحيح (يجب إدخال رقم هاتف مصري صحيح)");
+        return;
+    }
     try {
         if (editingSupplier.value) {
             await supplierStore.updateSupplier(editingSupplier.value.id, { ...supplierForm.value });
@@ -313,25 +391,121 @@ const confirmDelete = async (supplier) => {
                 </TabPanel>
 
                 <TabPanel value="report" class="px-0 py-4">
-                    <div class="content-card p-4 mb-4">
-                        <div class="flex flex-col md:flex-row items-end gap-4">
-                            <div class="flex-1">
-                                <label class="font-bold block mb-2">من تاريخ</label>
-                                <InputText type="date" v-model="reportForm.startDate" class="w-full" />
+                    <!-- Report Controls Card -->
+                    <div class="content-card no-print p-4 mb-4">
+                        <div class="flex flex-col md:flex-row items-end justify-between gap-4">
+                            <div class="flex flex-col md:flex-row items-end gap-4 flex-1">
+                                <div class="flex-1 w-full">
+                                    <label class="font-bold block mb-2 text-sm text-surface-700 dark:text-surface-300">من تاريخ</label>
+                                    <InputText type="date" v-model="reportForm.startDate" class="w-full" size="small" />
+                                </div>
+                                <div class="flex-1 w-full">
+                                    <label class="font-bold block mb-2 text-sm text-surface-700 dark:text-surface-300">إلى تاريخ</label>
+                                    <InputText type="date" v-model="reportForm.endDate" class="w-full" size="small" />
+                                </div>
+                                <Button label="توليد التقرير" @click="generateReport" :loading="reportStore.isLoading">
+                                    <template #icon><RefreshCw :size="16" class="me-1" /></template>
+                                </Button>
                             </div>
-                            <div class="flex-1">
-                                <label class="font-bold block mb-2">إلى تاريخ</label>
-                                <InputText type="date" v-model="reportForm.endDate" class="w-full" />
-                            </div>
-                            <div>
-                                <Button label="توليد التقرير" @click="generateReport" :loading="reportStore.isLoading" icon="pi pi-file-excel" />
+
+                            <div v-if="reportStore.accountsPayableData" class="flex items-center gap-2">
+                                <Button label="طباعة" severity="secondary" outlined size="small" @click="printReport">
+                                    <template #icon><Printer :size="16" class="me-1" /></template>
+                                </Button>
+                                <Button label="تصدير CSV" severity="secondary" outlined size="small" @click="exportReportCsv">
+                                    <template #icon><Download :size="16" class="me-1" /></template>
+                                </Button>
                             </div>
                         </div>
                     </div>
-                    
-                    <div v-if="reportStore.accountsPayableData" class="content-card p-4">
-                        <h3 class="text-lg font-bold mb-4">نتيجة تقرير الموردين (المدفوعات المستحقة)</h3>
-                        <pre dir="ltr" class="bg-surface-50 dark:bg-surface-900 p-4 rounded-lg overflow-auto text-sm border border-surface-200 dark:border-surface-700">{{ JSON.stringify(reportStore.accountsPayableData, null, 2) }}</pre>
+
+                    <div v-if="reportStore.accountsPayableData">
+                        <!-- Printable Official Header -->
+                        <div class="print-official-header">
+                            <div class="print-header-content">
+                                <div class="print-header-brand">
+                                    <h2>تقرير مستحقات ودفعات الموردين (الذمم الدائنة)</h2>
+                                    <p>نظام إدارة المبيعات والمخازن (POS System)</p>
+                                </div>
+                                <div class="print-header-meta">
+                                    <p><span>الفترة:</span> {{ reportForm.startDate }} إلى {{ reportForm.endDate }}</p>
+                                    <p><span>تاريخ الطباعة:</span> {{ new Date().toLocaleDateString('ar-EG') }}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- KPI Summary Cards -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div class="content-card p-4 flex items-center gap-3 border-s-4 border-s-indigo-500">
+                                <div class="w-10 h-10 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 flex items-center justify-center flex-shrink-0">
+                                    <CreditCard :size="20" />
+                                </div>
+                                <div>
+                                    <span class="text-xs font-medium text-surface-500 block">إجمالي المستحقات للموردين</span>
+                                    <span class="text-lg font-bold text-indigo-600">{{ formatCurrency(reportSummary.totalBalance) }}</span>
+                                </div>
+                            </div>
+
+                            <div class="content-card p-4 flex items-center gap-3 border-s-4 border-s-blue-500">
+                                <div class="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center flex-shrink-0">
+                                    <Truck :size="20" />
+                                </div>
+                                <div>
+                                    <span class="text-xs font-medium text-surface-500 block">عدد الموردين المستحق لهم مبالغ</span>
+                                    <span class="text-lg font-bold text-surface-900 dark:text-surface-100">{{ reportSummary.totalSuppliers }} مورد</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Report DataTable Card -->
+                        <div class="content-card p-4">
+                            <div class="flex justify-between items-center mb-4 no-print">
+                                <div class="relative flex-1 max-w-sm">
+                                    <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400" />
+                                    <InputText v-model="reportSearchQuery" placeholder="بحث باسم المورد أو رقم الهاتف..." class="ps-9 w-full" size="small" />
+                                </div>
+                                <div class="text-sm font-semibold text-surface-600 dark:text-surface-400">
+                                    عدد السجلات: {{ filteredReportItems.length }}
+                                </div>
+                            </div>
+
+                            <DataTable
+                                :value="filteredReportItems"
+                                :paginator="!isPrintingReport"
+                                :rows="isPrintingReport ? 999999 : 10"
+                                stripedRows
+                                removableSort
+                                responsiveLayout="scroll"
+                            >
+                                <Column field="supplierName" header="اسم المورد" sortable style="min-width: 200px">
+                                    <template #body="{ data }">
+                                        <div class="flex items-center gap-2">
+                                            <Truck :size="16" class="text-surface-400" />
+                                            <span class="font-semibold text-surface-900 dark:text-surface-100 text-sm">
+                                                {{ data.supplierName || data.name || 'مورد غير مسمى' }}
+                                            </span>
+                                        </div>
+                                    </template>
+                                </Column>
+
+                                <Column field="phone" header="رقم الهاتف" style="min-width: 140px">
+                                    <template #body="{ data }">
+                                        <span class="font-mono text-xs text-surface-600 dark:text-surface-400" v-if="data.phone">
+                                            <Phone :size="12" class="inline me-1" />{{ data.phone }}
+                                        </span>
+                                        <span v-else class="text-xs text-surface-400">—</span>
+                                    </template>
+                                </Column>
+
+                                <Column field="balance" header="المبلغ المستحق للمورد" sortable style="min-width: 170px">
+                                    <template #body="{ data }">
+                                        <span class="font-bold text-indigo-600 text-base">
+                                            {{ formatCurrency(data.balance ?? data.totalDue ?? data.amount ?? 0) }}
+                                        </span>
+                                    </template>
+                                </Column>
+                            </DataTable>
+                        </div>
                     </div>
                     <div v-else-if="!reportStore.isLoading" class="content-card p-8 text-center border-dashed">
                         <FileText :size="48" class="text-surface-300 mx-auto mb-4" />

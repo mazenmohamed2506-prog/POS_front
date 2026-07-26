@@ -273,4 +273,165 @@ html[dir="rtl"] *:not(.pi):not(.pi *) {
     background: var(--p-surface-700);
     border-color: var(--p-primary-500);
     color: var(--p-primary-400);
+}
+
+/* ─── Universal Business Document Print System ─── */
+.print-official-header {
+    display: none;
+}
+
+@media print {
+    /* 1. Hide web app UI controls, navbars, sidebars, buttons, help drawers, toasts */
+    .no-print,
+    .sidebar-wrapper,
+    .sidebar-container,
+    .topbar-container,
+    .top-bar-wrapper,
+    .header-actions,
+    .products-header,
+    .inventory-header,
+    .page-header,
+    .help-icon-btn,
+    .p-tablist,
+    .inventory-filter-bar,
+    .p-paginator,
+    .p-toast,
+    .help-drawer,
+    .p-dialog-mask,
+    .p-dialog,
+    .search-input-wrap,
+    .status-filter-select,
+    .filter-actions,
+    button:not(.print-allow),
+    .p-button:not(.print-allow),
+    input[type="text"]:not(.print-allow),
+    input[type="search"]:not(.print-allow),
+    input[type="date"]:not(.print-allow) {
+        display: none !important;
+    }
+
+    /* 2. Reset Layout to full-width clean white paper document */
+    html, body, #app, .main-layout, .content-area, .content-scroll, main, .page-container, .inventory-page, .reports-page, .products-page {
+        background: #ffffff !important;
+        color: #000000 !important;
+        height: auto !important;
+        min-height: auto !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        overflow: visible !important;
+        box-shadow: none !important;
+        border: none !important;
+    }
+
+    /* 3. Official Printable Header */
+    .print-official-header {
+        display: block !important;
+        margin-bottom: 1.5rem !important;
+        padding-bottom: 0.75rem !important;
+        border-bottom: 2px solid #000000 !important;
+    }
+
+    .print-header-content {
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: flex-end !important;
+        direction: rtl !important;
+    }
+
+    .print-header-brand h2 {
+        font-size: 1.4rem !important;
+        font-weight: 800 !important;
+        color: #000000 !important;
+        margin: 0 0 0.25rem 0 !important;
+    }
+
+    .print-header-brand p {
+        font-size: 0.85rem !important;
+        color: #4b5563 !important;
+        margin: 0 !important;
+    }
+
+    .print-header-meta {
+        text-align: left !important;
+        font-size: 0.85rem !important;
+        color: #374151 !important;
+    }
+
+    .print-header-meta p {
+        margin: 0.15rem 0 !important;
+    }
+
+    .print-header-meta span {
+        font-weight: 700 !important;
+    }
+
+    /* 4. Cards & Data Tables Formatting */
+    .inventory-card, .content-card, .card, .p-card, .p-datatable {
+        box-shadow: none !important;
+        border: 1px solid #d1d5db !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+        padding: 0 !important;
+        margin: 0 0 1rem 0 !important;
+        border-radius: 0 !important;
+    }
+
+    table, .p-datatable-table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+    }
+
+    th, td, .p-datatable-thead > tr > th, .p-datatable-tbody > tr > td {
+        border: 1px solid #9ca3af !important;
+        padding: 6px 10px !important;
+        color: #000000 !important;
+        background: #ffffff !important;
+        font-size: 10pt !important;
+    }
+
+    th, .p-datatable-thead > tr > th {
+        background-color: #f3f4f6 !important;
+        color: #000000 !important;
+        font-weight: 700 !important;
+    }
+
+    /* Page break handling */
+    tr, tbody tr, .inv-product, .inv-batch-card {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+
+    /* Printable Stat Cards */
+    .inventory-stats-grid, .products-stats-grid {
+        display: grid !important;
+        grid-template-columns: repeat(4, 1fr) !important;
+        gap: 0.5rem !important;
+        margin-bottom: 1rem !important;
+    }
+
+    .stat-card {
+        border: 1px solid #9ca3af !important;
+        background: #ffffff !important;
+        box-shadow: none !important;
+        padding: 0.5rem 0.75rem !important;
+        border-radius: 4px !important;
+    }
+
+    .stat-value {
+        color: #000000 !important;
+        font-size: 1rem !important;
+    }
+
+    .stat-label {
+        color: #374151 !important;
+        font-size: 0.75rem !important;
+    }
+
+    .stat-accent, .stat-icon-circle {
+        display: none !important;
+    }
 }

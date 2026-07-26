@@ -1,8 +1,11 @@
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed, nextTick } from "vue";
 import { useExpenseStore } from "@/stores/pos/expenseStore";
 import { useReportStore } from "@/stores/pos/reportStore";
-import { DollarSign, Plus, Search, HelpCircle, FileText, List } from "lucide-vue-next";
+import {
+    DollarSign, Plus, Search, HelpCircle, FileText, List, Printer,
+    Download, RefreshCw, TrendingDown, Tag as TagIcon, Hash, FileBarChart
+} from "lucide-vue-next";
 import HelpDrawer from "@/components/HelpDrawer.vue";
 
 const expenseStore = useExpenseStore();
@@ -75,12 +78,40 @@ const generateReport = () => {
     });
 };
 
-const formatDate = (dateStr) => {
-    if (!dateStr) return "—";
-    return new Date(dateStr).toLocaleDateString("ar-EG", {
-        year: "numeric", month: "short", day: "numeric"
-    });
-};
+// ── Expenses Report Helpers ──
+const isPrintingReport = ref(false);
+const reportSearchQuery = ref("");
+
+const reportItems = computed(() => {
+    const data = reportStore.expensesData;
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    return data.items || data.expenses || data.records || [];
+});
+
+const filteredReportItems = computed(() => {
+    const q = reportSearchQuery.value.trim().toLowerCase();
+    if (!q) return reportItems.value;
+    return reportItems.value.filter(item =>
+        (item.description && item.description.toLowerCase().includes(q)) ||
+        (item.category && item.category.toLowerCase().includes(q)) ||
+        (item.categoryName && item.categoryName.toLowerCase().includes(q))
+    );
+});
+
+const reportSummary = computed(() => {
+    const data = reportStore.expensesData;
+    const items = reportItems.value;
+
+    const totalAmount = (data && !Array.isArray(data) && data.totalAmount !== undefined)
+        ? Number(data.totalAmount || 0)
+        : items.reduce((s, i) => s + (i.amount || 0), 0);
+
+    const totalCount = items.length || (data && data.totalCount) || 0;
+    const avgExpense = totalCount > 0 ? (totalAmount / totalCount) : 0;
+
+    return { totalAmount, totalCount, avgExpense };
+});
 
 const formatCurrency = (val) => {
     return new Intl.NumberFormat("ar-EG", {
@@ -88,6 +119,44 @@ const formatCurrency = (val) => {
         currency: "EGP",
         minimumFractionDigits: 2,
     }).format(val || 0);
+};
+
+const printReport = async () => {
+    isPrintingReport.value = true;
+    await nextTick();
+    setTimeout(() => {
+        window.print();
+        setTimeout(() => {
+            isPrintingReport.value = false;
+        }, 500);
+    }, 150);
+};
+
+const exportReportCsv = () => {
+    const items = filteredReportItems.value;
+    if (items.length === 0) return;
+
+    let csvContent = "\uFEFFالتاريخ,الفئة,البيان / الوصف,المبلغ\n";
+    items.forEach(item => {
+        const date = item.expenseDate ? new Date(item.expenseDate).toLocaleDateString('ar-EG') : '';
+        const cat = `"${getCategoryLabel(item.category || item.categoryName)}"`;
+        const desc = `"${(item.description || '').replace(/"/g, '""')}"`;
+        const amt = item.amount || 0;
+        csvContent += `${date},${cat},${desc},${amt}\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `تقرير_المصروفات_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+};
+
+const formatDate = (dateStr) => {
+    if (!dateStr) return "—";
+    return new Date(dateStr).toLocaleDateString("ar-EG", {
+        year: "numeric", month: "short", day: "numeric"
+    });
 };
 
 const categories = [
@@ -192,25 +261,129 @@ const getCategoryLabel = (val) => {
                 </TabPanel>
 
                 <TabPanel value="report" class="px-0 py-4">
-                    <div class="content-card p-4 mb-4">
-                        <div class="flex flex-col md:flex-row items-end gap-4">
-                            <div class="flex-1">
-                                <label class="font-bold block mb-2">من تاريخ</label>
-                                <InputText type="date" v-model="reportForm.startDate" class="w-full" />
+                    <!-- Report Controls Card -->
+                    <div class="content-card no-print p-4 mb-4">
+                        <div class="flex flex-col md:flex-row items-end justify-between gap-4">
+                            <div class="flex flex-col md:flex-row items-end gap-4 flex-1">
+                                <div class="flex-1 w-full">
+                                    <label class="font-bold block mb-2 text-sm text-surface-700 dark:text-surface-300">من تاريخ</label>
+                                    <InputText type="date" v-model="reportForm.startDate" class="w-full" size="small" />
+                                </div>
+                                <div class="flex-1 w-full">
+                                    <label class="font-bold block mb-2 text-sm text-surface-700 dark:text-surface-300">إلى تاريخ</label>
+                                    <InputText type="date" v-model="reportForm.endDate" class="w-full" size="small" />
+                                </div>
+                                <Button label="توليد التقرير" @click="generateReport" :loading="reportStore.isLoading">
+                                    <template #icon><RefreshCw :size="16" class="me-1" /></template>
+                                </Button>
                             </div>
-                            <div class="flex-1">
-                                <label class="font-bold block mb-2">إلى تاريخ</label>
-                                <InputText type="date" v-model="reportForm.endDate" class="w-full" />
-                            </div>
-                            <div>
-                                <Button label="توليد التقرير" @click="generateReport" :loading="reportStore.isLoading" icon="pi pi-file-excel" />
+
+                            <div v-if="reportStore.expensesData" class="flex items-center gap-2">
+                                <Button label="طباعة" severity="secondary" outlined size="small" @click="printReport">
+                                    <template #icon><Printer :size="16" class="me-1" /></template>
+                                </Button>
+                                <Button label="تصدير CSV" severity="secondary" outlined size="small" @click="exportReportCsv">
+                                    <template #icon><Download :size="16" class="me-1" /></template>
+                                </Button>
                             </div>
                         </div>
                     </div>
-                    
-                    <div v-if="reportStore.expensesData" class="content-card p-4">
-                        <h3 class="text-lg font-bold mb-4">نتيجة تقرير المصروفات</h3>
-                        <pre dir="ltr" class="bg-surface-50 dark:bg-surface-900 p-4 rounded-lg overflow-auto text-sm border border-surface-200 dark:border-surface-700">{{ JSON.stringify(reportStore.expensesData, null, 2) }}</pre>
+
+                    <div v-if="reportStore.expensesData">
+                        <!-- Printable Official Header -->
+                        <div class="print-official-header">
+                            <div class="print-header-content">
+                                <div class="print-header-brand">
+                                    <h2>تقرير المصروفات والنفقات التشغيلية</h2>
+                                    <p>نظام إدارة المبيعات والمخازن (POS System)</p>
+                                </div>
+                                <div class="print-header-meta">
+                                    <p><span>الفترة:</span> {{ reportForm.startDate }} إلى {{ reportForm.endDate }}</p>
+                                    <p><span>تاريخ الطباعة:</span> {{ new Date().toLocaleDateString('ar-EG') }}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- KPI Summary Cards -->
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                            <div class="content-card p-4 flex items-center gap-3 border-s-4 border-s-red-500">
+                                <div class="w-10 h-10 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 flex items-center justify-center flex-shrink-0">
+                                    <TrendingDown :size="20" />
+                                </div>
+                                <div>
+                                    <span class="text-xs font-medium text-surface-500 block">إجمالي المصروفات</span>
+                                    <span class="text-lg font-bold text-red-600">{{ formatCurrency(reportSummary.totalAmount) }}</span>
+                                </div>
+                            </div>
+
+                            <div class="content-card p-4 flex items-center gap-3 border-s-4 border-s-amber-500">
+                                <div class="w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 flex items-center justify-center flex-shrink-0">
+                                    <FileText :size="20" />
+                                </div>
+                                <div>
+                                    <span class="text-xs font-medium text-surface-500 block">عدد العمليات</span>
+                                    <span class="text-lg font-bold text-surface-900 dark:text-surface-100">{{ reportSummary.totalCount }} عملية</span>
+                                </div>
+                            </div>
+
+                            <div class="content-card p-4 flex items-center gap-3 border-s-4 border-s-blue-500">
+                                <div class="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center flex-shrink-0">
+                                    <DollarSign :size="20" />
+                                </div>
+                                <div>
+                                    <span class="text-xs font-medium text-surface-500 block">متوسط العملية</span>
+                                    <span class="text-lg font-bold text-blue-600">{{ formatCurrency(reportSummary.avgExpense) }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Report DataTable Card -->
+                        <div class="content-card p-4">
+                            <div class="flex justify-between items-center mb-4 no-print">
+                                <div class="relative flex-1 max-w-sm">
+                                    <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400" />
+                                    <InputText v-model="reportSearchQuery" placeholder="بحث بالبيان أو الفئة..." class="ps-9 w-full" size="small" />
+                                </div>
+                                <div class="text-sm font-semibold text-surface-600 dark:text-surface-400">
+                                    عدد السجلات: {{ filteredReportItems.length }}
+                                </div>
+                            </div>
+
+                            <DataTable
+                                :value="filteredReportItems"
+                                :paginator="!isPrintingReport"
+                                :rows="isPrintingReport ? 999999 : 10"
+                                stripedRows
+                                removableSort
+                                responsiveLayout="scroll"
+                            >
+                                <Column field="expenseDate" header="التاريخ" sortable style="min-width: 140px">
+                                    <template #body="{ data }">
+                                        <span>{{ formatDate(data.expenseDate || data.date) }}</span>
+                                    </template>
+                                </Column>
+
+                                <Column field="category" header="الفئة" sortable style="min-width: 140px">
+                                    <template #body="{ data }">
+                                        <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                            {{ getCategoryLabel(data.category || data.categoryName) }}
+                                        </span>
+                                    </template>
+                                </Column>
+
+                                <Column field="description" header="البيان / الوصف" style="min-width: 220px">
+                                    <template #body="{ data }">
+                                        <span class="font-medium text-surface-900 dark:text-surface-100">{{ data.description || 'بدون بيان' }}</span>
+                                    </template>
+                                </Column>
+
+                                <Column field="amount" header="المبلغ" sortable style="min-width: 140px">
+                                    <template #body="{ data }">
+                                        <span class="font-bold text-red-600 text-base">{{ formatCurrency(data.amount) }}</span>
+                                    </template>
+                                </Column>
+                            </DataTable>
+                        </div>
                     </div>
                     <div v-else-if="!reportStore.isLoading" class="content-card p-8 text-center border-dashed">
                         <FileText :size="48" class="text-surface-300 mx-auto mb-4" />

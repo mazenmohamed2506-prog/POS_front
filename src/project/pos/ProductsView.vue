@@ -160,10 +160,49 @@ const productForm = ref({
     cost: 0,
     costPrice: 0,
     itemDiscount: 0,
+    isActive: true,
     units: [],
 });
 
 const filters = ref({ global: { value: "", matchMode: "contains" } });
+
+// ─── Status Filtering ────────────────────────────────────────────────────────
+const statusFilter = ref("ALL"); // "ALL" | "ACTIVE" | "INACTIVE" | "INCOMPLETE"
+const statusOptions = [
+    { label: "جميع الحالات", value: "ALL" },
+    { label: "نشط فقط", value: "ACTIVE" },
+    { label: "غير نشط فقط", value: "INACTIVE" },
+    { label: "بيانات ناقصة", value: "INCOMPLETE" },
+];
+
+const filteredProducts = computed(() => {
+    if (statusFilter.value === "ACTIVE") {
+        return productStore.products.filter(p => p.isActive === true);
+    }
+    if (statusFilter.value === "INACTIVE") {
+        return productStore.products.filter(p => p.isActive === false);
+    }
+    if (statusFilter.value === "INCOMPLETE") {
+        return productStore.products.filter(p => {
+            const baseUnit = (p.units || []).find(u => u.factor === 1) || (p.units || [])[0];
+            const missingBarcode = !baseUnit?.barcode;
+            const missingPrice = (baseUnit?.sellingPrice ?? baseUnit?.price ?? p.sellingPrice ?? 0) === 0;
+            return missingBarcode || missingPrice;
+        });
+    }
+    return productStore.products;
+});
+
+const toggleProductStatus = async (product) => {
+    try {
+        await productStore.updateProduct({
+            ...product,
+            isActive: !product.isActive
+        });
+    } catch {
+        // Handled by store toasts
+    }
+};
 
 onMounted(() => {
     productStore.fetchProducts();
@@ -212,6 +251,7 @@ const openNewProduct = () => {
         cost: 0,
         costPrice: 0,
         itemDiscount: 0,
+        isActive: true,
         units: [
             { id: 0, name: "قطعة", factor: 1, barcode: "", price: 0, cost: 0, itemDiscount: 0 }
         ]
@@ -239,14 +279,116 @@ const openEditProduct = (product) => {
         isBaseUnit: u.isBaseUnit ?? (u.factor === 1)
     }));
 
-    productForm.value = { ...product, units };
+    productForm.value = {
+        ...product,
+        isActive: product.isActive ?? true,
+        units
+    };
     isAddingNewCategory.value = false;
     newCategoryName.value = "";
     showProductDialog.value = true;
 };
 
+const getBaseUnit = () => {
+    return productForm.value.units.find(u => u.factor === 1) || productForm.value.units[0];
+};
+
+const recalculateSubUnitPricesFromBase = () => {
+    const baseUnit = getBaseUnit();
+    if (!baseUnit) return;
+    const basePrice = Number(baseUnit.price) || 0;
+
+    productForm.value.units.forEach(u => {
+        if (u !== baseUnit) {
+            const uFactor = Number(u.factor) || 1;
+            if (basePrice > 0) {
+                u.price = Number((basePrice * uFactor).toFixed(2));
+            }
+        }
+    });
+};
+
+const onUnitFactorChange = (idx) => {
+    const unit = productForm.value.units[idx];
+    if (!unit) return;
+    const factor = Number(unit.factor) || 1;
+    const baseUnit = getBaseUnit();
+
+    if (unit === baseUnit) {
+        recalculateSubUnitPricesFromBase();
+        return;
+    }
+
+    if (baseUnit) {
+        // For Cost: Larger unit cost adjusts base unit cost (cost / factor)
+        const unitCost = Number(unit.cost) || 0;
+        if (unitCost > 0 && factor > 0) {
+            baseUnit.cost = Number((unitCost / factor).toFixed(2));
+        }
+
+        // For Selling Price: Base unit price adjusts larger unit price
+        const basePrice = Number(baseUnit.price) || 0;
+        if (basePrice > 0) {
+            unit.price = Number((basePrice * factor).toFixed(2));
+        } else if (unit.price > 0 && factor > 0) {
+            baseUnit.price = Number((unit.price / factor).toFixed(2));
+        }
+    }
+};
+
+const onUnitCostChange = (idx) => {
+    const unit = productForm.value.units[idx];
+    if (!unit) return;
+    const baseUnit = getBaseUnit();
+    const cost = Number(unit.cost) || 0;
+    const factor = Number(unit.factor) || 1;
+
+    // Editing larger unit (not base unit) updates base unit cost: baseUnit.cost = cost / factor
+    if (unit !== baseUnit && baseUnit) {
+        if (factor > 0) {
+            baseUnit.cost = Number((cost / factor).toFixed(2));
+        }
+    }
+    // Note: Editing base unit cost does NOT alter larger units' cost (as requested)
+};
+
+const onUnitPriceChange = (idx) => {
+    const unit = productForm.value.units[idx];
+    if (!unit) return;
+    const baseUnit = getBaseUnit();
+    const price = Number(unit.price) || 0;
+    const factor = Number(unit.factor) || 1;
+
+    if (unit === baseUnit) {
+        productForm.value.units.forEach(u => {
+            if (u !== baseUnit) {
+                const uFactor = Number(u.factor) || 1;
+                u.price = Number((price * uFactor).toFixed(2));
+            }
+        });
+    } else {
+        const basePrice = Number(baseUnit?.price) || 0;
+        if (basePrice === 0 && price > 0 && factor > 0 && baseUnit) {
+            baseUnit.price = Number((price / factor).toFixed(2));
+            recalculateSubUnitPricesFromBase();
+        }
+    }
+};
+
 const addUnitLine = () => {
-    productForm.value.units.push({ id: 0, name: "", factor: 1, barcode: "", price: 0, cost: 0, itemDiscount: 0 });
+    const baseUnit = getBaseUnit();
+    const baseCost = Number(baseUnit?.cost) || 0;
+    const basePrice = Number(baseUnit?.price) || 0;
+
+    productForm.value.units.push({
+        id: 0,
+        name: "",
+        factor: 1,
+        barcode: "",
+        price: basePrice > 0 ? basePrice : 0,
+        cost: baseCost > 0 ? baseCost : 0,
+        itemDiscount: 0
+    });
 };
 
 const removeUnitLine = (idx) => {
@@ -347,7 +489,7 @@ const viewConversions = async (product) => {
 
         <!-- Catalog Overview Stats Cards -->
         <div class="products-stats-grid">
-            <div class="stat-card">
+            <div class="stat-card clickable" :class="{ 'stat-card-active': statusFilter === 'ALL' }" @click="statusFilter = 'ALL'">
                 <div class="stat-icon-circle Purple">
                     <Package :size="20" />
                 </div>
@@ -357,7 +499,7 @@ const viewConversions = async (product) => {
                 </div>
                 <div class="stat-accent Purple"></div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card clickable" :class="{ 'stat-card-active': statusFilter === 'ACTIVE' }" @click="statusFilter = 'ACTIVE'">
                 <div class="stat-icon-circle green">
                     <CheckCircle2 :size="20" />
                 </div>
@@ -367,7 +509,7 @@ const viewConversions = async (product) => {
                 </div>
                 <div class="stat-accent green"></div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card clickable" :class="{ 'stat-card-active': statusFilter === 'INACTIVE' }" @click="statusFilter = 'INACTIVE'">
                 <div class="stat-icon-circle red">
                     <XCircle :size="20" />
                 </div>
@@ -377,7 +519,7 @@ const viewConversions = async (product) => {
                 </div>
                 <div class="stat-accent red"></div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card clickable" :class="{ 'stat-card-active': statusFilter === 'INCOMPLETE' }" @click="statusFilter = 'INCOMPLETE'">
                 <div class="stat-icon-circle orange">
                     <AlertCircle :size="20" />
                 </div>
@@ -407,7 +549,7 @@ const viewConversions = async (product) => {
         <div class="products-card">
             <!-- Filter TopBar -->
             <div class="products-filter-bar">
-                <div class="search-input-wrap">
+                <div class="search-input-wrap flex-1">
                     <Search :size="16" class="search-icon" />
                     <InputText
                         v-model="filters.global.value"
@@ -417,6 +559,17 @@ const viewConversions = async (product) => {
                         size="small"
                     />
                 </div>
+                <!-- <div class="status-filter-wrap">
+                    <Select
+                        v-model="statusFilter"
+                        :options="statusOptions"
+                        optionLabel="label"
+                        optionValue="value"
+                        placeholder="فلتر الحالة"
+                        class="status-filter-select"
+                        size="small"
+                    />
+                </div> -->
                 <div class="filter-actions">
                     <Button label="إدارة الفئات" size="small" outlined severity="secondary" @click="openManageCategories">
                         <template #icon><LayoutGrid :size="14" /></template>
@@ -429,14 +582,14 @@ const viewConversions = async (product) => {
 
             <!-- Products Table -->
             <DataTable
-                :value="productStore.products"
+                :value="filteredProducts"
                 :loading="productStore.loading"
                 paginator
                 :rows="10"
                 :rowsPerPageOptions="[5, 10, 20, 50]"
                 v-model:filters="filters"
                 :globalFilterFields="['name', 'sku', 'barcode', 'category']"
-                emptyMessage="لا توجد منتجات مطابقة للبحث"
+                emptyMessage="لا توجد منتجات مطابقة للبحث أو الفلتر"
                 stripedRows
                 removableSort
                 scrollable
@@ -445,7 +598,7 @@ const viewConversions = async (product) => {
                 <Column field="name" header="المنتج" sortable style="min-width: 240px">
                     <template #body="{ data }">
                         <div class="product-name-cell">
-                            <div class="product-avatar">
+                            <div class="product-avatar" :class="{ 'is-inactive': !data.isActive }">
                                 <Package :size="16" />
                             </div>
                             <div class="product-name-info">
@@ -487,6 +640,22 @@ const viewConversions = async (product) => {
                             -{{ data.itemDiscount.toFixed(2) }}
                         </span>
                         <span v-else class="text-surface-300 dark:text-surface-600 text-sm">—</span>
+                    </template>
+                </Column>
+
+                <Column field="isActive" header="الحالة" sortable style="min-width: 130px">
+                    <template #body="{ data }">
+                        <button
+                            type="button"
+                            class="status-toggle-btn"
+                            :class="data.isActive ? 'is-active' : 'is-inactive'"
+                            @click="toggleProductStatus(data)"
+                            :title="data.isActive ? 'انقر لتعطيل المنتج' : 'انقر لتفعيل المنتج'"
+                        >
+                            <CheckCircle2 v-if="data.isActive" :size="13" />
+                            <XCircle v-else :size="13" />
+                            <span>{{ data.isActive ? 'نشط' : 'غير نشط' }}</span>
+                        </button>
                     </template>
                 </Column>
 
@@ -544,6 +713,17 @@ const viewConversions = async (product) => {
                         showClear
                     />
                 </div>
+
+                <!-- Product Status Toggle -->
+                <div class="form-field status-toggle-field">
+                    <div class="status-toggle-info">
+                        <label class="font-bold text-sm mb-0.5 block">حالة المنتج</label>
+                        <span class="text-xs text-surface-500">
+                            {{ productForm.isActive ? 'المنتج نشط ومتاح في جميع شاشات العمل والبيع' : 'المنتج غير نشط ويتم إخفاؤه من شاشة البيع' }}
+                        </span>
+                    </div>
+                    <ToggleSwitch v-model="productForm.isActive" id="product-status-switch" />
+                </div>
                 
                 <!-- Units section -->
                 <div class="units-section">
@@ -579,17 +759,17 @@ const viewConversions = async (product) => {
                                 </div>
                                 <div class="form-field">
                                     <label class="required">معامل التحويل</label>
-                                    <InputNumber v-model="unit.factor" :min="1" size="small" fluid placeholder="1 للوحدة الأساسية" />
+                                    <InputNumber v-model="unit.factor" :min="1" size="small" fluid placeholder="1 للوحدة الأساسية" @update:modelValue="onUnitFactorChange(idx)" />
                                 </div>
                             </div>
                             <div class="grid grid-cols-2 gap-3 mb-3">
                                 <div class="form-field">
                                     <label>سعر البيع</label>
-                                    <InputNumber v-model="unit.price" :minFractionDigits="2" size="small" fluid placeholder="0.00" />
+                                    <InputNumber v-model="unit.price" :minFractionDigits="2" size="small" fluid placeholder="0.00" @update:modelValue="onUnitPriceChange(idx)" />
                                 </div>
                                 <div class="form-field">
                                     <label>التكلفة</label>
-                                    <InputNumber v-model="unit.cost" :minFractionDigits="2" size="small" fluid placeholder="0.00" />
+                                    <InputNumber v-model="unit.cost" :minFractionDigits="2" size="small" fluid placeholder="0.00" @update:modelValue="onUnitCostChange(idx)" />
                                 </div>
                             </div>
                             <div class="grid grid-cols-2 gap-3">
@@ -681,6 +861,11 @@ const viewConversions = async (product) => {
                                 <span class="category-chip" v-if="selectedProductDetails.category">
                                     <TagIcon :size="11" />
                                     {{ selectedProductDetails.category }}
+                                </span>
+                                <span class="status-chip-sm" :class="selectedProductDetails.isActive ? 'status-success' : 'status-danger'">
+                                    <CheckCircle2 v-if="selectedProductDetails.isActive" :size="12" />
+                                    <XCircle v-else :size="12" />
+                                    {{ selectedProductDetails.isActive ? 'نشط' : 'غير نشط' }}
                                 </span>
                             </div>
                         </div>
@@ -1733,5 +1918,109 @@ const viewConversions = async (product) => {
 
 :deep(.p-datatable-tbody > tr > td) {
     border-bottom: none !important;
+}
+
+/* ─── Status Filter & Cards ────────────────────────────── */
+.stat-card.clickable {
+    cursor: pointer;
+}
+
+.stat-card-active {
+    border-color: var(--p-primary-500) !important;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25) !important;
+}
+.stat-card-active .stat-accent {
+    opacity: 1 !important;
+}
+
+.status-filter-wrap {
+    min-width: 150px;
+}
+
+.status-filter-select {
+    width: 100%;
+}
+
+.product-avatar.is-inactive {
+    background: rgba(239, 68, 68, 0.1) !important;
+    color: #ef4444 !important;
+}
+
+.status-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.775rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.status-toggle-btn.is-active {
+    background: rgba(16, 185, 129, 0.12);
+    color: #059669;
+}
+.status-toggle-btn.is-active:hover {
+    background: rgba(16, 185, 129, 0.25);
+}
+.dark .status-toggle-btn.is-active {
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+}
+
+.status-toggle-btn.is-inactive {
+    background: rgba(239, 68, 68, 0.12);
+    color: #dc2626;
+}
+.status-toggle-btn.is-inactive:hover {
+    background: rgba(239, 68, 68, 0.25);
+}
+.dark .status-toggle-btn.is-inactive {
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+}
+
+.status-toggle-field {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.875rem 1rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--p-surface-200);
+    background: var(--p-surface-50);
+    margin-bottom: 1rem;
+}
+.dark .status-toggle-field {
+    border-color: var(--p-surface-750);
+    background: var(--p-surface-850);
+}
+
+.status-chip-sm {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.status-chip-sm.status-success {
+    background: rgba(16, 185, 129, 0.15);
+    color: #059669;
+}
+.dark .status-chip-sm.status-success {
+    color: #34d399;
+}
+
+.status-chip-sm.status-danger {
+    background: rgba(239, 68, 68, 0.15);
+    color: #dc2626;
+}
+.dark .status-chip-sm.status-danger {
+    color: #f87171;
 }
 </style>

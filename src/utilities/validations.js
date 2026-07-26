@@ -52,13 +52,24 @@ export const validateText = () => {
 
 export const REGEX_PATTERNS = {
     email: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
-    mobile: /^(\+|00)(?:(?!\+0)[0-9]){8,16}$|^(\+|00)(?:(?!\+0)[0-9]){9,17}$/,
+    mobile: /^(?:(?:\+20|0020|20)?0?1[0125]\d{8})|(?:(?:\+20|0020|20)?0[2-9]\d{7,8})$/,
+    egyptianPhone: /^(?:(?:\+20|0020|20)?0?1[0125]\d{8})|(?:(?:\+20|0020|20)?0[2-9]\d{7,8})$/,
     name: /^[a-zA-Z\u0621-\u064A\u0660-\u06690-9'/_ -]+$/,
     code: /^[a-zA-Z0-9/_-]+$/,
     userName: /^[a-zA-Z][a-zA-Z0-9_.]{2,15}$/,
     password: /^(?=.*[a-zA-Z])(?=.*[0-9]).{8,}$/,
     id: /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/,
     nationalId: /^[23]\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(0[1-4]|[1-2][1-9]|3[1-5]|88)\d{5}$/,
+};
+
+export const isValidEmail = (email) => {
+    if (!email) return true; // Optional field
+    return REGEX_PATTERNS.email.test(email);
+};
+
+export const isValidEgyptianPhone = (phone) => {
+    if (!phone) return true; // Optional field
+    return REGEX_PATTERNS.egyptianPhone.test(phone);
 };
 
 export const validateNationalId = () => {

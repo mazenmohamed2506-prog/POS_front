@@ -1,9 +1,12 @@
 <script setup>
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, computed, nextTick } from "vue";
 import { useStockCountStore } from "@/stores/pos/stockCountStore";
 import { usePosStore } from "@/stores/pos/posStore";
 import { useReportStore } from "@/stores/pos/reportStore";
-import { ClipboardList, Plus, Search, Eye, CheckCircle, Save, X, ArrowLeft, ArrowRight, HelpCircle, FileText, List } from "lucide-vue-next";
+import {
+    ClipboardList, Plus, Search, Eye, CheckCircle, Save, X, ArrowLeft,
+    ArrowRight, HelpCircle, FileText, List, Printer, Download, RefreshCw, Clock
+} from "lucide-vue-next";
 import HelpDrawer from "@/components/HelpDrawer.vue";
 import { useToastStore } from "@/stores/base/toastStore";
 
@@ -22,6 +25,77 @@ const generateReport = () => {
         startDate: new Date(reportForm.value.startDate).toISOString(),
         endDate: new Date(reportForm.value.endDate + 'T23:59:59').toISOString()
     });
+};
+
+// ── Stock Count Report Helpers ──
+const isPrintingReport = ref(false);
+const reportSearchQuery = ref("");
+
+const reportItems = computed(() => {
+    const data = reportStore.stockCountsData;
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    return data.items || data.stockCounts || data.sessions || data.records || [];
+});
+
+const filteredReportItems = computed(() => {
+    const q = reportSearchQuery.value.trim().toLowerCase();
+    if (!q) return reportItems.value;
+    return reportItems.value.filter(item =>
+        (item.name && item.name.toLowerCase().includes(q)) ||
+        (item.notes && item.notes.toLowerCase().includes(q)) ||
+        (item.status && item.status.toLowerCase().includes(q))
+    );
+});
+
+const reportSummary = computed(() => {
+    const data = reportStore.stockCountsData;
+    const items = reportItems.value;
+
+    const totalSessions = items.length || (data && data.totalSessions) || 0;
+    const completedSessions = items.filter(i => (i.status === 'COMPLETED' || i.status === 'مكتمل')).length;
+    const inProgressSessions = totalSessions - completedSessions;
+
+    return { totalSessions, completedSessions, inProgressSessions };
+});
+
+const getStockCountStatusLabel = (status) => {
+    switch (status) {
+        case "COMPLETED": return "مكتمل ومطبق";
+        case "IN_PROGRESS": return "قيد الإجراء";
+        default: return status || "معلق";
+    }
+};
+
+const printReport = async () => {
+    isPrintingReport.value = true;
+    await nextTick();
+    setTimeout(() => {
+        window.print();
+        setTimeout(() => {
+            isPrintingReport.value = false;
+        }, 500);
+    }, 150);
+};
+
+const exportReportCsv = () => {
+    const items = filteredReportItems.value;
+    if (items.length === 0) return;
+
+    let csvContent = "\uFEFFاسم جلسة الجرد,تاريخ الجلسة,الحالة,ملاحظات\n";
+    items.forEach(item => {
+        const name = `"${(item.name || '').replace(/"/g, '""')}"`;
+        const date = item.countDate ? new Date(item.countDate).toLocaleDateString('ar-EG') : '';
+        const status = `"${getStockCountStatusLabel(item.status)}"`;
+        const notes = `"${(item.notes || '').replace(/"/g, '""')}"`;
+        csvContent += `${name},${date},${status},${notes}\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `تقرير_جرد_المخزون_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
 };
 
 const showHelp = ref(false);
@@ -245,25 +319,139 @@ const getStatusConfig = (status) => {
                     </TabPanel>
 
                     <TabPanel value="report" class="px-0 py-4">
-                        <div class="content-card p-4 mb-4">
-                            <div class="flex flex-col md:flex-row items-end gap-4">
-                                <div class="flex-1">
-                                    <label class="font-bold block mb-2">من تاريخ</label>
-                                    <InputText type="date" v-model="reportForm.startDate" class="w-full" />
+                        <!-- Report Controls Card -->
+                        <div class="content-card no-print p-4 mb-4">
+                            <div class="flex flex-col md:flex-row items-end justify-between gap-4">
+                                <div class="flex flex-col md:flex-row items-end gap-4 flex-1">
+                                    <div class="flex-1 w-full">
+                                        <label class="font-bold block mb-2 text-sm text-surface-700 dark:text-surface-300">من تاريخ</label>
+                                        <InputText type="date" v-model="reportForm.startDate" class="w-full" size="small" />
+                                    </div>
+                                    <div class="flex-1 w-full">
+                                        <label class="font-bold block mb-2 text-sm text-surface-700 dark:text-surface-300">إلى تاريخ</label>
+                                        <InputText type="date" v-model="reportForm.endDate" class="w-full" size="small" />
+                                    </div>
+                                    <Button label="توليد التقرير" @click="generateReport" :loading="reportStore.isLoading">
+                                        <template #icon><RefreshCw :size="16" class="me-1" /></template>
+                                    </Button>
                                 </div>
-                                <div class="flex-1">
-                                    <label class="font-bold block mb-2">إلى تاريخ</label>
-                                    <InputText type="date" v-model="reportForm.endDate" class="w-full" />
-                                </div>
-                                <div>
-                                    <Button label="توليد التقرير" @click="generateReport" :loading="reportStore.isLoading" icon="pi pi-file-excel" />
+
+                                <div v-if="reportStore.stockCountsData" class="flex items-center gap-2">
+                                    <Button label="طباعة" severity="secondary" outlined size="small" @click="printReport">
+                                        <template #icon><Printer :size="16" class="me-1" /></template>
+                                    </Button>
+                                    <Button label="تصدير CSV" severity="secondary" outlined size="small" @click="exportReportCsv">
+                                        <template #icon><Download :size="16" class="me-1" /></template>
+                                    </Button>
                                 </div>
                             </div>
                         </div>
-                        
-                        <div v-if="reportStore.stockCountsData" class="content-card p-4">
-                            <h3 class="text-lg font-bold mb-4">نتيجة تقرير الجرد</h3>
-                            <pre dir="ltr" class="bg-surface-50 dark:bg-surface-900 p-4 rounded-lg overflow-auto text-sm border border-surface-200 dark:border-surface-700">{{ JSON.stringify(reportStore.stockCountsData, null, 2) }}</pre>
+
+                        <div v-if="reportStore.stockCountsData">
+                            <!-- Printable Official Header -->
+                            <div class="print-official-header">
+                                <div class="print-header-content">
+                                    <div class="print-header-brand">
+                                        <h2>تقرير جلسات وجرد المخزون</h2>
+                                        <p>نظام إدارة المبيعات والمخازن (POS System)</p>
+                                    </div>
+                                    <div class="print-header-meta">
+                                        <p><span>الفترة:</span> {{ reportForm.startDate }} إلى {{ reportForm.endDate }}</p>
+                                        <p><span>تاريخ الطباعة:</span> {{ new Date().toLocaleDateString('ar-EG') }}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- KPI Summary Cards -->
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                <div class="content-card p-4 flex items-center gap-3 border-s-4 border-s-blue-500">
+                                    <div class="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center flex-shrink-0">
+                                        <ClipboardList :size="20" />
+                                    </div>
+                                    <div>
+                                        <span class="text-xs font-medium text-surface-500 block">إجمالي جلسات الجرد</span>
+                                        <span class="text-lg font-bold text-blue-600">{{ reportSummary.totalSessions }} جلسة</span>
+                                    </div>
+                                </div>
+
+                                <div class="content-card p-4 flex items-center gap-3 border-s-4 border-s-emerald-500">
+                                    <div class="w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                                        <CheckCircle :size="20" />
+                                    </div>
+                                    <div>
+                                        <span class="text-xs font-medium text-surface-500 block">جلسات مكتملة ومطبقة</span>
+                                        <span class="text-lg font-bold text-emerald-600">{{ reportSummary.completedSessions }} جلسة</span>
+                                    </div>
+                                </div>
+
+                                <div class="content-card p-4 flex items-center gap-3 border-s-4 border-s-amber-500">
+                                    <div class="w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 flex items-center justify-center flex-shrink-0">
+                                        <Clock :size="20" />
+                                    </div>
+                                    <div>
+                                        <span class="text-xs font-medium text-surface-500 block">جلسات قيد الإجراء / معلقة</span>
+                                        <span class="text-lg font-bold text-amber-600">{{ reportSummary.inProgressSessions }} جلسة</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Report DataTable Card -->
+                            <div class="content-card p-4">
+                                <div class="flex justify-between items-center mb-4 no-print">
+                                    <div class="relative flex-1 max-w-sm">
+                                        <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400" />
+                                        <InputText v-model="reportSearchQuery" placeholder="بحث باسم الجلسة أو الملاحظات..." class="ps-9 w-full" size="small" />
+                                    </div>
+                                    <div class="text-sm font-semibold text-surface-600 dark:text-surface-400">
+                                        عدد السجلات: {{ filteredReportItems.length }}
+                                    </div>
+                                </div>
+
+                                <DataTable
+                                    :value="filteredReportItems"
+                                    :paginator="!isPrintingReport"
+                                    :rows="isPrintingReport ? 999999 : 10"
+                                    stripedRows
+                                    removableSort
+                                    responsiveLayout="scroll"
+                                >
+                                    <Column field="name" header="عنوان الجلسة" sortable style="min-width: 200px">
+                                        <template #body="{ data }">
+                                            <div class="flex items-center gap-2">
+                                                <ClipboardList :size="16" class="text-surface-400" />
+                                                <span class="font-semibold text-surface-900 dark:text-surface-100 text-sm">
+                                                    {{ data.name || 'جلسة جرد' }}
+                                                </span>
+                                            </div>
+                                        </template>
+                                    </Column>
+
+                                    <Column field="countDate" header="تاريخ الجلسة" sortable style="min-width: 140px">
+                                        <template #body="{ data }">
+                                            <span>{{ data.countDate ? new Date(data.countDate).toLocaleDateString('ar-EG') : '—' }}</span>
+                                        </template>
+                                    </Column>
+
+                                    <Column field="status" header="الحالة" sortable style="min-width: 140px">
+                                        <template #body="{ data }">
+                                            <span
+                                                class="px-2.5 py-1 rounded-full text-xs font-bold border"
+                                                :class="(data.status === 'COMPLETED' || data.status === 'مكتمل')
+                                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200'
+                                                    : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200'"
+                                            >
+                                                {{ getStockCountStatusLabel(data.status) }}
+                                            </span>
+                                        </template>
+                                    </Column>
+
+                                    <Column field="notes" header="ملاحظات" style="min-width: 220px">
+                                        <template #body="{ data }">
+                                            <span class="text-xs text-surface-500">{{ data.notes || '—' }}</span>
+                                        </template>
+                                    </Column>
+                                </DataTable>
+                            </div>
                         </div>
                         <div v-else-if="!reportStore.isLoading" class="content-card p-8 text-center border-dashed">
                             <FileText :size="48" class="text-surface-300 mx-auto mb-4" />

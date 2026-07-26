@@ -370,7 +370,11 @@ export const usePosStore = defineStore("pos", () => {
             const payload = {
                 items: returnItems.map(item => ({
                     productUnitId: item.productUnitId || item.id,
-                    quantity: item.qty,
+                    productId: item.productId || undefined,
+                    quantity: Number(item.quantity || item.qty || item.returnQty || 0),
+                    batchId: item.batchId || undefined,
+                    batchNumber: item.batchNumber || undefined,
+                    reason: item.reason || undefined
                 }))
             };
 
@@ -384,7 +388,7 @@ export const usePosStore = defineStore("pos", () => {
             return response.data;
         } catch (err) {
             console.error("Failed to process return:", err);
-            const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء تنفيذ المرتجع";
+            const detail = err.response?.data?.message || err.response?.data?.detail || (typeof err.response?.data === 'string' ? err.response.data : null) || "حدث خطأ أثناء تنفيذ المرتجع";
             toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء تنفيذ المرتجع");
             throw err;
         } finally {

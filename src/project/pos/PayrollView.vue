@@ -1,14 +1,20 @@
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, nextTick } from "vue";
 import { usePayrollStore } from "@/stores/pos/payrollStore";
 import { useReportStore } from "@/stores/pos/reportStore";
 import { useUserStore } from "@/stores/pos/userStore";
-import { Users, Plus, Search, HelpCircle, FileText, List, Pencil, UserCheck, UserPlus, DollarSign } from "lucide-vue-next";
+import { useToastStore } from "@/stores/base/toastStore";
+import { isValidEmail, isValidEgyptianPhone } from "@/utilities/validations";
+import {
+    Users, Plus, Search, HelpCircle, FileText, List, Pencil, UserCheck,
+    UserPlus, DollarSign, Printer, Download, RefreshCw, Layers, TrendingUp
+} from "lucide-vue-next";
 import HelpDrawer from "@/components/HelpDrawer.vue";
 
 const payrollStore = usePayrollStore();
 const reportStore = useReportStore();
 const userStore = useUserStore();
+const toastStore = useToastStore();
 
 const showHelp = ref(false);
 const activeTab = ref("employees");
@@ -153,6 +159,14 @@ const openEditEmployee = (emp) => {
 };
 
 const saveEmployee = async () => {
+    if (employeeForm.value.email && !isValidEmail(employeeForm.value.email)) {
+        toastStore.addErrorToast("البريد الإلكتروني غير صحيح (مثال: mail@example.com)");
+        return;
+    }
+    if (employeeForm.value.phone && !isValidEgyptianPhone(employeeForm.value.phone)) {
+        toastStore.addErrorToast("رقم الهاتف غير صحيح (يجب إدخال رقم هاتف مصري صحيح)");
+        return;
+    }
     try {
         const payload = {
             fullName: employeeForm.value.fullName,
@@ -207,6 +221,71 @@ const generateReport = () => {
         startDate: new Date(reportForm.value.startDate).toISOString(),
         endDate: new Date(reportForm.value.endDate + 'T23:59:59').toISOString()
     });
+};
+
+// ── Payroll Report Helpers ──
+const isPrintingReport = ref(false);
+const reportSearchQuery = ref("");
+
+const reportItems = computed(() => {
+    const data = reportStore.payrollData;
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    return data.items || data.payrolls || data.salaryPayments || data.records || [];
+});
+
+const filteredReportItems = computed(() => {
+    const q = reportSearchQuery.value.trim().toLowerCase();
+    if (!q) return reportItems.value;
+    return reportItems.value.filter(item =>
+        (item.employeeName && item.employeeName.toLowerCase().includes(q)) ||
+        (item.notes && item.notes.toLowerCase().includes(q))
+    );
+});
+
+const reportSummary = computed(() => {
+    const data = reportStore.payrollData;
+    const items = reportItems.value;
+
+    const totalAmount = (data && !Array.isArray(data) && data.totalAmount !== undefined)
+        ? Number(data.totalAmount || 0)
+        : items.reduce((s, i) => s + (i.amountPaid || i.amount || 0), 0);
+
+    const totalEmployees = new Set(items.map(i => i.employeeId || i.employeeName)).size || items.length;
+    const totalPayments = items.length;
+
+    return { totalAmount, totalEmployees, totalPayments };
+});
+
+const printReport = async () => {
+    isPrintingReport.value = true;
+    await nextTick();
+    setTimeout(() => {
+        window.print();
+        setTimeout(() => {
+            isPrintingReport.value = false;
+        }, 500);
+    }, 150);
+};
+
+const exportReportCsv = () => {
+    const items = filteredReportItems.value;
+    if (items.length === 0) return;
+
+    let csvContent = "\uFEFFالموظف,تاريخ الدفع,المبلغ المدفوع,ملاحظات\n";
+    items.forEach(item => {
+        const emp = `"${(item.employeeName || '').replace(/"/g, '""')}"`;
+        const date = item.paymentDate ? new Date(item.paymentDate).toLocaleDateString('ar-EG') : '';
+        const amt = item.amountPaid || item.amount || 0;
+        const notes = `"${(item.notes || '').replace(/"/g, '""')}"`;
+        csvContent += `${emp},${date},${amt},${notes}\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `تقرير_الرواتب_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
 };
 
 const formatDate = (dateStr) => {
@@ -430,25 +509,134 @@ const getSalaryTypeLabel = (type) => {
 
                 <!-- Tab 3: Payroll Report -->
                 <TabPanel value="report" class="px-0 py-4">
-                    <div class="content-card p-4 mb-4">
-                        <div class="flex flex-col md:flex-row items-end gap-4">
-                            <div class="flex-1">
-                                <label class="font-bold block mb-2">من تاريخ</label>
-                                <InputText type="date" v-model="reportForm.startDate" class="w-full" />
+                    <!-- Report Controls Card -->
+                    <div class="content-card no-print p-4 mb-4">
+                        <div class="flex flex-col md:flex-row items-end justify-between gap-4">
+                            <div class="flex flex-col md:flex-row items-end gap-4 flex-1">
+                                <div class="flex-1 w-full">
+                                    <label class="font-bold block mb-2 text-sm text-surface-700 dark:text-surface-300">من تاريخ</label>
+                                    <InputText type="date" v-model="reportForm.startDate" class="w-full" size="small" />
+                                </div>
+                                <div class="flex-1 w-full">
+                                    <label class="font-bold block mb-2 text-sm text-surface-700 dark:text-surface-300">إلى تاريخ</label>
+                                    <InputText type="date" v-model="reportForm.endDate" class="w-full" size="small" />
+                                </div>
+                                <Button label="توليد التقرير" @click="generateReport" :loading="reportStore.isLoading">
+                                    <template #icon><RefreshCw :size="16" class="me-1" /></template>
+                                </Button>
                             </div>
-                            <div class="flex-1">
-                                <label class="font-bold block mb-2">إلى تاريخ</label>
-                                <InputText type="date" v-model="reportForm.endDate" class="w-full" />
-                            </div>
-                            <div>
-                                <Button label="توليد التقرير" @click="generateReport" :loading="reportStore.isLoading" icon="pi pi-file-excel" />
+
+                            <div v-if="reportStore.payrollData" class="flex items-center gap-2">
+                                <Button label="طباعة" severity="secondary" outlined size="small" @click="printReport">
+                                    <template #icon><Printer :size="16" class="me-1" /></template>
+                                </Button>
+                                <Button label="تصدير CSV" severity="secondary" outlined size="small" @click="exportReportCsv">
+                                    <template #icon><Download :size="16" class="me-1" /></template>
+                                </Button>
                             </div>
                         </div>
                     </div>
-                    
-                    <div v-if="reportStore.payrollData" class="content-card p-4">
-                        <h3 class="text-lg font-bold mb-4">نتيجة تقرير الرواتب</h3>
-                        <pre dir="ltr" class="bg-surface-50 dark:bg-surface-900 p-4 rounded-lg overflow-auto text-sm border border-surface-200 dark:border-surface-700">{{ JSON.stringify(reportStore.payrollData, null, 2) }}</pre>
+
+                    <div v-if="reportStore.payrollData">
+                        <!-- Printable Official Header -->
+                        <div class="print-official-header">
+                            <div class="print-header-content">
+                                <div class="print-header-brand">
+                                    <h2>تقرير الرواتب والأجور المترتبة والمصروفة</h2>
+                                    <p>نظام إدارة المبيعات والمخازن (POS System)</p>
+                                </div>
+                                <div class="print-header-meta">
+                                    <p><span>الفترة:</span> {{ reportForm.startDate }} إلى {{ reportForm.endDate }}</p>
+                                    <p><span>تاريخ الطباعة:</span> {{ new Date().toLocaleDateString('ar-EG') }}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- KPI Summary Cards -->
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                            <div class="content-card p-4 flex items-center gap-3 border-s-4 border-s-blue-500">
+                                <div class="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center flex-shrink-0">
+                                    <DollarSign :size="20" />
+                                </div>
+                                <div>
+                                    <span class="text-xs font-medium text-surface-500 block">إجمالي الرواتب المدفوعة</span>
+                                    <span class="text-lg font-bold text-blue-600">{{ formatCurrency(reportSummary.totalAmount) }}</span>
+                                </div>
+                            </div>
+
+                            <div class="content-card p-4 flex items-center gap-3 border-s-4 border-s-emerald-500">
+                                <div class="w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                                    <Users :size="20" />
+                                </div>
+                                <div>
+                                    <span class="text-xs font-medium text-surface-500 block">عدد الموظفين المستلمين</span>
+                                    <span class="text-lg font-bold text-surface-900 dark:text-surface-100">{{ reportSummary.totalEmployees }} موظف</span>
+                                </div>
+                            </div>
+
+                            <div class="content-card p-4 flex items-center gap-3 border-s-4 border-s-indigo-500">
+                                <div class="w-10 h-10 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 flex items-center justify-center flex-shrink-0">
+                                    <FileText :size="20" />
+                                </div>
+                                <div>
+                                    <span class="text-xs font-medium text-surface-500 block">إجمالي عدد الدفعات</span>
+                                    <span class="text-lg font-bold text-indigo-600">{{ reportSummary.totalPayments }} دفعة</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Report DataTable Card -->
+                        <div class="content-card p-4">
+                            <div class="flex justify-between items-center mb-4 no-print">
+                                <div class="relative flex-1 max-w-sm">
+                                    <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400" />
+                                    <InputText v-model="reportSearchQuery" placeholder="بحث باسم الموظف أو الملاحظات..." class="ps-9 w-full" size="small" />
+                                </div>
+                                <div class="text-sm font-semibold text-surface-600 dark:text-surface-400">
+                                    عدد السجلات: {{ filteredReportItems.length }}
+                                </div>
+                            </div>
+
+                            <DataTable
+                                :value="filteredReportItems"
+                                :paginator="!isPrintingReport"
+                                :rows="isPrintingReport ? 999999 : 10"
+                                stripedRows
+                                removableSort
+                                responsiveLayout="scroll"
+                            >
+                                <Column field="employeeName" header="الموظف" sortable style="min-width: 200px">
+                                    <template #body="{ data }">
+                                        <div class="flex items-center gap-2">
+                                            <div class="w-7 h-7 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center font-bold text-xs">
+                                                {{ (data.employeeName || 'م').charAt(0) }}
+                                            </div>
+                                            <span class="font-semibold text-surface-900 dark:text-surface-100 text-sm">{{ data.employeeName || 'موظف غير محدد' }}</span>
+                                        </div>
+                                    </template>
+                                </Column>
+
+                                <Column field="paymentDate" header="تاريخ الدفع" sortable style="min-width: 140px">
+                                    <template #body="{ data }">
+                                        <span>{{ formatDate(data.paymentDate || data.date) }}</span>
+                                    </template>
+                                </Column>
+
+                                <Column field="amountPaid" header="المبلغ المدفوع" sortable style="min-width: 150px">
+                                    <template #body="{ data }">
+                                        <span class="font-bold text-blue-600 text-base">
+                                            {{ formatCurrency(data.amountPaid ?? data.amount ?? 0) }}
+                                        </span>
+                                    </template>
+                                </Column>
+
+                                <Column field="notes" header="ملاحظات" style="min-width: 220px">
+                                    <template #body="{ data }">
+                                        <span class="text-xs text-surface-500">{{ data.notes || '—' }}</span>
+                                    </template>
+                                </Column>
+                            </DataTable>
+                        </div>
                     </div>
                     <div v-else-if="!reportStore.isLoading" class="content-card p-8 text-center border-dashed">
                         <FileText :size="48" class="text-surface-300 mx-auto mb-4" />

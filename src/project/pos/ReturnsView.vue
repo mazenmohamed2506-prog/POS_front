@@ -60,7 +60,17 @@ const openReturnDialog = (order) => {
 const handleReturn = async () => {
     const itemsToReturn = returnItems.value
         .filter((i) => i.returnQty > 0)
-        .map((i) => ({ name: i.name, price: i.price, qty: i.returnQty }));
+        .map((i) => ({
+            productUnitId: i.productUnitId || i.product_unit_id || i.id,
+            productId: i.productId || i.product_id,
+            quantity: i.returnQty,
+            batchId: i.batchId,
+            batchNumber: i.batchNumber,
+            reason: i.reason,
+            name: i.name,
+            price: i.price,
+            qty: i.returnQty
+        }));
 
     if (itemsToReturn.length === 0) return;
 

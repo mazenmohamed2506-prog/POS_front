@@ -1,15 +1,32 @@
 <script setup>
-import { ref, onMounted, computed, watch } from "vue";
+import { ref, onMounted, computed, watch, nextTick } from "vue";
 import { useInventoryStore } from "@/stores/pos/inventoryStore";
 import { useProductStore } from "@/stores/pos/productStore";
 import { useReportStore } from "@/stores/pos/reportStore";
-import { Warehouse, ArrowRightLeft, Search, Plus, HelpCircle, Package, AlertTriangle, CheckCircle2, AlertCircle, Clock, Filter, FileText, List } from "lucide-vue-next";
+import {
+    Warehouse, ArrowRightLeft, Search, Plus, HelpCircle, Package,
+    AlertTriangle, CheckCircle2, AlertCircle, Clock, Filter, FileText, List,
+    Printer, Download, DollarSign, Layers, Hash, Tag as TagIcon, RefreshCw, TrendingUp
+} from "lucide-vue-next";
 import InventoryTable from "./InventoryTable.vue";
 import HelpDrawer from "@/components/HelpDrawer.vue";
 
 const inventoryStore = useInventoryStore();
 const productStore = useProductStore();
 const reportStore = useReportStore();
+
+const isPrinting = ref(false);
+
+const printReport = async () => {
+    isPrinting.value = true;
+    await nextTick();
+    setTimeout(() => {
+        window.print();
+        setTimeout(() => {
+            isPrinting.value = false;
+        }, 500);
+    }, 150);
+};
 
 const reportForm = ref({
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
@@ -21,6 +38,94 @@ const generateReport = () => {
         startDate: new Date(reportForm.value.startDate).toISOString(),
         endDate: new Date(reportForm.value.endDate + 'T23:59:59').toISOString()
     });
+};
+
+// ── Report Computation Helpers ──
+const reportSearchQuery = ref("");
+
+const reportItems = computed(() => {
+    if (!reportStore.inventoryData) return [];
+    if (Array.isArray(reportStore.inventoryData)) return reportStore.inventoryData;
+    return reportStore.inventoryData.items || reportStore.inventoryData.stocks || [];
+});
+
+const filteredReportItems = computed(() => {
+    const q = reportSearchQuery.value.trim().toLowerCase();
+    if (!q) return reportItems.value;
+    return reportItems.value.filter(item =>
+        (item.productName && item.productName.toLowerCase().includes(q)) ||
+        (item.sku && item.sku.toLowerCase().includes(q)) ||
+        (item.categoryName && item.categoryName.toLowerCase().includes(q))
+    );
+});
+
+const reportSummary = computed(() => {
+    const items = reportItems.value;
+    const totalProducts = items.length;
+    const totalQty = items.reduce((sum, item) => sum + (item.totalQuantity ?? item.quantity ?? 0), 0);
+    const totalVal = items.reduce((sum, item) => {
+        if (item.totalValue !== undefined && item.totalValue !== null) return sum + Number(item.totalValue);
+        const qty = item.totalQuantity ?? item.quantity ?? 0;
+        const cost = item.baseCost ?? item.costPrice ?? 0;
+        return sum + (qty * cost);
+    }, 0);
+    const avgCost = totalQty > 0 ? (totalVal / totalQty) : 0;
+
+    return {
+        totalProducts,
+        totalQty,
+        totalVal,
+        avgCost
+    };
+});
+
+const formatCurrency = (val) => {
+    return new Intl.NumberFormat("ar-EG", {
+        style: "currency",
+        currency: "EGP",
+        minimumFractionDigits: 2,
+    }).format(val || 0);
+};
+
+const exportReportCsv = () => {
+    const items = filteredReportItems.value;
+    if (items.length === 0) return;
+
+    let csvContent = "\uFEFFالمنتج,SKU,الفئة,الكمية,التكلفة الأساسية,إجمالي القيمة,الحالة\n";
+    items.forEach(item => {
+        const name = `"${(item.productName || '').replace(/"/g, '""')}"`;
+        const sku = `"${(item.sku || '').replace(/"/g, '""')}"`;
+        const category = `"${(item.categoryName || '').replace(/"/g, '""')}"`;
+        const qty = item.totalQuantity ?? item.quantity ?? 0;
+        const cost = item.baseCost ?? item.costPrice ?? 0;
+        const val = item.totalValue ?? (qty * cost);
+        const status = getReportStatusLabel(item.stockStatus || item.status);
+        csvContent += `${name},${sku},${category},${qty},${cost},${val},"${status}"\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `تقرير_المخزون_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+};
+
+const getReportStatusLabel = (status) => {
+    if (!status) return 'متوفر';
+    const s = String(status).toLowerCase();
+    if (s.includes('out') || s.includes('نفد')) return 'نفذ المخزون';
+    if (s.includes('low') || s.includes('منخفض')) return 'مخزون منخفض';
+    if (s.includes('expir') || s.includes('منتهي')) return 'دفعة منتهية';
+    return 'متوفر';
+};
+
+const getReportStatusBadgeClass = (status) => {
+    if (!status) return 'status-success';
+    const s = String(status).toLowerCase();
+    if (s.includes('out') || s.includes('نفد')) return 'status-danger';
+    if (s.includes('low') || s.includes('منخفض')) return 'status-warning';
+    if (s.includes('expir') || s.includes('منتهي')) return 'status-amber';
+    return 'status-success';
 };
 
 // ── Help Drawer ──
@@ -178,9 +283,9 @@ const calculateBaseQuantity = computed(() => {
 });
 
 const submitAddStock = async () => {
-    if (!addStockForm.value.productId || !addStockForm.value.batchNumber) return;
+    if (!addStockForm.value.productId || !addStockForm.value.productUnitId) return;
     
-    // Format expiration date if exists
+    // Format expiration date if exists 
     let expDate = null;
     if (addStockForm.value.expirationDate) {
         const d = new Date(addStockForm.value.expirationDate);
@@ -225,7 +330,7 @@ const formatDate = (dateStr) => {
 <template>
     <div class="inventory-page">
         <!-- Header -->
-        <div class="inventory-header">
+        <div class="inventory-header no-print">
             <div class="header-start">
                 <div class="header-icon-wrap">
                     <Warehouse :size="26" />
@@ -255,7 +360,7 @@ const formatDate = (dateStr) => {
         />
 
         <Tabs value="data">
-            <TabList>
+            <TabList class="no-print">
                 <Tab value="data"><List class="inline-block me-2" :size="16" />سجل المخزون</Tab>
                 <Tab value="report"><FileText class="inline-block me-2" :size="16" />تقرير المخزون</Tab>
             </TabList>
@@ -284,7 +389,7 @@ const formatDate = (dateStr) => {
                 </div>
                 <div class="stat-accent green"></div>
             </div>
-            <div class="stat-card" :class="{ 'stat-active': activeFilter === 'low' }" @click="activeFilter = 'low'">
+            <!-- <div class="stat-card" :class="{ 'stat-active': activeFilter === 'low' }" @click="activeFilter = 'low'">
                 <div class="stat-icon-circle orange">
                     <AlertTriangle :size="20" />
                 </div>
@@ -293,8 +398,8 @@ const formatDate = (dateStr) => {
                     <span class="stat-label">مخزون منخفض</span>
                 </div>
                 <div class="stat-accent orange"></div>
-            </div>
-            <div class="stat-card" :class="{ 'stat-active': activeFilter === 'out' }" @click="activeFilter = 'out'">
+            </div> -->
+            <!-- <div class="stat-card" :class="{ 'stat-active': activeFilter === 'out' }" @click="activeFilter = 'out'">
                 <div class="stat-icon-circle red">
                     <AlertCircle :size="20" />
                 </div>
@@ -303,7 +408,7 @@ const formatDate = (dateStr) => {
                     <span class="stat-label">نفذ المخزون</span>
                 </div>
                 <div class="stat-accent red"></div>
-            </div>
+            </div> -->
             <div class="stat-card" :class="{ 'stat-active': activeFilter === 'expiry' }" @click="activeFilter = 'expiry'">
                 <div class="stat-icon-circle amber">
                     <Clock :size="20" />
@@ -349,35 +454,203 @@ const formatDate = (dateStr) => {
             <InventoryTable 
                 :items="filteredInventory" 
                 :loading="inventoryStore.loading"
+                :active-filter="activeFilter"
                 @transfer="(loc, direction) => openTransfer(loc, direction)"
             />
         </div>
                 </TabPanel>
 
                 <TabPanel value="report" class="px-0 py-4">
-                    <div class="content-card p-4 mb-4">
-                        <div class="flex flex-col md:flex-row items-end gap-4">
-                            <div class="flex-1">
-                                <label class="font-bold block mb-2">من تاريخ</label>
-                                <InputText type="date" v-model="reportForm.startDate" class="w-full" />
+                    <!-- Report Controls Card -->
+                    <div class="content-card p-4 mb-4 no-print">
+                        <div class="flex flex-col md:flex-row items-end justify-between gap-4">
+                            <div class="flex flex-col md:flex-row items-end gap-4 flex-1">
+                                <div class="flex-1 w-full">
+                                    <label class="font-bold block mb-2 text-sm text-surface-700 dark:text-surface-300">من تاريخ</label>
+                                    <InputText type="date" v-model="reportForm.startDate" class="w-full" size="small" />
+                                </div>
+                                <div class="flex-1 w-full">
+                                    <label class="font-bold block mb-2 text-sm text-surface-700 dark:text-surface-300">إلى تاريخ</label>
+                                    <InputText type="date" v-model="reportForm.endDate" class="w-full" size="small" />
+                                </div>
+                                <Button label="توليد التقرير" @click="generateReport" :loading="reportStore.isLoading">
+                                    <template #icon><RefreshCw :size="16" class="me-1" /></template>
+                                </Button>
                             </div>
-                            <div class="flex-1">
-                                <label class="font-bold block mb-2">إلى تاريخ</label>
-                                <InputText type="date" v-model="reportForm.endDate" class="w-full" />
-                            </div>
-                            <div>
-                                <Button label="توليد التقرير" @click="generateReport" :loading="reportStore.isLoading" icon="pi pi-file-excel" />
+                            
+                            <div v-if="reportStore.inventoryData" class="flex items-center gap-2">
+                                <Button label="طباعة" severity="secondary" outlined size="small" @click="printReport">
+                                    <template #icon><Printer :size="16" class="me-1" /></template>
+                                </Button>
+                                <Button label="تصدير CSV" severity="secondary" outlined size="small" @click="exportReportCsv">
+                                    <template #icon><Download :size="16" class="me-1" /></template>
+                                </Button>
                             </div>
                         </div>
                     </div>
                     
-                    <div v-if="reportStore.inventoryData" class="content-card p-4">
-                        <h3 class="text-lg font-bold mb-4">نتيجة تقرير المخزون</h3>
-                        <pre dir="ltr" class="bg-surface-50 dark:bg-surface-900 p-4 rounded-lg overflow-auto text-sm border border-surface-200 dark:border-surface-700">{{ JSON.stringify(reportStore.inventoryData, null, 2) }}</pre>
+                    <!-- Report Content -->
+                    <div v-if="reportStore.inventoryData">
+                        <!-- Printable Official Header -->
+                        <div class="print-official-header">
+                            <div class="print-header-content">
+                                <div class="print-header-brand">
+                                    <h2>تقرير المخزون التفصيلي والمالي</h2>
+                                    <p>نظام إدارة المبيعات والمخازن (POS System)</p>
+                                </div>
+                                <div class="print-header-meta">
+                                    <p><span>فترة التقرير:</span> {{ reportForm.startDate }} إلى {{ reportForm.endDate }}</p>
+                                    <p><span>تاريخ الطباعة:</span> {{ new Date().toLocaleDateString('ar-EG') }}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Report KPI Cards -->
+                        <div class="inventory-stats-grid mb-4">
+                            <div class="stat-card">
+                                <div class="stat-icon-circle Purple">
+                                    <DollarSign :size="20" />
+                                </div>
+                                <div class="stat-body">
+                                    <span class="stat-value">{{ formatCurrency(reportSummary.totalVal) }}</span>
+                                    <span class="stat-label">إجمالي قيمة المخزون</span>
+                                </div>
+                                <div class="stat-accent Purple"></div>
+                            </div>
+
+                            <div class="stat-card">
+                                <div class="stat-icon-circle green">
+                                    <Package :size="20" />
+                                </div>
+                                <div class="stat-body">
+                                    <span class="stat-value">{{ reportSummary.totalProducts }}</span>
+                                    <span class="stat-label">إجمالي الأصناف المسجلة</span>
+                                </div>
+                                <div class="stat-accent green"></div>
+                            </div>
+
+                            <div class="stat-card">
+                                <div class="stat-icon-circle orange">
+                                    <Layers :size="20" />
+                                </div>
+                                <div class="stat-body">
+                                    <span class="stat-value">{{ reportSummary.totalQty.toLocaleString('ar-EG') }}</span>
+                                    <span class="stat-label">إجمالي الوحدات بالمخزن</span>
+                                </div>
+                                <div class="stat-accent orange"></div>
+                            </div>
+
+                            <div class="stat-card">
+                                <div class="stat-icon-circle amber">
+                                    <TrendingUp :size="20" />
+                                </div>
+                                <div class="stat-body">
+                                    <span class="stat-value">{{ formatCurrency(reportSummary.avgCost) }}</span>
+                                    <span class="stat-label">متوسط تكلفة القطعة</span>
+                                </div>
+                                <div class="stat-accent amber"></div>
+                            </div>
+                        </div>
+
+                        <!-- Inventory Report Table Card -->
+                        <div class="inventory-card">
+                            <!-- Filter & Search Bar -->
+                            <div class="inventory-filter-bar no-print">
+                                <div class="search-input-wrap">
+                                    <Search :size="16" class="search-icon" />
+                                    <InputText
+                                        v-model="reportSearchQuery"
+                                        placeholder="ابحث في التقرير باسم المنتج، الفئة، أو SKU..."
+                                        class="pr-10 pl-4 w-full search-input"
+                                        autocomplete="off"
+                                        size="small"
+                                    />
+                                </div>
+                                <div class="text-sm font-semibold text-surface-600 dark:text-surface-400">
+                                    عدد المنتجات: {{ filteredReportItems.length }}
+                                </div>
+                            </div>
+
+                            <!-- PrimeVue DataTable for Report -->
+                            <DataTable
+                                :value="filteredReportItems"
+                                :paginator="!isPrinting"
+                                :rows="isPrinting ? 999999 : 10"
+                                :rowsPerPageOptions="[10, 25, 50, 100]"
+                                stripedRows
+                                removableSort
+                                responsiveLayout="scroll"
+                                class="report-table"
+                            >
+                                <Column field="productName" header="المنتج" sortable style="min-width: 220px">
+                                    <template #body="{ data }">
+                                        <div class="flex items-center gap-2.5">
+                                            <div class="w-8 h-8 rounded-lg bg-primary-50 dark:bg-primary-950/40 text-primary-600 flex items-center justify-center flex-shrink-0">
+                                                <Package :size="16" />
+                                            </div>
+                                            <div class="flex flex-col">
+                                                <span class="font-semibold text-surface-900 dark:text-surface-100 text-sm">{{ data.productName }}</span>
+                                                <span class="text-xs text-surface-500 font-mono" v-if="data.sku">
+                                                    <Hash :size="10" class="inline" /> {{ data.sku }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </Column>
+
+                                <Column field="categoryName" header="الفئة" sortable style="min-width: 130px">
+                                    <template #body="{ data }">
+                                        <span class="category-chip" v-if="data.categoryName">
+                                            <TagIcon :size="12" />
+                                            {{ data.categoryName }}
+                                        </span>
+                                        <span v-else class="text-surface-400 text-xs">—</span>
+                                    </template>
+                                </Column>
+
+                                <Column field="totalQuantity" header="الكمية بالرصيد" sortable style="min-width: 130px">
+                                    <template #body="{ data }">
+                                        <span class="font-bold text-surface-900 dark:text-surface-100 text-sm me-1">
+                                            {{ (data.totalQuantity ?? data.quantity ?? 0).toLocaleString('ar-EG') }}
+                                        </span>
+                                        <span class="text-xs text-surface-500">وحدة</span>
+                                    </template>
+                                </Column>
+
+                                <Column field="baseCost" header="التكلفة الأساسية" sortable style="min-width: 140px">
+                                    <template #body="{ data }">
+                                        <span class="text-sm font-medium text-surface-700 dark:text-surface-300">
+                                            {{ formatCurrency(data.baseCost ?? data.costPrice ?? 0) }}
+                                        </span>
+                                    </template>
+                                </Column>
+
+                                <Column field="totalValue" header="إجمالي القيمة" sortable style="min-width: 150px">
+                                    <template #body="{ data }">
+                                        <span class="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                                            {{ formatCurrency(data.totalValue ?? ((data.totalQuantity ?? data.quantity ?? 0) * (data.baseCost ?? data.costPrice ?? 0))) }}
+                                        </span>
+                                    </template>
+                                </Column>
+
+                                <Column field="stockStatus" header="حالة المخزون" sortable style="min-width: 130px">
+                                    <template #body="{ data }">
+                                        <span class="status-badge" :class="getReportStatusBadgeClass(data.stockStatus || data.status)">
+                                            {{ getReportStatusLabel(data.stockStatus || data.status) }}
+                                        </span>
+                                    </template>
+                                </Column>
+                            </DataTable>
+                        </div>
                     </div>
-                    <div v-else-if="!reportStore.isLoading" class="content-card p-8 text-center border-dashed">
-                        <FileText :size="48" class="text-surface-300 mx-auto mb-4" />
-                        <p class="text-surface-500">قم بتحديد الفترة الزمنية واضغط على توليد التقرير لعرض النتائج.</p>
+
+                    <!-- Initial / Empty state -->
+                    <div v-else-if="!reportStore.isLoading" class="content-card p-12 text-center border-dashed">
+                        <div class="w-16 h-16 rounded-full bg-surface-100 dark:bg-surface-800 text-surface-400 flex items-center justify-center mx-auto mb-4">
+                            <FileText :size="32" />
+                        </div>
+                        <h3 class="text-lg font-bold text-surface-800 dark:text-surface-200 mb-1">تقرير المخزون المالي والتفصيلي</h3>
+                        <p class="text-surface-500 text-sm max-w-md mx-auto mb-4">حدد الفترة الزمنية واضغط على "توليد التقرير" لاستعراض تقرير المخزون والقيم المالية.</p>
                     </div>
                 </TabPanel>
             </TabPanels>
@@ -477,21 +750,21 @@ const formatDate = (dateStr) => {
                 </Transition>
 
                 <div class="grid grid-cols-2 gap-4">
-                    <div class="form-field">
+                    <!-- <div class="form-field">
                         <label class="required">رقم الدفعة (Batch)</label>
                         <InputText v-model="addStockForm.batchNumber" fluid placeholder="مثال: LOT-001" />
-                    </div>
-                    <div class="form-field">
+                    </div> -->
+                    <!-- <div class="form-field">
                         <label>تاريخ الصلاحية (إن وجد)</label>
                         <DatePicker v-model="addStockForm.expirationDate" dateFormat="yy-mm-dd" fluid placeholder="اختر التاريخ" />
-                    </div>
+                    </div> -->
                 </div>
                 
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="form-field">
+                <div class="grid grid-cols-1 gap-4">
+                    <!-- <div class="form-field">
                         <label>التكلفة للوحدة المستلمة</label>
                         <InputNumber v-model="addStockForm.costPrice" :minFractionDigits="2" fluid placeholder="0.00" />
-                    </div>
+                    </div> -->
                     <div class="form-field">
                         <label class="required">موقع التخزين المبدئي</label>
                         <Select
@@ -507,7 +780,7 @@ const formatDate = (dateStr) => {
             <template #footer>
                 <div class="dialog-footer">
                     <Button label="إلغاء" outlined severity="secondary" @click="showAddStockDialog = false" />
-                    <Button label="حفظ الإستلام" @click="submitAddStock" :loading="inventoryStore.loading" :disabled="!addStockForm.productId || !addStockForm.batchNumber || !addStockForm.productUnitId">
+                    <Button label="حفظ الإستلام" @click="submitAddStock" :loading="inventoryStore.loading" :disabled="!addStockForm.productId ||  !addStockForm.productUnitId">
                         <template #icon><Plus :size="16" /></template>
                     </Button>
                 </div>
@@ -1034,5 +1307,62 @@ const formatDate = (dateStr) => {
 
 :deep(.p-datatable-tbody > tr > td) {
     border-bottom: none !important;
+}
+
+/* ─── Status Badges for Report Table ───────────────────── */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.625rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+.status-badge.status-success {
+    background: #d1fae5;
+    color: #047857;
+}
+.status-badge.status-warning {
+    background: #fef3c7;
+    color: #b45309;
+}
+.status-badge.status-danger {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+.status-badge.status-amber {
+    background: #ffedd5;
+    color: #c2410c;
+}
+.dark .status-badge.status-success {
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+}
+.dark .status-badge.status-warning {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+}
+.dark .status-badge.status-danger {
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+}
+.dark .status-badge.status-amber {
+    background: rgba(249, 115, 22, 0.2);
+    color: #fb923c;
+}
+
+/* ─── Print Styles ──────────────────────────────────────── */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+    .inventory-page {
+        padding: 0;
+    }
+    .inventory-card {
+        box-shadow: none;
+        border: none;
+    }
 }
 </style>

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { ArrowRightLeft, ChevronDown, Layers, MapPin, Calendar, Hash, TrendingDown, AlertTriangle, ShieldCheck, Clock, PackageX, Package } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -11,6 +11,10 @@ const props = defineProps({
     loading: {
         type: Boolean,
         default: false
+    },
+    activeFilter: {
+        type: String,
+        default: "all"
     }
 });
 
@@ -102,14 +106,39 @@ const groupedInventory = computed(() => {
     });
 });
 
+// Filter grouped inventory based on active filter button
+const filteredGroupedInventory = computed(() => {
+    let result = groupedInventory.value;
+    const filter = props.activeFilter;
+    if (!filter || filter === 'all') return result;
+
+    if (filter === 'healthy') {
+        return result.filter(g => g.status === 'healthy');
+    }
+    if (filter === 'low') {
+        return result.filter(g => g.status === 'lowStock');
+    }
+    if (filter === 'out') {
+        return result.filter(g => g.status === 'outOfStock');
+    }
+    if (filter === 'expiry') {
+        return result.filter(g => g.status === 'expired' || g.status === 'expiringSoon');
+    }
+    return result;
+});
+
 // Pagination
 const currentPage = ref(1);
 const rowsPerPage = ref(10);
 
-const totalPages = computed(() => Math.ceil(groupedInventory.value.length / rowsPerPage.value));
+watch(() => [props.activeFilter, props.items], () => {
+    currentPage.value = 1;
+});
+
+const totalPages = computed(() => Math.ceil(filteredGroupedInventory.value.length / rowsPerPage.value) || 1);
 const paginatedInventory = computed(() => {
     const start = (currentPage.value - 1) * rowsPerPage.value;
-    return groupedInventory.value.slice(start, start + rowsPerPage.value);
+    return filteredGroupedInventory.value.slice(start, start + rowsPerPage.value);
 });
 
 const goToPage = (page) => {
@@ -175,10 +204,10 @@ const getStockBarClass = (quantity) => {
         </div>
 
         <!-- Empty State -->
-        <div v-else-if="groupedInventory.length === 0" class="inv-empty">
+        <div v-else-if="filteredGroupedInventory.length === 0" class="inv-empty">
             <Package :size="48" class="inv-empty-icon" />
             <p class="inv-empty-title">لا توجد بيانات مخزون</p>
-            <p class="inv-empty-sub">قم بإضافة مخزون جديد لتظهر هنا</p>
+            <p class="inv-empty-sub">لا توجد منتجات تطابق الفلتر المحدد</p>
         </div>
 
         <!-- Product Rows -->
@@ -358,7 +387,7 @@ const getStockBarClass = (quantity) => {
 
             <!-- Results count -->
             <div class="inv-results-info">
-                عرض {{ (currentPage - 1) * rowsPerPage + 1 }} - {{ Math.min(currentPage * rowsPerPage, groupedInventory.length) }} من {{ groupedInventory.length }} منتج
+                عرض {{ (currentPage - 1) * rowsPerPage + 1 }} - {{ Math.min(currentPage * rowsPerPage, filteredGroupedInventory.length) }} من {{ filteredGroupedInventory.length }} منتج
             </div>
         </template>
     </div>
