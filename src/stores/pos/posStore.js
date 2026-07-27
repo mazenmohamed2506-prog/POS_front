@@ -176,6 +176,7 @@ export const usePosStore = defineStore("pos", () => {
                     price: baseUnit.price || 0,
                     unit: baseUnit.unitName || "قطعة",
                     category: apiProd.categoryName || "عام",
+                    isActive: apiProd.isActive ?? true,
                     units: units.map(u => ({
                         id: u.id,
                         name: u.unitName,
@@ -210,6 +211,10 @@ export const usePosStore = defineStore("pos", () => {
     }
 
     function addToCart(product) {
+        if (product.isActive === false) {
+            useToastStore().addWarningToast(`المنتج "${product.name}" غير نشط ولا يمكن بيعه.`);
+            return false;
+        }
         const existing = cart.value.find((item) => item.id === product.id && item.unit === (product.unit || "قطعة"));
         if (existing) {
             existing.qty++;
@@ -222,8 +227,10 @@ export const usePosStore = defineStore("pos", () => {
                 unit: product.unit || "قطعة",
                 qty: 1,
                 itemDiscount: product.itemDiscount || 0,
+                isActive: product.isActive ?? true
             });
         }
+        return true;
     }
 
     function removeFromCart(productId) {
@@ -245,7 +252,7 @@ export const usePosStore = defineStore("pos", () => {
         cart.value = [];
     }
 
-    async function checkout(paymentMethod = "cash") {
+    async function checkout(paymentMethod = "cash", customerId = null, paidAmount = null) {
         loading.value = true;
         try {
             // Map cart items to API format using productUnitId
@@ -267,7 +274,7 @@ export const usePosStore = defineStore("pos", () => {
                 };
             });
 
-            const order = await orderStore.checkout(cartItems, paymentMethod, 0);
+            const order = await orderStore.checkout(cartItems, paymentMethod, 0, customerId, paidAmount);
 
             // Refresh inventory to reflect stock changes
             try {
@@ -368,14 +375,20 @@ export const usePosStore = defineStore("pos", () => {
         const toastStore = useToastStore();
         try {
             const payload = {
-                items: returnItems.map(item => ({
-                    productUnitId: item.productUnitId || item.id,
-                    productId: item.productId || undefined,
-                    quantity: Number(item.quantity || item.qty || item.returnQty || 0),
-                    batchId: item.batchId || undefined,
-                    batchNumber: item.batchNumber || undefined,
-                    reason: item.reason || undefined
-                }))
+                items: returnItems.map(item => {
+                    const q = Number(item.qty || item.quantity || item.returnQty || 0);
+                    return {
+                        id: item.id || item.orderItemId,
+                        name: item.name || item.productName,
+                        qty: q,
+                        quantity: q,
+                        productUnitId: item.productUnitId || undefined,
+                        productId: item.productId || undefined,
+                        batchId: item.batchId || undefined,
+                        batchNumber: item.batchNumber || undefined,
+                        reason: item.reason || undefined
+                    };
+                })
             };
 
             const response = await apiPost(`/orders/${orderId}/return`, payload, false);

@@ -32,7 +32,10 @@ export const useInventoryStore = defineStore("inventory", () => {
             return {
                 ...item,
                 productName: item.productName || matchedProduct?.name || '',
-                isActive: item.productIsActive ?? true
+                isActive: item.productIsActive ?? matchedProduct?.isActive ?? true,
+                shelfStock: item.shelfStock ?? 0,
+                warehouseStock: item.warehouseStock ?? 0,
+                totalQuantity: item.quantity ?? 0
             };
         });
     }

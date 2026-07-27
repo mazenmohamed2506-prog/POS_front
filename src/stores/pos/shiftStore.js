@@ -19,7 +19,9 @@ export const useShiftStore = defineStore("shift", () => {
             closedAt: apiShift.endTime,
             startingCash: apiShift.startingCash,
             totalSales: apiShift.cashSales, // CashSales represents the total sales in cash for shift
-            expectedCash: apiShift.startingCash + apiShift.cashSales,
+            totalExpenses: apiShift.totalExpenses || 0,
+            totalCollections: apiShift.totalCashCollections || 0,
+            expectedCash: apiShift.expectedCash !== undefined ? apiShift.expectedCash : (apiShift.startingCash + apiShift.cashSales),
             actualCash: apiShift.actualCash,
             variance: apiShift.difference,
             status: apiShift.status

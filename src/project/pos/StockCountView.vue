@@ -5,7 +5,8 @@ import { usePosStore } from "@/stores/pos/posStore";
 import { useReportStore } from "@/stores/pos/reportStore";
 import {
     ClipboardList, Plus, Search, Eye, CheckCircle, Save, X, ArrowLeft,
-    ArrowRight, HelpCircle, FileText, List, Printer, Download, RefreshCw, Clock
+    ArrowRight, HelpCircle, FileText, List, Printer, Download, RefreshCw, Clock,
+    Trash2, Copy, Filter, CheckCircle2, AlertTriangle, AlertCircle, Package
 } from "lucide-vue-next";
 import HelpDrawer from "@/components/HelpDrawer.vue";
 import { useToastStore } from "@/stores/base/toastStore";
@@ -108,13 +109,15 @@ const helpSections = [
         steps: [
             { title: 'بدء جلسة جرد', desc: 'اضغط بدء جرد جديد وادخل اسم وتاريخ الجلسة' },
             { title: 'إدخال الكميات', desc: 'في تفاصيل الجلسة، قم بإدخال الكميات الفعلية (الجرد الفعلي) لكل منتج' },
+            { title: 'نسخ الدفتري للفعلي', desc: 'يمكنك استخدام زر نسخ الدفتري لتسريع الإدخال للأصناف المطابقة' },
             { title: 'تطبيق وإنهاء', desc: 'اضغط على إنهاء وتطبيق لاعتماد الجرد وتحديث المخزون بشكل نهائي' },
         ]
     }
 ];
 const helpTips = [
     'جلسة الجرد لا تحدث المخزون إلا عند الضغط على إنهاء وتطبيق',
-    'الفروق (العجز أو الزيادة) يتم احتسابها تلقائياً'
+    'الفروق (العجز أو الزيادة) يتم احتسابها تلقائياً',
+    'يمكنك طباعة ورقة جرد ميداني فارغة لعمال المخزن قبل الإدخال'
 ];
 
 const filters = ref({ global: { value: "", matchMode: "contains" } });
@@ -182,6 +185,124 @@ const backToList = () => {
 // Details view state
 const countedItemsMap = ref({});
 const detailFilters = ref({ global: { value: "", matchMode: "contains" } });
+const sessionVarianceFilter = ref("all"); // "all" | "missing" | "extra" | "matched"
+const isPrintingWorksheet = ref(false);
+const isPrintingSessionDetail = ref(false);
+
+const filteredSessionItems = computed(() => {
+    const session = stockCountStore.currentSession;
+    if (!session || !session.items) return [];
+
+    const q = (detailFilters.value.global.value || "").trim().toLowerCase();
+    const isOngoing = session.status === 'ONGOING';
+
+    return session.items.filter(item => {
+        const matchesQuery = !q ||
+            (item.productName && item.productName.toLowerCase().includes(q)) ||
+            (item.productSku && item.productSku.toLowerCase().includes(q));
+
+        if (!matchesQuery) return false;
+
+        const counted = isOngoing ? (countedItemsMap.value[item.productId] ?? item.expectedQuantity) : item.countedQuantity;
+        const diff = isOngoing ? (counted - item.expectedQuantity) : item.variance;
+
+        if (sessionVarianceFilter.value === 'missing') return diff < 0;
+        if (sessionVarianceFilter.value === 'extra') return diff > 0;
+        if (sessionVarianceFilter.value === 'matched') return diff === 0;
+        return true;
+    });
+});
+
+const currentSessionSummary = computed(() => {
+    const session = stockCountStore.currentSession;
+    if (!session || !session.items) {
+        return { totalItems: 0, matched: 0, missing: 0, extra: 0, totalMissingQty: 0, totalExtraQty: 0 };
+    }
+
+    const isOngoing = session.status === 'ONGOING';
+    let matched = 0, missing = 0, extra = 0, totalMissingQty = 0, totalExtraQty = 0;
+
+    session.items.forEach(item => {
+        const counted = isOngoing ? (countedItemsMap.value[item.productId] ?? item.expectedQuantity) : item.countedQuantity;
+        const diff = isOngoing ? (counted - item.expectedQuantity) : item.variance;
+
+        if (diff === 0) matched++;
+        else if (diff < 0) {
+            missing++;
+            totalMissingQty += Math.abs(diff);
+        } else {
+            extra++;
+            totalExtraQty += diff;
+        }
+    });
+
+    return {
+        totalItems: session.items.length,
+        matched,
+        missing,
+        extra,
+        totalMissingQty,
+        totalExtraQty
+    };
+});
+
+const copyExpectedToCounted = () => {
+    if (!stockCountStore.currentSession?.items) return;
+    stockCountStore.currentSession.items.forEach(item => {
+        countedItemsMap.value[item.productId] = item.expectedQuantity;
+    });
+    toastStore.addSuccessToast("تم نسخ الكميات الدفترية إلى الجرد الفعلي بنجاح");
+};
+
+const deleteSession = async (id) => {
+    if (confirm("هل أنت متأكد من حذف جلسة الجرد هذه؟ لا يمكن التراجع عن هذه الخطوة.")) {
+        try {
+            await stockCountStore.deleteSession(id);
+            if (currentView.value === 'detail') {
+                backToList();
+            }
+        } catch {
+            // Handled
+        }
+    }
+};
+
+const printSession = async (isWorksheet = false) => {
+    isPrintingWorksheet.value = isWorksheet;
+    isPrintingSessionDetail.value = !isWorksheet;
+    await nextTick();
+    setTimeout(() => {
+        window.print();
+        setTimeout(() => {
+            isPrintingWorksheet.value = false;
+            isPrintingSessionDetail.value = false;
+        }, 500);
+    }, 150);
+};
+
+const exportSessionCsv = () => {
+    const session = stockCountStore.currentSession;
+    if (!session || !session.items) return;
+
+    let csvContent = "\uFEFFاسم المنتج,رمز SKU,الكمية الدفترية,الجرد الفعلي,الفرق,الحالة\n";
+    const isOngoing = session.status === 'ONGOING';
+
+    session.items.forEach(item => {
+        const pName = `"${(item.productName || '').replace(/"/g, '""')}"`;
+        const sku = `"${(item.productSku || '').replace(/"/g, '""')}"`;
+        const exp = item.expectedQuantity;
+        const counted = isOngoing ? (countedItemsMap.value[item.productId] ?? item.expectedQuantity) : item.countedQuantity;
+        const diff = isOngoing ? (counted - exp) : item.variance;
+        const status = diff === 0 ? "مطابق" : diff < 0 ? "عجز" : "زيادة";
+        csvContent += `${pName},${sku},${exp},${counted},${diff},"${status}"\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `جلسة_جرد_${session.sessionNumber || session.id}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+};
 
 const saveProgress = async () => {
     if (!stockCountStore.currentSession) return;
@@ -218,7 +339,7 @@ const formatDate = (dateStr) => {
 
 const getStatusConfig = (status) => {
     if (status === 'ONGOING') return { label: 'جاري العمل', class: 'status-warning' };
-    if (status === 'COMPLETED') return { label: 'مكتمل', class: 'status-success' };
+    if (status === 'COMPLETED') return { label: 'مكتمل ومطبق', class: 'status-success' };
     return { label: status, class: 'status-info' };
 };
 </script>
@@ -227,7 +348,7 @@ const getStatusConfig = (status) => {
     <div class="stockcount-page">
         <!-- List View -->
         <div v-if="currentView === 'list'">
-            <div class="page-header">
+            <div class="page-header no-print">
                 <div class="flex items-center gap-3">
                     <div class="header-icon-wrap">
                         <ClipboardList :size="28" class="text-primary-500" />
@@ -261,7 +382,7 @@ const getStatusConfig = (status) => {
             />
 
             <Tabs value="data">
-                <TabList>
+                <TabList class="no-print">
                     <Tab value="data"><List class="inline-block me-2" :size="16" />جلسات الجرد</Tab>
                     <Tab value="report"><FileText class="inline-block me-2" :size="16" />تقرير الجرد</Tab>
                 </TabList>
@@ -270,52 +391,55 @@ const getStatusConfig = (status) => {
                     <TabPanel value="data" class="px-0 py-4">
                         <!-- Table Container Card -->
                         <div class="content-card">
-                <div class="filter-bar">
-                    <div class="relative w-full max-w-xs">
-                        <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400" />
-                        <InputText
-                            v-model="filters.global.value"
-                            placeholder="بحث في الجلسات..."
-                            class="ps-9 w-full"
-                            size="small"
-                        />
-                    </div>
-                </div>
+                            <div class="filter-bar">
+                                <div class="relative w-full max-w-xs">
+                                    <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400" />
+                                    <InputText
+                                        v-model="filters.global.value"
+                                        placeholder="بحث في الجلسات..."
+                                        class="ps-9 w-full"
+                                        size="small"
+                                    />
+                                </div>
+                            </div>
 
-                <DataTable
-                    :value="stockCountStore.sessions"
-                    :loading="stockCountStore.isLoading"
-                    paginator
-                    :rows="10"
-                    v-model:filters="filters"
-                    :globalFilterFields="['title', 'status']"
-                    emptyMessage="لا يوجد جلسات جرد"
-                    stripedRows
-                    removableSort
-                    class="main-table"
-                >
-                    <Column field="id" header="#" sortable style="width: 80px">
-                        <template #body="{ data }"><span class="font-mono text-surface-400">{{ data.id }}</span></template>
-                    </Column>
-                    <Column field="title" header="العنوان" sortable></Column>
-                    <Column field="countDate" header="تاريخ الجرد" sortable>
-                        <template #body="{ data }">{{ formatDate(data.countDate) }}</template>
-                    </Column>
-                    <Column field="status" header="الحالة" sortable>
-                        <template #body="{ data }">
-                            <span class="status-chip" :class="getStatusConfig(data.status).class">
-                                {{ getStatusConfig(data.status).label }}
-                            </span>
-                        </template>
-                    </Column>
-                    <Column field="notes" header="ملاحظات"></Column>
-                    <Column header="إجراءات" style="width: 100px; text-align: center">
-                        <template #body="{ data }">
-                            <Button icon="pi pi-eye" outlined rounded severity="secondary" @click="openSessionDetails(data.id)" title="عرض التفاصيل" />
-                        </template>
-                    </Column>
-                </DataTable>
-            </div>
+                            <DataTable
+                                :value="stockCountStore.sessions"
+                                :loading="stockCountStore.isLoading"
+                                paginator
+                                :rows="10"
+                                v-model:filters="filters"
+                                :globalFilterFields="['title', 'status', 'sessionNumber']"
+                                emptyMessage="لا يوجد جلسات جرد"
+                                stripedRows
+                                removableSort
+                                class="main-table"
+                            >
+                                <Column field="id" header="#" sortable style="width: 80px">
+                                    <template #body="{ data }"><span class="font-mono text-surface-400">{{ data.sessionNumber || data.id }}</span></template>
+                                </Column>
+                                <Column field="title" header="العنوان" sortable></Column>
+                                <Column field="countDate" header="تاريخ الجرد" sortable>
+                                    <template #body="{ data }">{{ formatDate(data.countDate) }}</template>
+                                </Column>
+                                <Column field="status" header="الحالة" sortable>
+                                    <template #body="{ data }">
+                                        <span class="status-chip" :class="getStatusConfig(data.status).class">
+                                            {{ getStatusConfig(data.status).label }}
+                                        </span>
+                                    </template>
+                                </Column>
+                                <Column field="notes" header="ملاحظات"></Column>
+                                <Column header="إجراءات" style="width: 140px; text-align: center">
+                                    <template #body="{ data }">
+                                        <div class="flex items-center justify-center gap-1">
+                                            <Button icon="pi pi-eye" outlined rounded severity="secondary" size="small" @click="openSessionDetails(data.id)" title="عرض التفاصيل" />
+                                            <Button v-if="data.status !== 'COMPLETED' && (posStore.role === 'Manager' || posStore.role === 'SuperAdmin')" icon="pi pi-trash" outlined rounded severity="danger" size="small" @click="deleteSession(data.id)" title="حذف الجلسة" />
+                                        </div>
+                                    </template>
+                                </Column>
+                            </DataTable>
+                        </div>
                     </TabPanel>
 
                     <TabPanel value="report" class="px-0 py-4">
@@ -464,11 +588,15 @@ const getStatusConfig = (status) => {
 
         <!-- Detail View -->
         <div v-else-if="currentView === 'detail' && stockCountStore.currentSession">
-            <div class="page-header">
+            <!-- Header -->
+            <div class="page-header no-print">
                 <div class="flex items-center gap-3">
-                    <Button icon="pi pi-arrow-right" rounded text severity="secondary" @click="backToList" title="العودة" />
+                    <Button icon="pi pi-arrow-right" rounded text severity="secondary" @click="backToList" title="العودة للقائمة" />
                     <div>
-                        <h1 class="page-title">{{ stockCountStore.currentSession.title }}</h1>
+                        <div class="flex items-center gap-2">
+                            <h1 class="page-title">{{ stockCountStore.currentSession.title }}</h1>
+                            <span class="font-mono text-xs text-surface-400">({{ stockCountStore.currentSession.sessionNumber || stockCountStore.currentSession.id }})</span>
+                        </div>
                         <p class="page-subtitle">
                             تاريخ: {{ formatDate(stockCountStore.currentSession.countDate) }} |
                             الحالة: 
@@ -478,64 +606,183 @@ const getStatusConfig = (status) => {
                         </p>
                     </div>
                 </div>
-                <div class="flex items-center gap-2" v-if="stockCountStore.currentSession.status === 'ONGOING'">
-                    <Button label="حفظ التقدم" outlined icon="pi pi-save" severity="secondary" @click="saveProgress" />
-                    <Button label="إنهاء الجرد وتطبيق" icon="pi pi-check" severity="success" @click="completeSession" />
+
+                <div class="flex items-center gap-2 flex-wrap">
+                    <Button label="ورقة جرد ورقية" outlined severity="secondary" size="small" @click="printSession(true)" title="طباعة ورقة جرد للمستودع">
+                        <template #icon><FileText :size="16" class="me-1" /></template>
+                    </Button>
+                    <Button label="طباعة التقرير" outlined severity="secondary" size="small" @click="printSession(false)">
+                        <template #icon><Printer :size="16" class="me-1" /></template>
+                    </Button>
+                    <Button label="تصدير CSV" outlined severity="secondary" size="small" @click="exportSessionCsv">
+                        <template #icon><Download :size="16" class="me-1" /></template>
+                    </Button>
+
+                    <template v-if="stockCountStore.currentSession.status === 'ONGOING'">
+                        <Button label="نسخ الدفتري للفعلي" outlined severity="info" size="small" @click="copyExpectedToCounted" title="ملء الكميات الفعالية بالدفتري لتسريع الإدخال">
+                            <template #icon><Copy :size="16" class="me-1" /></template>
+                        </Button>
+                        <Button label="حفظ التقدم" outlined icon="pi pi-save" severity="secondary" size="small" @click="saveProgress" />
+                        <Button label="إنهاء الجرد وتطبيق" icon="pi pi-check" severity="success" size="small" @click="completeSession" />
+                    </template>
                 </div>
             </div>
 
+            <!-- Printable Header for Session Print -->
+            <div class="print-official-header">
+                <div class="print-header-content">
+                    <div class="print-header-brand">
+                        <h2>{{ isPrintingWorksheet ? 'ورقة جرد ميدانية للمستودع' : 'تقرير جلسة جرد وتصفية رصيد المخزون' }}</h2>
+                        <p>نظام إدارة المبيعات والمخازن (POS System) — رقم الجلسة: {{ stockCountStore.currentSession.sessionNumber || stockCountStore.currentSession.id }}</p>
+                    </div>
+                    <div class="print-header-meta">
+                        <p><span>العنوان:</span> {{ stockCountStore.currentSession.title }}</p>
+                        <p><span>تاريخ الجرد:</span> {{ formatDate(stockCountStore.currentSession.countDate) }}</p>
+                        <p><span>الحالة:</span> {{ getStatusConfig(stockCountStore.currentSession.status).label }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detail KPI Stats Cards -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <div class="content-card p-3 flex items-center gap-3 border-s-4 border-s-blue-500 cursor-pointer" :class="{ 'ring-2 ring-blue-500': sessionVarianceFilter === 'all' }" @click="sessionVarianceFilter = 'all'">
+                    <div class="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 flex items-center justify-center flex-shrink-0">
+                        <Package :size="18" />
+                    </div>
+                    <div>
+                        <span class="text-xs font-medium text-surface-500 block">إجمالي أصناف الجلسة</span>
+                        <span class="text-lg font-bold text-surface-900 dark:text-surface-100">{{ currentSessionSummary.totalItems }} صنف</span>
+                    </div>
+                </div>
+
+                <div class="content-card p-3 flex items-center gap-3 border-s-4 border-s-emerald-500 cursor-pointer" :class="{ 'ring-2 ring-emerald-500': sessionVarianceFilter === 'matched' }" @click="sessionVarianceFilter = 'matched'">
+                    <div class="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                        <CheckCircle2 :size="18" />
+                    </div>
+                    <div>
+                        <span class="text-xs font-medium text-surface-500 block">أصناف مطابقة (بدون فرق)</span>
+                        <span class="text-lg font-bold text-emerald-600">{{ currentSessionSummary.matched }} صنف</span>
+                    </div>
+                </div>
+
+                <div class="content-card p-3 flex items-center gap-3 border-s-4 border-s-red-500 cursor-pointer" :class="{ 'ring-2 ring-red-500': sessionVarianceFilter === 'missing' }" @click="sessionVarianceFilter = 'missing'">
+                    <div class="w-9 h-9 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 flex items-center justify-center flex-shrink-0">
+                        <AlertCircle :size="18" />
+                    </div>
+                    <div>
+                        <span class="text-xs font-medium text-surface-500 block">أصناف بها عجز ({{ currentSessionSummary.totalMissingQty }} وحدة)</span>
+                        <span class="text-lg font-bold text-red-600">{{ currentSessionSummary.missing }} صنف</span>
+                    </div>
+                </div>
+
+                <div class="content-card p-3 flex items-center gap-3 border-s-4 border-s-amber-500 cursor-pointer" :class="{ 'ring-2 ring-amber-500': sessionVarianceFilter === 'extra' }" @click="sessionVarianceFilter = 'extra'">
+                    <div class="w-9 h-9 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 flex items-center justify-center flex-shrink-0">
+                        <AlertTriangle :size="18" />
+                    </div>
+                    <div>
+                        <span class="text-xs font-medium text-surface-500 block">أصناف بها زيادة ({{ currentSessionSummary.totalExtraQty }} وحدة)</span>
+                        <span class="text-lg font-bold text-amber-600">{{ currentSessionSummary.extra }} صنف</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Content Card & Table -->
             <div class="content-card">
-                <div class="filter-bar">
+                <!-- Filter Bar -->
+                <div class="filter-bar no-print flex flex-col md:flex-row justify-between items-center gap-3">
                     <div class="relative w-full max-w-xs">
                         <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400" />
                         <InputText
                             v-model="detailFilters.global.value"
-                            placeholder="بحث في المنتجات..."
+                            placeholder="بحث باسم المنتج أو SKU..."
                             class="ps-9 w-full"
                             size="small"
                         />
                     </div>
+
+                    <!-- Quick Filter Buttons -->
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                        <button
+                            class="filter-chip"
+                            :class="{ active: sessionVarianceFilter === 'all' }"
+                            @click="sessionVarianceFilter = 'all'"
+                        >
+                            الكل ({{ currentSessionSummary.totalItems }})
+                        </button>
+                        <button
+                            class="filter-chip chip-success"
+                            :class="{ active: sessionVarianceFilter === 'matched' }"
+                            @click="sessionVarianceFilter = 'matched'"
+                        >
+                            مطابق ({{ currentSessionSummary.matched }})
+                        </button>
+                        <button
+                            class="filter-chip chip-danger"
+                            :class="{ active: sessionVarianceFilter === 'missing' }"
+                            @click="sessionVarianceFilter = 'missing'"
+                        >
+                            عجز ({{ currentSessionSummary.missing }})
+                        </button>
+                        <button
+                            class="filter-chip chip-warning"
+                            :class="{ active: sessionVarianceFilter === 'extra' }"
+                            @click="sessionVarianceFilter = 'extra'"
+                        >
+                            زيادة ({{ currentSessionSummary.extra }})
+                        </button>
+                    </div>
                 </div>
 
+                <!-- Session Detail DataTable -->
                 <DataTable
-                    :value="stockCountStore.currentSession.items"
+                    :value="filteredSessionItems"
                     :loading="stockCountStore.isLoading"
-                    paginator
-                    :rows="20"
-                    v-model:filters="detailFilters"
-                    :globalFilterFields="['productName', 'sku']"
-                    emptyMessage="لا يوجد منتجات في الجلسة"
+                    :paginator="!isPrintingSessionDetail && !isPrintingWorksheet"
+                    :rows="isPrintingSessionDetail || isPrintingWorksheet ? 999999 : 20"
+                    emptyMessage="لا توجد أصناف تطابق تصفية الجرد"
                     stripedRows
                     class="main-table"
                 >
-                    <Column field="productName" header="المنتج" sortable></Column>
-                    <Column field="sku" header="SKU" sortable></Column>
+                    <Column field="productName" header="المنتج" sortable style="min-width: 220px">
+                        <template #body="{ data }">
+                            <span class="font-semibold text-surface-900 dark:text-surface-100 text-sm">{{ data.productName }}</span>
+                        </template>
+                    </Column>
+                    <Column field="productSku" header="SKU" sortable style="min-width: 120px">
+                        <template #body="{ data }">
+                            <span class="text-xs font-mono text-surface-500">{{ data.productSku || '—' }}</span>
+                        </template>
+                    </Column>
                     <Column field="expectedQuantity" header="الكمية الدفترية" style="width: 150px">
                         <template #body="{ data }">
-                            <span class="font-bold">{{ data.expectedQuantity }}</span>
+                            <span class="font-bold text-surface-800 dark:text-surface-200">{{ data.expectedQuantity }}</span>
                         </template>
                     </Column>
                     <Column field="countedQuantity" header="الجرد الفعلي" style="width: 200px">
                         <template #body="{ data }">
+                            <div v-if="isPrintingWorksheet" class="worksheet-blank-box">___</div>
                             <InputNumber 
-                                v-if="stockCountStore.currentSession.status === 'ONGOING'"
+                                v-else-if="stockCountStore.currentSession.status === 'ONGOING'"
                                 v-model="countedItemsMap[data.productId]"
                                 showButtons
                                 :min="0"
                                 class="w-full"
                             />
-                            <span v-else class="font-bold">{{ data.countedQuantity }}</span>
+                            <span v-else class="font-bold text-surface-900 dark:text-surface-100">{{ data.countedQuantity }}</span>
                         </template>
                     </Column>
                     <Column header="الفرق" style="width: 150px">
                         <template #body="{ data }">
-                            <template v-if="stockCountStore.currentSession.status === 'ONGOING'">
-                                <span class="font-bold" :class="(countedItemsMap[data.productId] - data.expectedQuantity) < 0 ? 'text-red-500' : (countedItemsMap[data.productId] - data.expectedQuantity) > 0 ? 'text-green-500' : 'text-surface-500'">
+                            <template v-if="isPrintingWorksheet">
+                                <span class="text-surface-400">—</span>
+                            </template>
+                            <template v-else-if="stockCountStore.currentSession.status === 'ONGOING'">
+                                <span class="font-bold text-sm" :class="(countedItemsMap[data.productId] - data.expectedQuantity) < 0 ? 'text-red-600' : (countedItemsMap[data.productId] - data.expectedQuantity) > 0 ? 'text-emerald-600' : 'text-surface-500'">
                                     {{ countedItemsMap[data.productId] !== undefined ? (countedItemsMap[data.productId] - data.expectedQuantity) : 0 }}
                                 </span>
                             </template>
                             <template v-else>
-                                <span class="font-bold" :class="data.variance < 0 ? 'text-red-500' : data.variance > 0 ? 'text-green-500' : 'text-surface-500'">
+                                <span class="font-bold text-sm" :class="data.variance < 0 ? 'text-red-600' : data.variance > 0 ? 'text-emerald-600' : 'text-surface-500'">
                                     {{ data.variance }}
                                 </span>
                             </template>
@@ -649,6 +896,44 @@ const getStatusConfig = (status) => {
     background: var(--p-surface-950);
 }
 
+.filter-chip {
+    padding: 0.35rem 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.775rem;
+    font-weight: 700;
+    border: 1px solid var(--p-surface-200);
+    background: var(--p-surface-0);
+    color: var(--p-surface-600);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.dark .filter-chip {
+    border-color: var(--p-surface-750);
+    background: var(--p-surface-800);
+    color: var(--p-surface-300);
+}
+
+.filter-chip.active {
+    background: var(--p-primary-500);
+    color: #fff;
+    border-color: var(--p-primary-500);
+}
+
+.filter-chip.chip-success.active {
+    background: #10b981;
+    border-color: #10b981;
+}
+
+.filter-chip.chip-danger.active {
+    background: #ef4444;
+    border-color: #ef4444;
+}
+
+.filter-chip.chip-warning.active {
+    background: #f59e0b;
+    border-color: #f59e0b;
+}
+
 .status-chip {
     padding: 0.25rem 0.5rem;
     border-radius: 0.25rem;
@@ -661,4 +946,14 @@ const getStatusConfig = (status) => {
 .dark .status-warning { color: #fcd34d; }
 .dark .status-success { color: #6ee7b7; }
 .dark .status-info { color: #93c5fd; }
+
+.worksheet-blank-box {
+    display: inline-block;
+    width: 80px;
+    height: 30px;
+    border: 1px dashed #94a3b8;
+    text-align: center;
+    line-height: 28px;
+    color: #94a3b8;
+}
 </style>

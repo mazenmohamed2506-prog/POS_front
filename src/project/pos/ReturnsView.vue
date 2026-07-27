@@ -38,6 +38,7 @@ const returnsHelpTips = [
     'يمكن إرجاع جزء من منتجات الطلبية فقط',
 ];
 
+const activeTab = ref("sales"); // 'sales' | 'returns'
 const showReturnDialog = ref(false);
 const selectedOrder = ref(null);
 const returnItems = ref([]);
@@ -48,28 +49,35 @@ onMounted(() => {
 });
 
 const openReturnDialog = (order) => {
-    if (order.type === "return") return;
+    if (order.type === "return" || order.status === "FullyReturned") return;
     selectedOrder.value = order;
-    returnItems.value = order.items.map((item) => ({
-        ...item,
-        returnQty: 0,
-    }));
+    returnItems.value = (order.items || []).map((item) => {
+        const retQty = item.returnedQuantity ?? 0;
+        const remQty = item.remainingReturnableQuantity ?? Math.max(0, (item.qty || item.quantity || 0) - retQty);
+        return {
+            ...item,
+            returnedQty: retQty,
+            maxReturnable: remQty,
+            returnQty: 0,
+        };
+    });
     showReturnDialog.value = true;
 };
 
 const handleReturn = async () => {
     const itemsToReturn = returnItems.value
-        .filter((i) => i.returnQty > 0)
+        .filter((i) => i.returnQty > 0 && i.returnQty <= i.maxReturnable)
         .map((i) => ({
-            productUnitId: i.productUnitId || i.product_unit_id || i.id,
+            id: i.id,
+            name: i.productName || i.name,
+            qty: Number(i.returnQty),
+            quantity: Number(i.returnQty),
+            productUnitId: i.productUnitId || i.product_unit_id,
             productId: i.productId || i.product_id,
-            quantity: i.returnQty,
             batchId: i.batchId,
             batchNumber: i.batchNumber,
             reason: i.reason,
-            name: i.name,
-            price: i.price,
-            qty: i.returnQty
+            price: i.price
         }));
 
     if (itemsToReturn.length === 0) return;
@@ -79,6 +87,7 @@ const handleReturn = async () => {
 };
 
 const formatDate = (dateStr) => {
+    if (!dateStr) return "—";
     return new Date(dateStr).toLocaleDateString("ar-EG", {
         year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
     });
@@ -92,10 +101,25 @@ const formatCurrency = (val) => {
     }).format(val || 0);
 };
 
+const salesOrders = computed(() => {
+    return posStore.orders.filter(o => o.type !== "return" && o.status !== "FullyReturned");
+});
+
+const returnedOrders = computed(() => {
+    return posStore.orders.filter(o =>
+        o.type === "return" ||
+        o.status === "FullyReturned" ||
+        o.status === "PartiallyReturned" ||
+        (o.items && o.items.some(i => (i.returnedQuantity || 0) > 0))
+    );
+});
+
 const filteredOrders = computed(() => {
     const q = searchQuery.value.trim().toLowerCase();
-    if (!q) return posStore.orders;
-    return posStore.orders.filter((o) =>
+    const sourceList = activeTab.value === "sales" ? salesOrders.value : returnedOrders.value;
+
+    if (!q) return sourceList;
+    return sourceList.filter((o) =>
         (o.orderNumber && o.orderNumber.toLowerCase().includes(q)) ||
         (o.paymentMethod && o.paymentMethod.toLowerCase().includes(q))
     );
@@ -133,8 +157,27 @@ const filteredOrders = computed(() => {
 
         <!-- Table Container Card -->
         <div class="returns-card">
-            <!-- Filter Bar -->
-            <div class="returns-filter-bar">
+            <!-- Filter & Tabs Bar -->
+            <div class="returns-filter-bar flex-wrap gap-3 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <button
+                        class="px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors flex items-center gap-1.5"
+                        :class="activeTab === 'sales' ? 'bg-primary-500 text-white shadow-sm' : 'bg-surface-100 text-surface-700 hover:bg-surface-200 dark:bg-surface-800 dark:text-surface-300'"
+                        @click="activeTab = 'sales'"
+                    >
+                        <span>طلبيات البيع</span>
+                        <span class="text-xs px-1.5 py-0.5 rounded-full bg-white/20 dark:bg-black/20">{{ salesOrders.length }}</span>
+                    </button>
+                    <button
+                        class="px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors flex items-center gap-1.5"
+                        :class="activeTab === 'returns' ? 'bg-amber-500 text-white shadow-sm' : 'bg-surface-100 text-surface-700 hover:bg-surface-200 dark:bg-surface-800 dark:text-surface-300'"
+                        @click="activeTab = 'returns'"
+                    >
+                        <span>سجل المرتجعات</span>
+                        <span class="text-xs px-1.5 py-0.5 rounded-full bg-white/20 dark:bg-black/20">{{ returnedOrders.length }}</span>
+                    </button>
+                </div>
+
                 <div class="relative w-full max-w-xs">
                     <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400 dark:text-surface-500" />
                     <InputText
@@ -154,7 +197,7 @@ const filteredOrders = computed(() => {
                 paginator
                 :rows="10"
                 :rowsPerPageOptions="[10, 15, 25, 50]"
-                emptyMessage="لا توجد طلبات بيع مطابقة"
+                emptyMessage="لا توجد طلبات مطابقة"
                 stripedRows
                 removableSort
                 scrollable
@@ -165,10 +208,23 @@ const filteredOrders = computed(() => {
                         <span class="order-number-cell font-mono">{{ data.orderNumber }}</span>
                     </template>
                 </Column>
-                <Column field="type" header="النوع" style="min-width: 120px">
+                <Column field="type" header="النوع / الحالة" style="min-width: 140px">
                     <template #body="{ data }">
                         <Tag
-                            :value="data.type === 'sale' ? 'بيع' : 'مرتجع'"
+                            v-if="data.status === 'FullyReturned'"
+                            value="مرتجع بالكامل"
+                            severity="danger"
+                            class="font-medium"
+                        />
+                        <Tag
+                            v-else-if="data.status === 'PartiallyReturned'"
+                            value="مرتجع جزئي"
+                            severity="warn"
+                            class="font-medium"
+                        />
+                        <Tag
+                            v-else
+                            :value="data.type === 'sale' ? 'طلب بيع' : 'مرتجع'"
                             :severity="data.type === 'sale' ? 'info' : 'warn'"
                             class="font-medium"
                         />
@@ -200,11 +256,11 @@ const filteredOrders = computed(() => {
                         />
                     </template>
                 </Column>
-                <Column header="إجراء" style="min-width: 120px; text-align: center">
+                <Column header="إجراء" style="min-width: 140px; text-align: center">
                     <template #body="{ data }">
                         <div class="flex justify-center">
                             <Button
-                                v-if="data.type === 'sale'"
+                                v-if="data.type === 'sale' && data.status !== 'FullyReturned'"
                                 size="small"
                                 label="إرجاع أصناف"
                                 outlined
@@ -213,6 +269,7 @@ const filteredOrders = computed(() => {
                             >
                                 <template #icon><RotateCcw :size="14" class="me-1" /></template>
                             </Button>
+                            <Tag v-else-if="data.status === 'FullyReturned'" value="مسترجع بالكامل" severity="secondary" />
                             <span v-else class="text-sm text-surface-400 font-medium">—</span>
                         </div>
                     </template>
@@ -224,41 +281,51 @@ const filteredOrders = computed(() => {
         <Dialog
             v-model:visible="showReturnDialog"
             header="معالجة مرتجع الفاتورة"
-            :style="{ width: '560px' }"
+            :style="{ width: '600px' }"
             modal
             dismissableMask
         >
             <div class="return-dialog-content" v-if="selectedOrder">
-                <div class="return-order-info-card">
+                <div class="return-order-info-card p-3 rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700">
                     <p class="text-sm text-surface-600 dark:text-surface-400">
                         طلب بيع رقم: <strong class="text-surface-900 dark:text-surface-100 font-mono">{{ selectedOrder.orderNumber }}</strong>
                     </p>
                     <p class="text-xs text-surface-500 mt-1">التاريخ: {{ formatDate(selectedOrder.date) }}</p>
                 </div>
 
-                <div class="return-items-list mt-3">
+                <div class="return-items-list mt-3 space-y-2">
                     <div
                         v-for="(item, idx) in returnItems"
                         :key="idx"
-                        class="return-item-row"
+                        class="return-item-row p-3 rounded-lg border border-surface-200 dark:border-surface-700 flex items-center justify-between gap-3"
+                        :class="{ 'opacity-65 bg-surface-50 dark:bg-surface-900': item.maxReturnable <= 0 }"
                     >
                         <div class="flex-1">
-                            <div class="font-bold text-surface-800 dark:text-surface-100">{{ item.name }}</div>
-                            <div class="text-xs text-surface-450 mt-0.5">
-                                السعر: {{ formatCurrency(item.price) }} · الكمية الأصلية: {{ item.qty }}
+                            <div class="font-bold text-surface-800 dark:text-surface-100 flex items-center gap-2">
+                                <span>{{ item.name }}</span>
+                                <Tag v-if="item.maxReturnable <= 0" value="مسترجع بالكامل" severity="danger" size="small" />
+                                <Tag v-else-if="item.returnedQty > 0" :value="'تم إرجاع ' + item.returnedQty" severity="warn" size="small" />
+                            </div>
+                            <div class="text-xs text-surface-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                                <span>السعر: {{ formatCurrency(item.price) }}</span>
+                                <span>المباع الأصلي: {{ item.qty }}</span>
+                                <span v-if="item.returnedQty > 0" class="text-amber-600 font-medium">المرتجع سابقاً: {{ item.returnedQty }}</span>
+                                <span class="text-emerald-600 dark:text-emerald-400 font-bold">المتاح للإرجاع: {{ item.maxReturnable }}</span>
                             </div>
                         </div>
-                        <div class="w-32">
+                        <div class="w-36">
                             <InputNumber
+                                v-if="item.maxReturnable > 0"
                                 v-model="item.returnQty"
                                 :min="0"
-                                :max="item.qty"
+                                :max="item.maxReturnable"
                                 fluid
-                                placeholder="كمية المرتجع"
+                                placeholder="0"
                                 showButtons
                                 buttonLayout="horizontal"
                                 :inputStyle="{ textAlign: 'center' }"
                             />
+                            <span v-else class="text-xs font-bold text-danger-500 block text-center">غير متاح للإرجاع</span>
                         </div>
                     </div>
                 </div>

@@ -19,7 +19,22 @@ export const useDamageStore = defineStore("damage", () => {
         error.value = null;
         try {
             const response = await apiGet("/Damages", { params });
-            damagesList.value = response.data || [];
+            const list = Array.isArray(response.data) ? response.data : (response.data?.items || []);
+            damagesList.value = list.map(item => ({
+                id: item.id,
+                productId: item.productId,
+                productName: item.productName || "منتج غير محدد",
+                productSku: item.productSku || (item.productId ? `PROD-${item.productId}` : "—"),
+                quantity: item.quantity || 0,
+                costPerUnit: item.costPerUnit || 0,
+                totalLoss: item.totalLoss || ((item.quantity || 0) * (item.costPerUnit || 0)),
+                damageDate: item.damageDate,
+                reason: item.damageReason || item.reason || "OTHER",
+                damageReason: item.damageReason || item.reason || "OTHER",
+                notes: item.notes || "",
+                createdBy: item.createdBy || "—"
+            }));
+            return damagesList.value;
         } catch (err) {
             console.error("Failed to fetch damages:", err);
             error.value = err.message || "Failed to load damages";
@@ -52,7 +67,13 @@ export const useDamageStore = defineStore("damage", () => {
         isLoading.value = true;
         error.value = null;
         try {
-            const response = await apiPost("/Damages", payload, false);
+            const apiPayload = {
+                productId: payload.productId,
+                quantity: Number(payload.quantity || 0),
+                damageReason: payload.damageReason || payload.reason || "BROKEN",
+                notes: payload.notes || ""
+            };
+            const response = await apiPost("/Damages", apiPayload, false);
             toastStore.addSuccessToast("تم تسجيل التالف بنجاح");
             
             // Refresh damages list and stats
@@ -70,13 +91,20 @@ export const useDamageStore = defineStore("damage", () => {
         }
     }
 
+    const damages = damagesList;
+    const loading = isLoading;
+    const logDamage = addDamage;
+
     return {
         damagesList,
+        damages,
         stats,
         isLoading,
+        loading,
         error,
         fetchDamages,
         fetchDamageStats,
         addDamage,
+        logDamage,
     };
 });

@@ -2,8 +2,9 @@
 import { ref, onMounted, nextTick, computed } from "vue";
 import { usePosStore } from "@/stores/pos/posStore";
 import { useToastStore } from "@/stores/base/toastStore";
-import { Barcode, Trash2, Plus, Minus, CreditCard, Banknote, ShoppingCart, XCircle, Search, RotateCcw, Receipt, Package, AlertTriangle, HelpCircle } from "lucide-vue-next";
+import { Barcode, Trash2, Plus, Minus, CreditCard, Banknote, ShoppingCart, XCircle, Search, RotateCcw, Receipt, Package, AlertTriangle, HelpCircle, User, Wallet, Printer, CheckCircle, UserPlus } from "lucide-vue-next";
 import HelpDrawer from "@/components/HelpDrawer.vue";
+import { apiGet, apiPost } from "@/utilities/fetchApi";
 
 const posStore = ref(null);
 posStore.value = usePosStore();
@@ -19,6 +20,43 @@ const searchQuery = ref("");
 // ── POS Mode: 'sell' or 'returns' ──
 const posMode = ref("sell");
 
+// ── Customers state ──
+const customers = ref([]);
+const selectedCustomerId = ref(null);
+const showAddCustomerDialog = ref(false);
+const newCustomerForm = ref({ name: "", phone: "", notes: "" });
+
+// ── Receipt dialog state ──
+const showReceiptModal = ref(false);
+const completedOrder = ref(null);
+
+const fetchCustomers = async () => {
+    try {
+        const res = await apiGet("/receivables/customers");
+        customers.value = res.data || [];
+    } catch (e) {
+        console.error("Failed to load customers", e);
+    }
+};
+
+const handleCreateCustomer = async () => {
+    if (!newCustomerForm.value.name.trim()) return;
+    try {
+        const res = await apiPost("/receivables/customers", newCustomerForm.value, false);
+        toastStore.addSuccessToast("تم إضافة العميل بنجاح");
+        await fetchCustomers();
+        selectedCustomerId.value = res.data.id;
+        showAddCustomerDialog.value = false;
+        newCustomerForm.value = { name: "", phone: "", notes: "" };
+    } catch (e) {
+        toastStore.addErrorToast("حدث خطأ أثناء إضافة العميل");
+    }
+};
+
+const printReceipt = () => {
+    window.print();
+};
+
 // ── Help Drawer ──
 const showHelp = ref(false);
 const posHelpSections = [
@@ -31,7 +69,7 @@ const posHelpSections = [
             { title: 'اختر وضع البيع', desc: 'اضغط على "شاشة البيع" في أعلى القائمة' },
             { title: 'أضف المنتجات', desc: 'امسح الباركود أو ابحث بالاسم ثم اضغط على البطاقة' },
             { title: 'راجع السلة', desc: 'تحقق من الكميات والأسعار في قائمة السلة على اليسار' },
-            { title: 'اختر طريقة الدفع', desc: 'اضغط "دفع نقدي" أو "بطاقة" لإتمام عملية البيع' },
+            { title: 'اختر طريقة الدفع', desc: 'اضغط "دفع نقدي" أو "بطاقة" أو "آجل" لإتمام عملية البيع' },
         ]
     },
     {
@@ -84,6 +122,7 @@ onMounted(() => {
     posStore.value.fetchProducts();
     posStore.value.fetchInventory();
     posStore.value.fetchOrders();
+    fetchCustomers();
     focusBarcode();
 });
 
@@ -96,7 +135,7 @@ const categories = computed(() => {
 // Helper to get shelf stock from inventory state
 const getShelfStock = (productId) => {
     const items = posStore.value.inventory.filter((i) => i.productId === productId);
-    return items.reduce((sum, item) => sum + item.shelfStock, 0);
+    return items.reduce((sum, item) => sum + (item.shelfStock || 0), 0);
 };
 
 // Filtered products list based on category & text search
@@ -127,6 +166,14 @@ const filteredSaleOrders = computed(() => {
 
 // Click card handler
 const handleProductClick = (product) => {
+    if (product.isActive === false) {
+        toastStore.addWarningToast(`المنتج "${product.name}" غير نشط ولا يمكن بيعه.`);
+        shakingCardId.value = product.id;
+        setTimeout(() => {
+            if (shakingCardId.value === product.id) shakingCardId.value = null;
+        }, 400);
+        return;
+    }
     if (!posStore.value.isShiftOpen) {
         toastStore.addWarningToast("يجب فتح وردية أولاً من صفحة الورديات لتتمكن من إجراء المبيعات وإضافة المنتجات!");
         return;
@@ -152,11 +199,15 @@ const handleScan = async () => {
     try {
         const product = await posStore.value.scanBarcode(code);
         if (product) {
-            const stock = getShelfStock(product.id);
-            if (stock <= 0) {
-                toastStore.addWarningToast("المنتج غير متوفر على الرف");
+            if (product.isActive === false) {
+                toastStore.addWarningToast(`المنتج "${product.name}" غير نشط ولا يمكن بيعه.`);
             } else {
-                posStore.value.addToCart(product);
+                const stock = getShelfStock(product.id);
+                if (stock <= 0) {
+                    toastStore.addWarningToast("المنتج غير متوفر على الرف");
+                } else {
+                    posStore.value.addToCart(product);
+                }
             }
         }
     } catch (err) {
@@ -182,10 +233,16 @@ const handleCheckout = async (method) => {
 // ── Returns logic ──
 const openReturnDialog = (order) => {
     selectedOrder.value = order;
-    returnItems.value = order.items.map((item) => ({
-        ...item,
-        returnQty: 0,
-    }));
+    returnItems.value = (order.items || []).map((item) => {
+        const retQty = item.returnedQuantity ?? 0;
+        const remQty = item.remainingReturnableQuantity ?? Math.max(0, (item.qty || item.quantity || 0) - retQty);
+        return {
+            ...item,
+            returnedQty: retQty,
+            maxReturnable: remQty,
+            returnQty: 0,
+        };
+    });
     showReturnDialog.value = true;
 };
 
@@ -328,6 +385,32 @@ const getStockClass = (stock) => {
 
             <!-- Summary & Payment -->
             <div class="pos-checkout-section">
+                <!-- Customer Selection Bar -->
+                <div class="customer-select-bar mb-3 p-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800">
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="text-xs font-bold text-surface-700 dark:text-surface-300 flex items-center gap-1">
+                            <User :size="13" class="text-primary-500" />
+                            <span>العميل:</span>
+                        </label>
+                        <button class="text-xs text-primary-600 dark:text-primary-400 font-bold hover:underline flex items-center gap-1" @click="showAddCustomerDialog = true">
+                            <UserPlus :size="12" />
+                            <span>+ عميل جديد</span>
+                        </button>
+                    </div>
+                    <Select
+                        v-model="selectedCustomerId"
+                        :options="customers"
+                        optionLabel="name"
+                        optionValue="id"
+                        placeholder="عميل نقدي (عام)"
+                        showClear
+                        filter
+                        fluid
+                        size="small"
+                        class="w-full text-xs"
+                    />
+                </div>
+
                 <div class="checkout-summary">
                     <div class="summary-row">
                         <span class="summary-label">المجموع الفرعي</span>
@@ -354,16 +437,24 @@ const getStockClass = (stock) => {
                         :disabled="posStore.cart.length === 0 || posStore.loading || !posStore.isShiftOpen"
                         @click="handleCheckout('cash')"
                     >
-                        <Banknote :size="22" />
-                        <span class="pay-btn-label">دفع نقدي</span>
+                        <Banknote :size="20" />
+                        <span class="pay-btn-label">نقدي</span>
                     </button>
                     <button
                         class="pay-btn pay-card"
                         :disabled="posStore.cart.length === 0 || posStore.loading || !posStore.isShiftOpen"
                         @click="handleCheckout('card')"
                     >
-                        <CreditCard :size="22" />
+                        <CreditCard :size="20" />
                         <span class="pay-btn-label">بطاقة</span>
+                    </button>
+                    <button
+                        class="pay-btn pay-credit"
+                        :disabled="posStore.cart.length === 0 || posStore.loading || !posStore.isShiftOpen"
+                        @click="handleCheckout('credit')"
+                    >
+                        <Wallet :size="20" />
+                        <span class="pay-btn-label">آجل</span>
                     </button>
                 </div>
 
@@ -460,8 +551,8 @@ const getStockClass = (stock) => {
                                 :key="prod.id"
                                 class="p-card"
                                 :class="{
-                                    'p-card-disabled': getShelfStock(prod.id) === 0 || !posStore.isShiftOpen,
-                                    'p-card-oos': getShelfStock(prod.id) === 0,
+                                    'p-card-disabled': prod.isActive === false || getShelfStock(prod.id) === 0 || !posStore.isShiftOpen,
+                                    'p-card-oos': getShelfStock(prod.id) === 0 || prod.isActive === false,
                                     'shake': shakingCardId === prod.id
                                 }"
                                 @click="handleProductClick(prod)"
@@ -475,11 +566,14 @@ const getStockClass = (stock) => {
                                 </div>
                                 <div class="p-card-footer">
                                     <span class="p-card-price">{{ formatCurrency(prod.price) }}</span>
-                                    <span class="p-card-stock" :class="getStockClass(getShelfStock(prod.id))">
-                                        {{ getShelfStock(prod.id) > 0 ? getShelfStock(prod.id) : 'نفذ' }}
+                                    <span class="p-card-stock" :class="prod.isActive === false ? 'stock-danger' : getStockClass(getShelfStock(prod.id))">
+                                        {{ prod.isActive === false ? 'غير نشط' : (getShelfStock(prod.id) > 0 ? getShelfStock(prod.id) : 'نفذ') }}
                                     </span>
                                 </div>
-                                <div v-if="getShelfStock(prod.id) === 0" class="p-card-oos-overlay">
+                                <div v-if="prod.isActive === false" class="p-card-oos-overlay" style="background: rgba(239, 68, 68, 0.15);">
+                                    <span style="background: #ef4444; color: white;">غير نشط</span>
+                                </div>
+                                <div v-else-if="getShelfStock(prod.id) === 0" class="p-card-oos-overlay">
                                     <span>نفذ المخزون</span>
                                 </div>
                             </div>
@@ -571,24 +665,31 @@ const getStockClass = (stock) => {
                         v-for="(item, idx) in returnItems"
                         :key="idx"
                         class="return-dialog-item"
+                        :class="{ 'opacity-60': item.maxReturnable <= 0 }"
                     >
-                        <div class="return-dialog-item-info">
-                            <span class="return-dialog-item-name">{{ item.name }}</span>
-                            <span class="return-dialog-item-meta">
-                                سعر الوحدة: {{ formatCurrency(item.price) }} · الكمية الأصلية: {{ item.qty }}
+                        <div class="return-dialog-item-info flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="return-dialog-item-name font-bold">{{ item.name }}</span>
+                                <Tag v-if="item.maxReturnable <= 0" value="مسترجع بالكامل" severity="danger" size="small" />
+                                <Tag v-else-if="item.returnedQty > 0" :value="'مرتجع: ' + item.returnedQty" severity="warn" size="small" />
+                            </div>
+                            <span class="return-dialog-item-meta text-xs">
+                                السعر: {{ formatCurrency(item.price) }} · المتاح للإرجاع: <strong class="text-emerald-600 dark:text-emerald-400 font-bold">{{ item.maxReturnable }}</strong> (من أصل {{ item.qty }})
                             </span>
                         </div>
                         <div class="return-dialog-item-qty">
                             <label class="return-qty-label">المستردة</label>
                             <InputNumber
+                                v-if="item.maxReturnable > 0"
                                 v-model="item.returnQty"
                                 :min="0"
-                                :max="item.qty"
+                                :max="item.maxReturnable"
                                 fluid
                                 showButtons
                                 buttonLayout="horizontal"
-                                :inputStyle="{ width: '3rem', textAlign: 'center' }"
+                                :inputStyle="{ width: '3.5rem', textAlign: 'center' }"
                             />
+                            <span v-else class="text-xs text-red-500 font-bold block text-center">غير متاح</span>
                         </div>
                     </div>
                 </div>
@@ -608,6 +709,107 @@ const getStockClass = (stock) => {
                         :loading="posStore.loading"
                         :disabled="returnDialogTotal === 0"
                     />
+                </div>
+            </template>
+        </Dialog>
+
+        <!-- Add Customer Dialog -->
+        <Dialog
+            v-model:visible="showAddCustomerDialog"
+            header="إضافة عميل جديد"
+            :style="{ width: '420px' }"
+            modal
+            dismissableMask
+        >
+            <div class="flex flex-col gap-4 py-2">
+                <div class="flex flex-col gap-1.5">
+                    <label class="font-bold text-sm">اسم العميل <span class="text-red-500">*</span></label>
+                    <InputText v-model="newCustomerForm.name" placeholder="أدخل اسم العميل" fluid size="small" />
+                </div>
+                <div class="flex flex-col gap-1.5">
+                    <label class="font-bold text-sm">رقم الهاتف</label>
+                    <InputText v-model="newCustomerForm.phone" placeholder="01xxxxxxxxx" fluid size="small" />
+                </div>
+                <div class="flex flex-col gap-1.5">
+                    <label class="font-bold text-sm">ملاحظات</label>
+                    <Textarea v-model="newCustomerForm.notes" rows="2" placeholder="أي ملاحظات إضافية" fluid />
+                </div>
+            </div>
+            <template #footer>
+                <div class="flex justify-end gap-2 w-full">
+                    <Button label="إلغاء" outlined severity="secondary" @click="showAddCustomerDialog = false" />
+                    <Button label="حفظ العميل" severity="primary" @click="handleCreateCustomer" :disabled="!newCustomerForm.name.trim()" />
+                </div>
+            </template>
+        </Dialog>
+
+        <!-- Thermal Receipt Modal -->
+        <Dialog
+            v-model:visible="showReceiptModal"
+            header="إيصال فاتورة البيع"
+            :style="{ width: '400px' }"
+            modal
+            dismissableMask
+        >
+            <div class="receipt-printable-area p-4 text-surface-900 bg-white font-mono text-sm leading-tight border border-surface-200 rounded-lg shadow-inner" v-if="completedOrder">
+                <!-- Header -->
+                <div class="text-center pb-3 mb-3 border-b border-dashed border-surface-300">
+                    <h2 class="font-black text-xl text-black">{{ posStore.settings.storeName || 'نقطة البيع' }}</h2>
+                    <p class="text-xs text-surface-600 mt-0.5">فاتورة بيع إلكترونية</p>
+                    <div class="mt-2 text-xs text-surface-600 flex justify-between px-1">
+                        <span>رقم الفاتورة: <strong class="text-black font-bold">{{ completedOrder.orderNumber }}</strong></span>
+                        <span>{{ formatDate(completedOrder.date) }}</span>
+                    </div>
+                </div>
+
+                <!-- Items -->
+                <div class="space-y-2 pb-3 border-b border-dashed border-surface-300 text-xs">
+                    <div v-for="item in completedOrder.items" :key="item.id" class="flex justify-between items-start">
+                        <div>
+                            <div class="font-bold text-black text-sm">{{ item.name }}</div>
+                            <div class="text-surface-500">{{ item.qty }} × {{ formatCurrency(item.price) }}</div>
+                        </div>
+                        <div class="font-bold text-black text-end text-sm">{{ formatCurrency(item.total) }}</div>
+                    </div>
+                </div>
+
+                <!-- Financial Totals -->
+                <div class="py-2.5 border-b border-dashed border-surface-300 text-xs space-y-1.5">
+                    <div class="flex justify-between">
+                        <span>المجموع الفرعي:</span>
+                        <span>{{ formatCurrency(completedOrder.subtotal) }}</span>
+                    </div>
+                    <div class="flex justify-between text-red-600" v-if="completedOrder.discount > 0">
+                        <span>الخصم:</span>
+                        <span>-{{ formatCurrency(completedOrder.discount) }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>الضريبة:</span>
+                        <span>{{ formatCurrency(completedOrder.tax) }}</span>
+                    </div>
+                    <div class="flex justify-between font-extrabold text-base text-black pt-2 border-t border-surface-200">
+                        <span>الإجمالي الكلي:</span>
+                        <span>{{ formatCurrency(completedOrder.total) }}</span>
+                    </div>
+                </div>
+
+                <!-- Payment Info -->
+                <div class="pt-3 text-xs text-center space-y-1">
+                    <p class="font-bold text-surface-800">
+                        طريقة الدفع: 
+                        <span class="text-primary-700 font-extrabold px-2 py-0.5 rounded bg-primary-50 border border-primary-200">
+                            {{ completedOrder.paymentMethod === 'cash' ? 'نقدي (كاش)' : completedOrder.paymentMethod === 'card' ? 'بطاقة بنكية' : 'آجل (حساب عميل)' }}
+                        </span>
+                    </p>
+                    <p class="text-surface-500 text-xs mt-3">شكراً لزيارتكم ونتطلع لخدمتكم دائماً!</p>
+                </div>
+            </div>
+            <template #footer>
+                <div class="flex gap-2 justify-between w-full no-print">
+                    <Button label="إغلاق" outlined severity="secondary" @click="showReceiptModal = false" class="flex-1" />
+                    <Button label="طباعة الفاتورة" severity="primary" @click="printReceipt" class="flex-1">
+                        <template #icon><Printer :size="16" class="me-1" /></template>
+                    </Button>
                 </div>
             </template>
         </Dialog>
@@ -1139,6 +1341,22 @@ const getStockClass = (stock) => {
 
 .pay-cash:not(:disabled):hover {
     box-shadow: 0 6px 20px rgba(34, 197, 94, 0.35);
+}
+
+.pay-card {
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+}
+
+.pay-card:not(:disabled):hover {
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35);
+}
+
+.pay-credit {
+    background: linear-gradient(135deg, #ec4899, #db2777);
+}
+
+.pay-credit:not(:disabled):hover {
+    box-shadow: 0 6px 20px rgba(236, 72, 153, 0.35);
 }
 
 .pay-card {

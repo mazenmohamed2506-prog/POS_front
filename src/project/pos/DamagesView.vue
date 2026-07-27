@@ -51,10 +51,11 @@ const reportForm = ref({
     endDate: new Date().toISOString().split('T')[0]
 });
 
-onMounted(() => {
-    damageStore.fetchDamages();
-    if (productStore.products.length === 0) productStore.fetchProducts();
-    if (inventoryStore.inventory.length === 0) inventoryStore.fetchInventory();
+onMounted(async () => {
+    await damageStore.fetchDamages();
+    await damageStore.fetchDamageStats();
+    if (productStore.products.length === 0) await productStore.fetchProducts();
+    if (inventoryStore.inventory.length === 0) await inventoryStore.fetchInventory();
 });
 
 const openNewDamage = () => {
@@ -86,19 +87,28 @@ const availableBatches = computed(() => {
 });
 
 const maxQuantity = computed(() => {
-    if (!damageForm.value.inventoryId) return 0;
-    const batch = inventoryStore.inventory.find(i => i.id === damageForm.value.inventoryId);
-    if (!batch) return 0;
-    return batch.shelfStock + batch.warehouseStock;
+    if (!damageForm.value.productId) return 0;
+    if (damageForm.value.inventoryId) {
+        const batch = inventoryStore.inventory.find(i => i.id === damageForm.value.inventoryId);
+        if (batch) return batch.shelfStock + batch.warehouseStock;
+    }
+    const productBatches = inventoryStore.inventory.filter(i => i.productId === damageForm.value.productId);
+    return productBatches.reduce((sum, b) => sum + (b.shelfStock + b.warehouseStock), 0);
 });
 
 const submitDamage = async () => {
+    if (!damageForm.value.productId || !damageForm.value.quantity) return;
     try {
-        await damageStore.logDamage({ ...damageForm.value });
+        await damageStore.addDamage({
+            productId: damageForm.value.productId,
+            quantity: Number(damageForm.value.quantity),
+            damageReason: damageForm.value.reason || "BROKEN",
+            notes: damageForm.value.notes || ""
+        });
         showDamageDialog.value = false;
-        inventoryStore.fetchInventory(); // refresh inventory to reflect deduction
-    } catch {
-        // Handled in store
+        await inventoryStore.fetchInventory(); // refresh inventory to reflect deduction
+    } catch (err) {
+        console.error("Failed to record damage:", err);
     }
 };
 
@@ -263,39 +273,59 @@ const getReasonLabel = (val) => {
 
                         <DataTable
                             :value="damageStore.damages"
-                            :loading="damageStore.loading"
+                            :loading="damageStore.isLoading"
                             paginator
                             :rows="15"
                             v-model:filters="filters"
-                            :globalFilterFields="['productName', 'reason', 'notes']"
+                            :globalFilterFields="['productName', 'productSku', 'reason', 'notes', 'createdBy']"
                             emptyMessage="لا يوجد توالف مسجلة"
                             stripedRows
                             removableSort
                             class="main-table"
                         >
-                            <Column field="damageDate" header="التاريخ" sortable>
+                            <Column field="damageDate" header="التاريخ" sortable style="min-width: 130px">
                                 <template #body="{ data }">{{ formatDate(data.damageDate) }}</template>
                             </Column>
-                            <Column field="productName" header="المنتج" sortable>
+                            <Column field="productSku" header="كود المنتج (SKU)" sortable style="min-width: 120px">
                                 <template #body="{ data }">
-                                    <span class="font-bold">{{ data.productName }}</span>
+                                    <span class="font-mono text-xs font-bold text-surface-600 dark:text-surface-400">{{ data.productSku }}</span>
                                 </template>
                             </Column>
-                            <Column field="batchNumber" header="التشغيلة">
-                                <template #body="{ data }">{{ data.batchNumber || '—' }}</template>
-                            </Column>
-                            <Column field="quantity" header="الكمية" sortable>
+                            <Column field="productName" header="اسم المنتج" sortable style="min-width: 160px">
                                 <template #body="{ data }">
-                                    <span class="font-bold text-red-500">{{ data.quantity }}</span>
+                                    <span class="font-bold text-surface-900 dark:text-surface-100">{{ data.productName }}</span>
                                 </template>
                             </Column>
-                            <Column field="reason" header="السبب" sortable>
+                            <Column field="quantity" header="الكمية" sortable style="min-width: 90px">
                                 <template #body="{ data }">
-                                    <span class="status-chip status-danger">{{ getReasonLabel(data.reason) }}</span>
+                                    <span class="font-extrabold text-red-600 dark:text-red-400 text-base">{{ data.quantity }}</span>
                                 </template>
                             </Column>
-                            <Column field="notes" header="ملاحظات"></Column>
-                            <Column field="createdBy" header="بواسطة"></Column>
+                            <Column field="costPerUnit" header="تكلفة القطعة" sortable style="min-width: 110px">
+                                <template #body="{ data }">
+                                    <span class="font-medium text-surface-700 dark:text-surface-300">{{ formatCurrency(data.costPerUnit) }}</span>
+                                </template>
+                            </Column>
+                            <Column field="totalLoss" header="إجمالي الخسارة" sortable style="min-width: 120px">
+                                <template #body="{ data }">
+                                    <span class="font-extrabold text-red-600 dark:text-red-400 text-base">{{ formatCurrency(data.totalLoss) }}</span>
+                                </template>
+                            </Column>
+                            <Column field="reason" header="السبب" sortable style="min-width: 120px">
+                                <template #body="{ data }">
+                                    <span class="status-chip status-danger">{{ getReasonLabel(data.reason || data.damageReason) }}</span>
+                                </template>
+                            </Column>
+                            <Column field="notes" header="ملاحظات" style="min-width: 140px">
+                                <template #body="{ data }">
+                                    <span class="text-xs text-surface-500">{{ data.notes || '—' }}</span>
+                                </template>
+                            </Column>
+                            <Column field="createdBy" header="بواسطة" style="min-width: 110px">
+                                <template #body="{ data }">
+                                    <span class="text-xs font-semibold text-surface-600 dark:text-surface-400">{{ data.createdBy || '—' }}</span>
+                                </template>
+                            </Column>
                         </DataTable>
                     </div>
                 </TabPanel>
@@ -397,48 +427,64 @@ const getReasonLabel = (val) => {
                                 removableSort
                                 responsiveLayout="scroll"
                             >
-                                <Column field="productName" header="المنتج" sortable style="min-width: 200px">
+                                <Column field="damageDate" header="التاريخ" sortable style="min-width: 130px">
+                                    <template #body="{ data }">
+                                        <span class="text-xs font-semibold text-surface-600 dark:text-surface-400">{{ formatDate(data.damageDate) }}</span>
+                                    </template>
+                                </Column>
+
+                                <Column field="productSku" header="كود المنتج (SKU)" sortable style="min-width: 130px">
+                                    <template #body="{ data }">
+                                        <span class="font-mono text-xs font-bold text-surface-600 dark:text-surface-400">{{ data.productSku || '—' }}</span>
+                                    </template>
+                                </Column>
+
+                                <Column field="productName" header="اسم المنتج" sortable style="min-width: 180px">
                                     <template #body="{ data }">
                                         <div class="flex items-center gap-2">
                                             <Package :size="16" class="text-surface-400" />
-                                            <span class="font-semibold text-surface-900 dark:text-surface-100 text-sm">{{ data.productName || 'منتج غير محدد' }}</span>
+                                            <span class="font-bold text-surface-900 dark:text-surface-100 text-sm">{{ data.productName || 'منتج غير محدد' }}</span>
                                         </div>
                                     </template>
                                 </Column>
 
-                                <Column field="batchNumber" header="التشغيلة (Batch)" sortable style="min-width: 140px">
+                                <Column field="quantity" header="الكمية الهالكة" sortable style="min-width: 100px">
                                     <template #body="{ data }">
-                                        <span class="font-mono text-xs text-surface-600 dark:text-surface-400">
-                                            {{ data.batchNumber || '—' }}
+                                        <span class="font-bold text-red-600 text-base">{{ data.quantity }}</span>
+                                    </template>
+                                </Column>
+
+                                <Column field="costPerUnit" header="تكلفة القطعة" sortable style="min-width: 110px">
+                                    <template #body="{ data }">
+                                        <span class="font-medium text-surface-700 dark:text-surface-300">{{ formatCurrency(data.costPerUnit || data.costPrice) }}</span>
+                                    </template>
+                                </Column>
+
+                                <Column field="totalLoss" header="إجمالي الخسارة" sortable style="min-width: 130px">
+                                    <template #body="{ data }">
+                                        <span class="font-extrabold text-rose-600 dark:text-rose-400 text-base">
+                                            {{ formatCurrency(data.totalLoss || data.totalCost || ((data.quantity || 0) * (data.costPerUnit || data.costPrice || 0))) }}
                                         </span>
                                     </template>
                                 </Column>
 
-                                <Column field="quantity" header="الكمية التالفة" sortable style="min-width: 120px">
-                                    <template #body="{ data }">
-                                        <span class="font-bold text-red-600">{{ data.quantity }}</span>
-                                    </template>
-                                </Column>
-
-                                <Column field="reason" header="السبب" sortable style="min-width: 140px">
+                                <Column field="reason" header="السبب" sortable style="min-width: 130px">
                                     <template #body="{ data }">
                                         <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
-                                            {{ getReasonLabel(data.reason) }}
+                                            {{ getReasonLabel(data.reason || data.damageReason) }}
                                         </span>
                                     </template>
                                 </Column>
 
-                                <Column field="totalCost" header="التكلفة الإجمالية" sortable style="min-width: 140px">
-                                    <template #body="{ data }">
-                                        <span class="font-bold text-rose-600">
-                                            {{ formatCurrency(data.totalCost || ((data.quantity || 0) * (data.costPrice || 0))) }}
-                                        </span>
-                                    </template>
-                                </Column>
-
-                                <Column field="notes" header="ملاحظات" style="min-width: 180px">
+                                <Column field="notes" header="ملاحظات" style="min-width: 160px">
                                     <template #body="{ data }">
                                         <span class="text-xs text-surface-500">{{ data.notes || '—' }}</span>
+                                    </template>
+                                </Column>
+
+                                <Column field="createdBy" header="بواسطة" style="min-width: 110px">
+                                    <template #body="{ data }">
+                                        <span class="text-xs font-semibold text-surface-600 dark:text-surface-400">{{ data.createdBy || '—' }}</span>
                                     </template>
                                 </Column>
                             </DataTable>
@@ -474,17 +520,18 @@ const getReasonLabel = (val) => {
                     />
                 </div>
                 <div class="flex flex-col gap-2" v-if="damageForm.productId">
-                    <label class="font-bold required">التشغيلة (المخزون)</label>
+                    <label class="font-bold">التشغيلة (اختياري - تلقائي حسب الأقدم صلاحية)</label>
                     <Select
                         v-model="damageForm.inventoryId"
                         :options="availableBatches"
                         optionLabel="label"
                         optionValue="id"
-                        placeholder="اختر التشغيلة"
+                        placeholder="جميع التشغيلات (تلقائي)"
+                        showClear
                         fluid
                     />
                 </div>
-                <div class="flex flex-col gap-2" v-if="damageForm.inventoryId">
+                <div class="flex flex-col gap-2" v-if="damageForm.productId">
                     <label class="font-bold required">الكمية التالفة</label>
                     <InputNumber
                         v-model="damageForm.quantity"
@@ -493,7 +540,7 @@ const getReasonLabel = (val) => {
                         showButtons
                         fluid
                     />
-                    <small class="text-surface-500">أقصى كمية متاحة: {{ maxQuantity }}</small>
+                    <small class="text-surface-500 font-semibold">إجمالي الكمية المتاحة: {{ maxQuantity }} قطعة</small>
                 </div>
                 <div class="flex flex-col gap-2">
                     <label class="font-bold required">السبب</label>
@@ -513,7 +560,7 @@ const getReasonLabel = (val) => {
             <template #footer>
                 <div class="flex justify-end gap-2">
                     <Button label="إلغاء" outlined severity="secondary" @click="showDamageDialog = false" />
-                    <Button label="تسجيل وخصم" severity="danger" @click="submitDamage" :loading="damageStore.loading" :disabled="!damageForm.inventoryId || !damageForm.quantity" />
+                    <Button label="تسجيل وخصم" severity="danger" @click="submitDamage" :loading="damageStore.isLoading" :disabled="!damageForm.productId || !damageForm.quantity || damageForm.quantity <= 0" />
                 </div>
             </template>
         </Dialog>
@@ -596,4 +643,48 @@ const getReasonLabel = (val) => {
 }
 .status-danger { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
 .dark .status-danger { color: #f87171; }
+
+/* Print Styles */
+.print-official-header {
+    display: none;
+}
+
+@media print {
+    .no-print {
+        display: none !important;
+    }
+    .damages-page {
+        padding: 0 !important;
+    }
+    .content-card {
+        border: none !important;
+        box-shadow: none !important;
+        background: transparent !important;
+    }
+    .print-official-header {
+        display: block !important;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px dashed #000;
+    }
+    .print-header-content {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .print-header-brand h2 {
+        font-size: 1.25rem;
+        font-weight: 900;
+        margin: 0;
+    }
+    .print-header-brand p {
+        font-size: 0.75rem;
+        color: #555;
+        margin: 0;
+    }
+    .print-header-meta p {
+        font-size: 0.75rem;
+        margin: 0;
+    }
+}
 </style>

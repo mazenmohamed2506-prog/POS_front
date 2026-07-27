@@ -750,21 +750,21 @@ const formatDate = (dateStr) => {
                 </Transition>
 
                 <div class="grid grid-cols-2 gap-4">
-                    <!-- <div class="form-field">
-                        <label class="required">رقم الدفعة (Batch)</label>
+                    <div class="form-field">
+                        <label>رقم الدفعة (Batch)</label>
                         <InputText v-model="addStockForm.batchNumber" fluid placeholder="مثال: LOT-001" />
-                    </div> -->
-                    <!-- <div class="form-field">
+                    </div>
+                    <div class="form-field">
                         <label>تاريخ الصلاحية (إن وجد)</label>
                         <DatePicker v-model="addStockForm.expirationDate" dateFormat="yy-mm-dd" fluid placeholder="اختر التاريخ" />
-                    </div> -->
+                    </div>
                 </div>
                 
-                <div class="grid grid-cols-1 gap-4">
-                    <!-- <div class="form-field">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="form-field">
                         <label>التكلفة للوحدة المستلمة</label>
                         <InputNumber v-model="addStockForm.costPrice" :minFractionDigits="2" fluid placeholder="0.00" />
-                    </div> -->
+                    </div>
                     <div class="form-field">
                         <label class="required">موقع التخزين المبدئي</label>
                         <Select

@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { apiGet, apiPost, apiPut } from "@/utilities/fetchApi";
+import { apiGet, apiPost, apiPut, apiDelete } from "@/utilities/fetchApi";
 import { useToastStore } from "@/stores/base/toastStore";
 
 export const useStockCountStore = defineStore("stockCount", () => {
@@ -98,6 +98,23 @@ export const useStockCountStore = defineStore("stockCount", () => {
         }
     }
 
+    async function deleteSession(id) {
+        isLoading.value = true;
+        error.value = null;
+        try {
+            await apiDelete(`/StockCounts/session/${id}`, {}, false);
+            toastStore.addSuccessToast("تم حذف جلسة الجرد بنجاح");
+            await fetchSessions();
+        } catch (err) {
+            console.error("Failed to delete session:", err);
+            const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء حذف الجلسة";
+            toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء حذف الجلسة");
+            throw err;
+        } finally {
+            isLoading.value = false;
+        }
+    }
+
     return {
         sessions,
         currentSession,
@@ -108,5 +125,6 @@ export const useStockCountStore = defineStore("stockCount", () => {
         createSession,
         updateSessionItems,
         completeSession,
+        deleteSession,
     };
 });

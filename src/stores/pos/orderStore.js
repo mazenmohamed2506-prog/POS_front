@@ -27,14 +27,23 @@ export const useOrderStore = defineStore("order", () => {
             paymentMethod: apiOrder.paymentMethod || "cash",
             cashier: apiOrder.userId || "—",
             type: "sale",
-            items: (apiOrder.items || []).map(item => ({
-                id: item.productUnitId || item.id,
-                name: item.productName || `منتج #${item.productUnitId}`,
-                price: item.unitPrice ?? item.price ?? 0,
-                qty: item.quantity ?? 0,
-                discount: item.itemDiscount ?? 0,
-                total: item.totalPrice ?? 0,
-            })),
+            items: (apiOrder.items || []).map(item => {
+                const qty = item.quantity ?? item.qty ?? 0;
+                const retQty = item.returnedQuantity ?? 0;
+                const remQty = item.remainingReturnableQuantity ?? Math.max(0, qty - retQty);
+                return {
+                    id: item.id,
+                    productUnitId: item.productUnitId || item.id,
+                    name: item.productName || `منتج #${item.productUnitId}`,
+                    price: item.unitPrice ?? item.price ?? 0,
+                    qty,
+                    quantity: qty,
+                    returnedQuantity: retQty,
+                    remainingReturnableQuantity: remQty,
+                    discount: item.itemDiscount ?? 0,
+                    total: item.total ?? item.totalPrice ?? 0,
+                };
+            }),
         };
     }
 
@@ -102,10 +111,12 @@ export const useOrderStore = defineStore("order", () => {
     }
 
     // Alias wrapper for posStore.js which expects a specific signature
-    async function checkout(cartItems, paymentMethod = "cash", invoiceDiscount = 0) {
+    async function checkout(cartItems, paymentMethod = "cash", invoiceDiscount = 0, customerId = null, paidAmount = null) {
         const payload = {
             invoiceDiscount,
             paymentMethod,
+            customerId: customerId || undefined,
+            paidAmount: paidAmount !== null && paidAmount !== undefined ? paidAmount : undefined,
             items: cartItems.map(item => ({
                 productUnitId: item.productUnitId || item.unitId || item.id,
                 quantity: item.qty,

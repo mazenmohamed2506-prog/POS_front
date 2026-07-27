@@ -474,6 +474,14 @@ onMounted(() => {
                             <span class="item-label">مبيعات النقد:</span>
                             <span class="item-value font-bold text-green-600 dark:text-green-400">+{{ formatCurrency(selectedShift.totalSales) }}</span>
                         </div>
+                        <div class="detail-item" v-if="selectedShift.totalCollections > 0">
+                            <span class="item-label">مقبوضات ديون العملاء (كاش):</span>
+                            <span class="item-value font-bold text-emerald-600 dark:text-emerald-400">+{{ formatCurrency(selectedShift.totalCollections) }}</span>
+                        </div>
+                        <div class="detail-item" v-if="selectedShift.totalExpenses > 0">
+                            <span class="item-label">مصروفات نقدية:</span>
+                            <span class="item-value font-bold text-rose-600 dark:text-rose-400">-{{ formatCurrency(selectedShift.totalExpenses) }}</span>
+                        </div>
                         <div class="detail-item border-t border-dashed border-surface-200 dark:border-surface-700 pt-2 mt-2">
                             <span class="item-label font-bold text-surface-700 dark:text-surface-300">المبلغ المتوقع في الدرج:</span>
                             <span class="item-value font-bold text-surface-900 dark:text-surface-100">{{ formatCurrency(selectedShift.expectedCash) }}</span>
