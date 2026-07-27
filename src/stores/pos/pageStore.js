@@ -14,7 +14,7 @@ export const usePageStore = defineStore("page", () => {
             id: apiPage.id,
             name: apiPage.name || apiPage.pageName || "",
             nameAr: apiPage.nameAr || apiPage.arabicName || apiPage.name || "",
-            route: apiPage.route || apiPage.url || "",
+            route: apiPage.route || apiPage.url || apiPage.path || apiPage.Path || "",
             icon: apiPage.icon || "",
             isActive: apiPage.isActive ?? true,
         };

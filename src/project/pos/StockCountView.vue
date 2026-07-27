@@ -16,6 +16,18 @@ const posStore = usePosStore();
 const toastStore = useToastStore();
 const reportStore = useReportStore();
 
+const canManageStock = computed(() => {
+    const r = (
+        posStore.role || 
+        posStore.user?.role || 
+        localStorage.getItem("posRole") || 
+        localStorage.getItem("role") || 
+        ""
+    ).toString().toLowerCase();
+
+    return ["manager", "superadmin", "admin", "المدير", "مدير النظام"].includes(r);
+});
+
 const reportForm = ref({
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0]
@@ -359,10 +371,15 @@ const getStatusConfig = (status) => {
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
+                    <Tag
+                        :value="canManageStock ? 'صلاحية كاملة (إدارة الجرد)' : 'عرض فقط (بدون تعديل)'"
+                        :severity="canManageStock ? 'success' : 'info'"
+                        class="me-1 font-semibold"
+                    />
                     <button class="help-icon-btn" @click="showHelp = true" title="دليل الاستخدام">
                         <HelpCircle :size="18" />
                     </button>
-                    <Button label="بدء جرد جديد" @click="openNewSession" v-if="posStore.role === 'Manager' || posStore.role === 'SuperAdmin'">
+                    <Button label="بدء جرد جديد" @click="openNewSession" v-if="canManageStock">
                         <template #icon>
                             <Plus :size="18" />
                         </template>
@@ -430,11 +447,19 @@ const getStatusConfig = (status) => {
                                     </template>
                                 </Column>
                                 <Column field="notes" header="ملاحظات"></Column>
-                                <Column header="إجراءات" style="width: 140px; text-align: center">
+                                <Column header="إجراءات" style="width: 170px; text-align: center">
                                     <template #body="{ data }">
-                                        <div class="flex items-center justify-center gap-1">
-                                            <Button icon="pi pi-eye" outlined rounded severity="secondary" size="small" @click="openSessionDetails(data.id)" title="عرض التفاصيل" />
-                                            <Button v-if="data.status !== 'COMPLETED' && (posStore.role === 'Manager' || posStore.role === 'SuperAdmin')" icon="pi pi-trash" outlined rounded severity="danger" size="small" @click="deleteSession(data.id)" title="حذف الجلسة" />
+                                        <div class="flex items-center justify-center gap-1.5">
+                                            <Button label="عرض" outlined severity="info" size="small" @click="openSessionDetails(data.id)" title="عرض التفاصيل">
+                                                <template #icon>
+                                                    <Eye :size="14" class="me-1" />
+                                                </template>
+                                            </Button>
+                                            <Button v-if="data.status !== 'COMPLETED' && canManageStock" label="حذف" outlined severity="danger" size="small" @click="deleteSession(data.id)" title="حذف الجلسة">
+                                                <template #icon>
+                                                    <Trash2 :size="14" class="me-1" />
+                                                </template>
+                                            </Button>
                                         </div>
                                     </template>
                                 </Column>
@@ -591,7 +616,9 @@ const getStatusConfig = (status) => {
             <!-- Header -->
             <div class="page-header no-print">
                 <div class="flex items-center gap-3">
-                    <Button icon="pi pi-arrow-right" rounded text severity="secondary" @click="backToList" title="العودة للقائمة" />
+                    <Button label="عودة" outlined severity="secondary" size="small" @click="backToList" title="العودة للقائمة">
+                        <template #icon><ArrowRight :size="16" class="me-1" /></template>
+                    </Button>
                     <div>
                         <div class="flex items-center gap-2">
                             <h1 class="page-title">{{ stockCountStore.currentSession.title }}</h1>
@@ -618,12 +645,16 @@ const getStatusConfig = (status) => {
                         <template #icon><Download :size="16" class="me-1" /></template>
                     </Button>
 
-                    <template v-if="stockCountStore.currentSession.status === 'ONGOING'">
+                    <template v-if="stockCountStore.currentSession.status === 'ONGOING' && canManageStock">
                         <Button label="نسخ الدفتري للفعلي" outlined severity="info" size="small" @click="copyExpectedToCounted" title="ملء الكميات الفعالية بالدفتري لتسريع الإدخال">
                             <template #icon><Copy :size="16" class="me-1" /></template>
                         </Button>
-                        <Button label="حفظ التقدم" outlined icon="pi pi-save" severity="secondary" size="small" @click="saveProgress" />
-                        <Button label="إنهاء الجرد وتطبيق" icon="pi pi-check" severity="success" size="small" @click="completeSession" />
+                        <Button label="حفظ التقدم" outlined severity="secondary" size="small" @click="saveProgress">
+                            <template #icon><Save :size="16" class="me-1" /></template>
+                        </Button>
+                        <Button label="إنهاء الجرد وتطبيق" severity="success" size="small" @click="completeSession">
+                            <template #icon><CheckCircle :size="16" class="me-1" /></template>
+                        </Button>
                     </template>
                 </div>
             </div>
@@ -764,6 +795,7 @@ const getStatusConfig = (status) => {
                             <InputNumber 
                                 v-else-if="stockCountStore.currentSession.status === 'ONGOING'"
                                 v-model="countedItemsMap[data.productId]"
+                                :disabled="!canManageStock"
                                 showButtons
                                 :min="0"
                                 class="w-full"
