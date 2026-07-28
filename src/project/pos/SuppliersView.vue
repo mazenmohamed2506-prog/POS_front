@@ -7,7 +7,8 @@ import { useToastStore } from "@/stores/base/toastStore";
 import { isValidEmail, isValidEgyptianPhone } from "@/utilities/validations";
 import {
     Truck, Plus, Pencil, Trash2, Search, HelpCircle, Eye, DollarSign,
-    Wallet, CreditCard, Receipt, FileText, List, Printer, Download, RefreshCw, Phone, Users
+    Wallet, CreditCard, Receipt, FileText, List, Printer, Download, RefreshCw, Phone, Users,
+    Mail, MapPin, Hash, Building2, StickyNote
 } from "lucide-vue-next";
 import HelpDrawer from "@/components/HelpDrawer.vue";
 
@@ -133,7 +134,7 @@ const supplierForm = ref({
     taxNumber: "",
     notes: "",
 });
-const filters = ref({ global: { value: "", matchMode: "contains" } });
+const searchQuery = ref("");
 
 // Details
 const showDetailsDialog = ref(false);
@@ -214,6 +215,18 @@ onMounted(() => {
     supplierStore.fetchSuppliers();
 });
 
+// ── Filtered Suppliers ──
+const filteredSuppliers = computed(() => {
+    const q = searchQuery.value.trim().toLowerCase();
+    if (!q) return supplierStore.suppliers;
+    return supplierStore.suppliers.filter(s =>
+        (s.name && s.name.toLowerCase().includes(q)) ||
+        (s.phone && s.phone.toLowerCase().includes(q)) ||
+        (s.email && s.email.toLowerCase().includes(q)) ||
+        (s.taxNumber && s.taxNumber.toLowerCase().includes(q))
+    );
+});
+
 const openNewSupplier = () => {
     editingSupplier.value = null;
     supplierForm.value = {
@@ -269,13 +282,13 @@ const confirmDelete = async (supplier) => {
     <div class="suppliers-page">
         <!-- Header -->
         <div class="suppliers-header">
-            <div class="flex items-center gap-3">
+            <div class="header-start">
                 <div class="header-icon-wrap">
-                    <Truck :size="28" class="text-primary-500" />
+                    <Truck :size="26" />
                 </div>
-                <div>
+                <div class="header-text">
                     <h1 class="suppliers-title">إدارة الموردين</h1>
-                    <p class="suppliers-subtitle">إضافة وتعديل بيانات الموردين</p>
+                    <p class="suppliers-subtitle">إضافة وتعديل بيانات الموردين ومتابعة حساباتهم</p>
                 </div>
             </div>
             <div class="flex items-center gap-2">
@@ -283,9 +296,7 @@ const confirmDelete = async (supplier) => {
                     <HelpCircle :size="18" />
                 </button>
                 <Button label="إضافة مورد" @click="openNewSupplier">
-                    <template #icon>
-                        <Plus :size="18" />
-                    </template>
+                    <template #icon><Plus :size="18" /></template>
                 </Button>
             </div>
         </div>
@@ -301,6 +312,40 @@ const confirmDelete = async (supplier) => {
             :tips="suppliersHelpTips"
         />
 
+        <!-- Stats Cards -->
+        <div class="suppliers-stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon-circle blue">
+                    <Users :size="20" />
+                </div>
+                <div class="stat-body">
+                    <span class="stat-value">{{ supplierStore.suppliers.length }}</span>
+                    <span class="stat-label">إجمالي الموردين</span>
+                </div>
+                <div class="stat-accent blue"></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon-circle green">
+                    <Phone :size="20" />
+                </div>
+                <div class="stat-body">
+                    <span class="stat-value">{{ supplierStore.suppliers.filter(s => s.phone).length }}</span>
+                    <span class="stat-label">موردين بهاتف</span>
+                </div>
+                <div class="stat-accent green"></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon-circle purple">
+                    <Hash :size="20" />
+                </div>
+                <div class="stat-body">
+                    <span class="stat-value">{{ supplierStore.suppliers.filter(s => s.taxNumber).length }}</span>
+                    <span class="stat-label">موردين برقم ضريبي</span>
+                </div>
+                <div class="stat-accent purple"></div>
+            </div>
+        </div>
+
         <Tabs value="data">
             <TabList>
                 <Tab value="data"><List class="inline-block me-2" :size="16" />سجل الموردين</Tab>
@@ -313,74 +358,75 @@ const confirmDelete = async (supplier) => {
         <div class="suppliers-card">
             <!-- Filter Bar -->
             <div class="suppliers-filter-bar">
-                <div class="relative w-full max-w-xs">
-                    <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400 dark:text-surface-500" />
+                <div class="search-input-wrap">
+                    <Search :size="16" class="search-icon" />
                     <InputText
-                        v-model="filters.global.value"
-                        placeholder="بحث عن مورد..."
-                        class="ps-9 w-full"
+                        v-model="searchQuery"
+                        placeholder="بحث عن مورد بالاسم، الهاتف، أو الرقم الضريبي..."
+                        class="pr-10 pl-4 w-full search-input"
                         autocomplete="off"
                         size="small"
                     />
                 </div>
             </div>
 
-            <!-- Suppliers Table -->
+            <!-- Suppliers Table (compact: name, phone, tax, actions) -->
             <DataTable
-                :value="supplierStore.suppliers"
+                :value="filteredSuppliers"
                 :loading="supplierStore.loading"
                 paginator
                 :rows="10"
                 :rowsPerPageOptions="[10, 15, 25, 50]"
-                v-model:filters="filters"
-                filterDisplay="row"
-                :globalFilterFields="['name', 'phone', 'email', 'taxNumber']"
                 emptyMessage="لا يوجد موردين مطابِقين"
                 stripedRows
                 removableSort
                 scrollable
                 class="suppliers-table"
             >
-                <Column field="id" header="#" sortable style="min-width: 90px">
+                <Column field="name" header="المورد" sortable style="min-width: 220px">
                     <template #body="{ data }">
-                        <span class="font-mono text-surface-400">{{ data.id }}</span>
+                        <div class="supplier-name-cell">
+                            <div class="supplier-avatar">
+                                <Truck :size="14" />
+                            </div>
+                            <div class="supplier-name-info">
+                                <span class="supplier-name-text">{{ data.name }}</span>
+                                <span class="supplier-address-text" v-if="data.address">
+                                    <MapPin :size="10" />
+                                    {{ data.address }}
+                                </span>
+                            </div>
+                        </div>
                     </template>
                 </Column>
-                <Column field="name" header="الاسم" sortable style="min-width: 200px">
+                <Column field="phone" header="الهاتف" sortable style="min-width: 150px">
                     <template #body="{ data }">
-                        <span class="font-bold text-surface-800 dark:text-surface-100">{{ data.name }}</span>
+                        <div class="phone-cell" v-if="data.phone">
+                            <Phone :size="13" class="phone-icon" />
+                            <span class="phone-text">{{ data.phone }}</span>
+                        </div>
+                        <span v-else class="empty-cell">—</span>
                     </template>
                 </Column>
-                <Column field="phone" header="الهاتف" style="min-width: 140px">
+                <Column field="taxNumber" header="الرقم الضريبي" sortable style="min-width: 150px">
                     <template #body="{ data }">
-                        <span class="text-surface-600 dark:text-surface-400">{{ data.phone || '—' }}</span>
+                        <span class="tax-chip" v-if="data.taxNumber">
+                            <Hash :size="11" />
+                            {{ data.taxNumber }}
+                        </span>
+                        <span v-else class="empty-cell">—</span>
                     </template>
                 </Column>
-                <Column field="email" header="البريد الإلكتروني" style="min-width: 180px">
+                <Column header="إجراءات" style="min-width: 130px; text-align: center">
                     <template #body="{ data }">
-                        <span class="text-surface-600 dark:text-surface-400">{{ data.email || '—' }}</span>
-                    </template>
-                </Column>
-                <Column field="taxNumber" header="الرقم الضريبي" style="min-width: 140px">
-                    <template #body="{ data }">
-                        <span class="text-surface-600 dark:text-surface-400">{{ data.taxNumber || '—' }}</span>
-                    </template>
-                </Column>
-                <Column field="address" header="العنوان" style="min-width: 180px">
-                    <template #body="{ data }">
-                        <span class="text-sm text-surface-600 dark:text-surface-400 truncate max-w-[150px] inline-block" :title="data.address">{{ data.address || '—' }}</span>
-                    </template>
-                </Column>
-                <Column header="إجراءات" style="min-width: 150px; text-align: center">
-                    <template #body="{ data }">
-                        <div class="flex gap-1 justify-center">
+                        <div class="actions-cell">
                             <button class="act-btn act-view" @click="openDetails(data.id)" title="عرض التفاصيل">
                                 <Eye :size="15" />
                             </button>
-                            <button class="action-edit-btn" @click="openEditSupplier(data)" title="تعديل">
+                            <button class="act-btn act-edit" @click="openEditSupplier(data)" title="تعديل">
                                 <Pencil :size="15" />
                             </button>
-                            <button v-if="posStore.role === 'Manager' || posStore.role === 'SuperAdmin'" class="action-delete-btn" @click="confirmDelete(data)" title="حذف">
+                            <button v-if="posStore.role === 'Manager' || posStore.role === 'SuperAdmin'" class="act-btn act-delete" @click="confirmDelete(data)" title="حذف">
                                 <Trash2 :size="15" />
                             </button>
                         </div>
@@ -552,50 +598,81 @@ const confirmDelete = async (supplier) => {
                 </div>
             </div>
             <template #footer>
-                <div class="flex gap-2 justify-end w-full">
+                <div class="dialog-footer">
                     <Button label="إلغاء" outlined severity="secondary" @click="showSupplierDialog = false" />
                     <Button label="حفظ المورد" @click="saveSupplier" :loading="supplierStore.loading" :disabled="!supplierForm.name" />
                 </div>
             </template>
         </Dialog>
+
         <!-- Supplier Details Dialog -->
         <Dialog
             v-model:visible="showDetailsDialog"
-            header="تفاصيل الحساب المالي للمورد"
-            :style="{ width: '800px' }"
+            header="تفاصيل المورد"
+            :style="{ width: '750px' }"
             modal
             dismissableMask
         >
             <div class="dialog-body" v-if="selectedSupplierDetails">
-                <!-- Financial Summary Cards -->
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div class="stat-card">
-                        <div class="stat-icon-circle Blue"><DollarSign :size="20"/></div>
-                        <div class="stat-info">
-                            <span class="stat-label">إجمالي المشتريات</span>
-                            <span class="stat-value text-blue-600">{{ formatCurrency(selectedSupplierDetails.financialSummary?.totalPurchases || 0) }}</span>
+                <!-- Supplier Info Header Card -->
+                <div class="detail-header-card">
+                    <div class="detail-header-top">
+                        <div class="detail-supplier-icon">
+                            <Truck :size="22" />
+                        </div>
+                        <div class="detail-supplier-info">
+                            <span class="detail-supplier-name">{{ selectedSupplierDetails.supplier?.name || '—' }}</span>
+                            <div class="detail-supplier-contacts">
+                                <span class="detail-contact-item" v-if="selectedSupplierDetails.supplier?.phone">
+                                    <Phone :size="12" /> {{ selectedSupplierDetails.supplier.phone }}
+                                </span>
+                                <span class="detail-contact-item" v-if="selectedSupplierDetails.supplier?.email">
+                                    <Mail :size="12" /> {{ selectedSupplierDetails.supplier.email }}
+                                </span>
+                            </div>
                         </div>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-icon-circle Green"><Wallet :size="20"/></div>
-                        <div class="stat-info">
-                            <span class="stat-label">إجمالي المدفوعات</span>
-                            <span class="stat-value text-green-600">{{ formatCurrency(selectedSupplierDetails.financialSummary?.totalPaid || 0) }}</span>
+                    <div class="detail-meta-strip" v-if="selectedSupplierDetails.supplier?.address || selectedSupplierDetails.supplier?.taxNumber">
+                        <div class="detail-meta-item" v-if="selectedSupplierDetails.supplier?.address">
+                            <MapPin :size="13" />
+                            <span>{{ selectedSupplierDetails.supplier.address }}</span>
                         </div>
-                    </div>
-                    <div class="stat-card" :class="{'bg-red-50 dark:bg-red-900/20': selectedSupplierDetails.outstandingBalance > 0}">
-                        <div class="stat-icon-circle" :class="selectedSupplierDetails.outstandingBalance > 0 ? 'text-red-500' : 'text-surface-500'"><CreditCard :size="20"/></div>
-                        <div class="stat-info">
-                            <span class="stat-label">الرصيد المستحق (لنا)</span>
-                            <span class="stat-value font-bold" :class="selectedSupplierDetails.outstandingBalance > 0 ? 'text-red-600 dark:text-red-400' : ''">
-                                {{ formatCurrency(selectedSupplierDetails.outstandingBalance || 0) }}
-                            </span>
+                        <div class="detail-meta-item" v-if="selectedSupplierDetails.supplier?.taxNumber">
+                            <Hash :size="13" />
+                            <span>ضريبي: {{ selectedSupplierDetails.supplier.taxNumber }}</span>
                         </div>
                     </div>
                 </div>
 
-                <div class="flex justify-end mb-4">
-                    <Button label="تسجيل دفعة للمورد" icon="pi pi-money-bill" severity="success" @click="openPaymentDialog(selectedSupplierDetails.supplier.id)" />
+                <!-- Financial Summary Cards -->
+                <div class="financial-cards-grid">
+                    <div class="financial-card financial-card-blue">
+                        <DollarSign :size="18" />
+                        <div class="financial-card-body">
+                            <span class="financial-card-label">إجمالي المشتريات</span>
+                            <span class="financial-card-value">{{ formatCurrency(selectedSupplierDetails.financialSummary?.totalPurchases || 0) }}</span>
+                        </div>
+                    </div>
+                    <div class="financial-card financial-card-green">
+                        <Wallet :size="18" />
+                        <div class="financial-card-body">
+                            <span class="financial-card-label">إجمالي المدفوعات</span>
+                            <span class="financial-card-value">{{ formatCurrency(selectedSupplierDetails.financialSummary?.totalPaid || 0) }}</span>
+                        </div>
+                    </div>
+                    <div class="financial-card" :class="selectedSupplierDetails.outstandingBalance > 0 ? 'financial-card-red' : 'financial-card-neutral'">
+                        <CreditCard :size="18" />
+                        <div class="financial-card-body">
+                            <span class="financial-card-label">الرصيد المستحق</span>
+                            <span class="financial-card-value">{{ formatCurrency(selectedSupplierDetails.outstandingBalance || 0) }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end">
+                    <Button label="تسجيل دفعة للمورد" severity="success" size="small" @click="openPaymentDialog(selectedSupplierDetails.supplier.id)">
+                        <template #icon><Wallet :size="16" /></template>
+                    </Button>
                 </div>
 
                 <Tabs value="purchases">
@@ -606,18 +683,28 @@ const confirmDelete = async (supplier) => {
                     <TabPanels>
                         <TabPanel value="purchases">
                             <DataTable :value="selectedSupplierDetails.purchases" paginator :rows="5" responsiveLayout="scroll">
-                                <Column field="purchaseNo" header="رقم الفاتورة"></Column>
+                                <Column field="purchaseNo" header="رقم الفاتورة">
+                                    <template #body="{data}">
+                                        <span class="inv-number-text">{{ data.purchaseNo }}</span>
+                                    </template>
+                                </Column>
                                 <Column field="invoiceDate" header="التاريخ">
                                     <template #body="{data}">{{ formatDate(data.invoiceDate) }}</template>
                                 </Column>
                                 <Column field="totalAmount" header="الإجمالي">
-                                    <template #body="{data}">{{ formatCurrency(data.totalAmount) }}</template>
+                                    <template #body="{data}">
+                                        <span class="total-cell">{{ formatCurrency(data.totalAmount) }}</span>
+                                    </template>
                                 </Column>
                                 <Column field="paidAmount" header="المدفوع">
-                                    <template #body="{data}">{{ formatCurrency(data.paidAmount) }}</template>
+                                    <template #body="{data}">
+                                        <span class="paid-cell">{{ formatCurrency(data.paidAmount) }}</span>
+                                    </template>
                                 </Column>
                                 <Column field="remainingAmount" header="المتبقي">
-                                    <template #body="{data}">{{ formatCurrency(data.remainingAmount) }}</template>
+                                    <template #body="{data}">
+                                        <span class="remaining-cell">{{ formatCurrency(data.remainingAmount) }}</span>
+                                    </template>
                                 </Column>
                                 <Column field="paymentStatus" header="الحالة">
                                     <template #body="{data}">
@@ -634,7 +721,9 @@ const confirmDelete = async (supplier) => {
                                     <template #body="{data}">{{ formatDate(data.paymentDate) }}</template>
                                 </Column>
                                 <Column field="amount" header="المبلغ">
-                                    <template #body="{data}">{{ formatCurrency(data.amount) }}</template>
+                                    <template #body="{data}">
+                                        <span class="total-cell">{{ formatCurrency(data.amount) }}</span>
+                                    </template>
                                 </Column>
                                 <Column field="paymentMethod" header="طريقة الدفع"></Column>
                                 <Column field="notes" header="ملاحظات"></Column>
@@ -649,7 +738,9 @@ const confirmDelete = async (supplier) => {
                 <p>جاري تحميل التفاصيل...</p>
             </div>
             <template #footer>
-                <Button label="إغلاق" outlined severity="secondary" @click="showDetailsDialog = false" />
+                <div class="dialog-footer">
+                    <Button label="إغلاق" outlined severity="secondary" @click="showDetailsDialog = false" />
+                </div>
             </template>
         </Dialog>
 
@@ -704,7 +795,7 @@ const confirmDelete = async (supplier) => {
                 </div>
             </div>
             <template #footer>
-                <div class="flex justify-end gap-2">
+                <div class="dialog-footer">
                     <Button label="إلغاء" outlined severity="secondary" @click="showPaymentDialog = false" />
                     <Button label="تأكيد الدفع" @click="savePayment" :loading="supplierStore.loading" severity="success" />
                 </div>
@@ -714,6 +805,7 @@ const confirmDelete = async (supplier) => {
 </template>
 
 <style scoped>
+/* ─── Page Layout ───────────────────────────────────────── */
 .suppliers-page {
     padding: 1.5rem;
     display: flex;
@@ -731,7 +823,7 @@ const confirmDelete = async (supplier) => {
     }
 }
 
-/* Header */
+/* ─── Header ────────────────────────────────────────────── */
 .suppliers-header {
     display: flex;
     align-items: center;
@@ -741,6 +833,12 @@ const confirmDelete = async (supplier) => {
     gap: 1rem;
 }
 
+.header-start {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+}
+
 .header-icon-wrap {
     display: flex;
     align-items: center;
@@ -748,14 +846,9 @@ const confirmDelete = async (supplier) => {
     width: 3.25rem;
     height: 3.25rem;
     border-radius: 1rem;
-    background: var(--p-surface-0);
-    border: 1px solid var(--p-surface-200);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.dark .header-icon-wrap {
-    background: var(--p-surface-900);
-    border-color: var(--p-surface-800);
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: white;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
 
 .suppliers-title {
@@ -764,10 +857,7 @@ const confirmDelete = async (supplier) => {
     color: var(--p-surface-900);
     margin: 0;
 }
-
-.dark .suppliers-title {
-    color: var(--p-surface-0);
-}
+.dark .suppliers-title { color: var(--p-surface-0); }
 
 .suppliers-subtitle {
     font-size: 0.875rem;
@@ -775,7 +865,94 @@ const confirmDelete = async (supplier) => {
     margin: 0.125rem 0 0;
 }
 
-/* Card Wrapper */
+/* ─── Stats Cards Grid ──────────────────────────────────── */
+.suppliers-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+}
+
+@media (max-width: 768px) {
+    .suppliers-stats-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.stat-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem;
+    border-radius: 1rem;
+    background: var(--p-surface-0);
+    border: 1px solid var(--p-surface-200);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    overflow: hidden;
+    transition: all 0.2s ease;
+}
+.stat-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    transform: translateY(-1px);
+}
+.dark .stat-card {
+    background: var(--p-surface-900);
+    border-color: var(--p-surface-800);
+    box-shadow: none;
+}
+
+.stat-icon-circle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 0.75rem;
+    flex-shrink: 0;
+}
+
+.stat-icon-circle.blue { background: #dbeafe; color: #2563eb; }
+.dark .stat-icon-circle.blue { background: rgba(37, 99, 235, 0.15); color: #60a5fa; }
+.stat-icon-circle.green { background: #d1fae5; color: #059669; }
+.dark .stat-icon-circle.green { background: rgba(5, 150, 105, 0.15); color: #34d399; }
+.stat-icon-circle.purple { background: #f3e8ff; color: #7c3aed; }
+.dark .stat-icon-circle.purple { background: rgba(124, 58, 237, 0.15); color: #a78bfa; }
+
+.stat-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.stat-value {
+    font-size: 1.25rem;
+    font-weight: 850;
+    color: var(--p-surface-900);
+    line-height: 1.2;
+}
+.dark .stat-value { color: var(--p-surface-50); }
+
+.stat-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--p-surface-500);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.stat-accent {
+    position: absolute;
+    top: 0;
+    inset-inline-start: 0;
+    width: 4px;
+    height: 100%;
+    border-radius: 0 4px 4px 0;
+}
+.stat-accent.blue { background: linear-gradient(to bottom, #3b82f6, #2563eb); }
+.stat-accent.green { background: linear-gradient(to bottom, #10b981, #059669); }
+.stat-accent.purple { background: linear-gradient(to bottom, #8b5cf6, #7c3aed); }
+
+/* ─── Table Card ────────────────────────────────────────── */
 .suppliers-card {
     border-radius: 1rem;
     border: 1px solid var(--p-surface-200);
@@ -783,7 +960,6 @@ const confirmDelete = async (supplier) => {
     overflow: hidden;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
 }
-
 .dark .suppliers-card {
     background: var(--p-surface-900);
     border-color: var(--p-surface-800);
@@ -798,72 +974,251 @@ const confirmDelete = async (supplier) => {
     border-bottom: 1px solid var(--p-surface-200);
     background: var(--p-surface-50);
 }
-
 .dark .suppliers-filter-bar {
     border-color: var(--p-surface-800);
     background: var(--p-surface-950);
 }
 
-/* Action Buttons */
-.action-edit-btn,
-.action-delete-btn {
+.search-input-wrap {
+    position: relative;
+    flex: 1;
+    max-width: 400px;
+}
+
+.search-icon {
+    position: absolute;
+    inset-inline-start: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--p-surface-400);
+    pointer-events: none;
+}
+.dark .search-icon { color: var(--p-surface-500); }
+
+.search-input {
+    padding-inline-start: 2.25rem !important;
+}
+
+/* ─── Table Cell Styles ─────────────────────────────────── */
+.supplier-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+}
+
+.supplier-avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.5rem;
+    background: #d1fae5;
+    color: #059669;
+    flex-shrink: 0;
+}
+.dark .supplier-avatar {
+    background: rgba(5, 150, 105, 0.15);
+    color: #34d399;
+}
+
+.supplier-name-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
+}
+
+.supplier-name-text {
+    font-size: 0.875rem;
+    font-weight: 750;
+    color: var(--p-surface-900);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dark .supplier-name-text { color: var(--p-surface-100); }
+
+.supplier-address-text {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--p-surface-400);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+}
+
+.phone-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+.phone-icon { color: var(--p-surface-400); flex-shrink: 0; }
+.phone-text {
+    font-size: 0.85rem;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--p-surface-700);
+}
+.dark .phone-text { color: var(--p-surface-250); }
+
+.tax-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    background: #f5f3ff;
+    color: #7c3aed;
+    border: 1px solid #ddd6fe;
+}
+.dark .tax-chip {
+    background: rgba(124, 58, 237, 0.1);
+    color: #a78bfa;
+    border-color: rgba(124, 58, 237, 0.25);
+}
+
+.empty-cell {
+    font-size: 0.85rem;
+    color: var(--p-surface-400);
+}
+
+/* ─── Action Buttons ────────────────────────────────────── */
+.actions-cell {
+    display: flex;
+    gap: 0.375rem;
+    justify-content: center;
+}
+
+.act-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 2rem;
     height: 2rem;
-    border-radius: 0.375rem;
-    border: 1px solid var(--p-surface-300);
-    background: var(--p-surface-0);
+    border-radius: 0.5rem;
+    border: 1px solid;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all 0.2s ease;
+    background: transparent;
 }
 
-.action-edit-btn {
-    color: var(--p-surface-650);
+.act-btn.act-view {
+    color: #7c3aed;
+    border-color: #ddd6fe;
+    background: #f5f3ff;
 }
+.dark .act-btn.act-view {
+    background: rgba(124, 58, 237, 0.1);
+    border-color: rgba(124, 58, 237, 0.25);
+    color: #a78bfa;
+}
+.act-btn.act-view:hover {
+    background: #ede9fe;
+    border-color: #c4b5fd;
+}
+.dark .act-btn.act-view:hover { background: rgba(124, 58, 237, 0.2); }
 
-.dark .action-edit-btn {
+.act-btn.act-edit {
+    color: var(--p-surface-600);
+    border-color: var(--p-surface-300);
+    background: var(--p-surface-0);
+}
+.dark .act-btn.act-edit {
     background: var(--p-surface-800);
     border-color: var(--p-surface-700);
     color: var(--p-surface-300);
 }
-
-.action-edit-btn:hover {
+.act-btn.act-edit:hover {
     background: var(--p-primary-50);
     border-color: var(--p-primary-300);
     color: var(--p-primary-600);
 }
-
-.dark .action-edit-btn:hover {
+.dark .act-btn.act-edit:hover {
     background: rgba(99, 102, 241, 0.15);
     border-color: rgba(99, 102, 241, 0.3);
     color: var(--p-primary-400);
 }
 
-.action-delete-btn {
+.act-btn.act-delete {
     color: #ef4444;
     border-color: #fecaca;
     background: #fef2f2;
 }
-
-.dark .action-delete-btn {
+.dark .act-btn.act-delete {
     background: rgba(239, 68, 68, 0.1);
     border-color: rgba(239, 68, 68, 0.3);
     color: #fca5a5;
 }
-
-.action-delete-btn:hover {
+.act-btn.act-delete:hover {
     background: #fee2e2;
     border-color: #fca5a5;
 }
-
-.dark .action-delete-btn:hover {
+.dark .act-btn.act-delete:hover {
     background: rgba(239, 68, 68, 0.2);
-    border-color: #f87171;
 }
 
-/* Dialog Form */
+/* ─── Status Chips ──────────────────────────────────────── */
+.status-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.3rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border: 1px solid;
+}
+
+.status-success {
+    background: #ecfdf5; color: #059669; border-color: #a7f3d0;
+}
+.dark .status-success {
+    background: rgba(16, 185, 129, 0.1); color: #34d399; border-color: rgba(16, 185, 129, 0.25);
+}
+
+.status-warning {
+    background: #fef3c7; color: #d97706; border-color: #fde68a;
+}
+.dark .status-warning {
+    background: rgba(245, 158, 11, 0.1); color: #fbbf24; border-color: rgba(245, 158, 11, 0.25);
+}
+
+.status-danger {
+    background: #fef2f2; color: #dc2626; border-color: #fecaca;
+}
+.dark .status-danger {
+    background: rgba(239, 68, 68, 0.1); color: #f87171; border-color: rgba(239, 68, 68, 0.25);
+}
+
+.status-info {
+    background: #eff6ff; color: #2563eb; border-color: #bfdbfe;
+}
+.dark .status-info {
+    background: rgba(37, 99, 235, 0.1); color: #60a5fa; border-color: rgba(37, 99, 235, 0.25);
+}
+
+/* ─── Dialog ────────────────────────────────────────────── */
+.dialog-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1.125rem;
+    padding: 0.25rem 0;
+}
+
+.dialog-footer {
+    display: flex;
+    gap: 0.625rem;
+    justify-content: flex-end;
+    width: 100%;
+}
+
 .supplier-dialog-form {
     display: flex;
     flex-direction: column;
@@ -882,8 +1237,209 @@ const confirmDelete = async (supplier) => {
     font-weight: 700;
     color: var(--p-surface-700);
 }
+.dark .form-field label { color: var(--p-surface-200); }
 
-.dark .form-field label {
-    color: var(--p-surface-200);
+/* ─── Detail Dialog ─────────────────────────────────────── */
+.detail-header-card {
+    padding: 1.125rem;
+    border-radius: 0.875rem;
+    background: var(--p-surface-50);
+    border: 1px solid var(--p-surface-150);
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+}
+.dark .detail-header-card {
+    background: var(--p-surface-850);
+    border-color: var(--p-surface-750);
+}
+
+.detail-header-top {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+}
+
+.detail-supplier-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 0.75rem;
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: white;
+    flex-shrink: 0;
+}
+
+.detail-supplier-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.detail-supplier-name {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--p-surface-900);
+}
+.dark .detail-supplier-name { color: var(--p-surface-50); }
+
+.detail-supplier-contacts {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.detail-contact-item {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.775rem;
+    font-weight: 500;
+    color: var(--p-surface-500);
+}
+
+.detail-meta-strip {
+    display: flex;
+    gap: 1.25rem;
+    padding-top: 0.625rem;
+    border-top: 1px solid var(--p-surface-150);
+    flex-wrap: wrap;
+}
+.dark .detail-meta-strip { border-color: var(--p-surface-750); }
+
+.detail-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.775rem;
+    font-weight: 500;
+    color: var(--p-surface-450);
+}
+
+/* ─── Financial Cards ───────────────────────────────────── */
+.financial-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+}
+
+@media (max-width: 600px) {
+    .financial-cards-grid { grid-template-columns: 1fr; }
+}
+
+.financial-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    border-radius: 0.75rem;
+    border: 1px solid;
+}
+
+.financial-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.financial-card-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--p-surface-500);
+    text-transform: uppercase;
+}
+
+.financial-card-value {
+    font-size: 0.95rem;
+    font-weight: 850;
+}
+
+.financial-card-blue {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+    color: #2563eb;
+}
+.financial-card-blue .financial-card-value { color: #2563eb; }
+.dark .financial-card-blue {
+    background: rgba(37, 99, 235, 0.08);
+    border-color: rgba(37, 99, 235, 0.2);
+    color: #60a5fa;
+}
+.dark .financial-card-blue .financial-card-value { color: #60a5fa; }
+
+.financial-card-green {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+    color: #059669;
+}
+.financial-card-green .financial-card-value { color: #059669; }
+.dark .financial-card-green {
+    background: rgba(5, 150, 105, 0.08);
+    border-color: rgba(5, 150, 105, 0.2);
+    color: #34d399;
+}
+.dark .financial-card-green .financial-card-value { color: #34d399; }
+
+.financial-card-red {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #dc2626;
+}
+.financial-card-red .financial-card-value { color: #dc2626; }
+.dark .financial-card-red {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+}
+.dark .financial-card-red .financial-card-value { color: #f87171; }
+
+.financial-card-neutral {
+    background: var(--p-surface-50);
+    border-color: var(--p-surface-200);
+    color: var(--p-surface-500);
+}
+.financial-card-neutral .financial-card-value { color: var(--p-surface-700); }
+.dark .financial-card-neutral {
+    background: var(--p-surface-850);
+    border-color: var(--p-surface-750);
+    color: var(--p-surface-400);
+}
+.dark .financial-card-neutral .financial-card-value { color: var(--p-surface-200); }
+
+/* ─── Detail Table Cells ────────────────────────────────── */
+.inv-number-text {
+    font-size: 0.85rem;
+    font-weight: 800;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--p-primary-600);
+}
+.dark .inv-number-text { color: var(--p-primary-400); }
+
+.total-cell {
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: var(--p-surface-900);
+}
+.dark .total-cell { color: var(--p-surface-50); }
+
+.paid-cell {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #059669;
+}
+.dark .paid-cell { color: #34d399; }
+
+.remaining-cell {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #dc2626;
+}
+.dark .remaining-cell { color: #f87171; }
+
+/* ─── Deep Overrides ────────────────────────────────────── */
+:deep(.p-datatable-tbody > tr > td) {
+    border-bottom: none !important;
 }
 </style>
