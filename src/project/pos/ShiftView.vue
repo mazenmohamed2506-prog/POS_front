@@ -2,7 +2,25 @@
 import { ref, computed, onMounted } from "vue";
 import { usePosStore } from "@/stores/pos/posStore";
 import { useShiftStore } from "@/stores/pos/shiftStore";
-import { Clock, DoorOpen, Banknote, AlertTriangle, CheckCircle, History, Eye, Search, HelpCircle } from "lucide-vue-next";
+import {
+    Clock,
+    DoorOpen,
+    Banknote,
+    AlertTriangle,
+    CheckCircle,
+    History,
+    Eye,
+    Search,
+    HelpCircle,
+    User,
+    Calendar,
+    ArrowUpRight,
+    ArrowDownRight,
+    Filter,
+    FileText,
+    TrendingUp,
+    Lock
+} from "lucide-vue-next";
 import HelpDrawer from "@/components/HelpDrawer.vue";
 
 const posStore = usePosStore();
@@ -19,7 +37,7 @@ const shiftHelpSections = [
         steps: [
             { title: 'أدخل المبلغ الافتتاحي', desc: 'أدخل مبلغ النقد الموجود في الدرج عند بداية الوردية' },
             { title: 'اضغط "فتح الوردية"', desc: 'سيظهر مؤشر الوردية المفتوحة في الشريط الجانبي' },
-            { title: 'ابدأ البيع', desc: 'عد فتح الوردية يمكنك إجراء عمليات البيع من شاشة نقطة البيع' },
+            { title: 'ابدأ البيع', desc: 'بعد فتح الوردية يمكنك إجراء عمليات البيع من شاشة نقطة البيع' },
         ]
     },
     {
@@ -40,7 +58,7 @@ const shiftHelpSections = [
         iconColor: '#2563eb',
         steps: [
             { title: 'عرض سجل الورديات', desc: 'تجد جدولاً بجميع الورديات السابقة مع تفاصيلها' },
-            { title: 'تفاصيل الوردية', desc: 'اضغط أيقونة العين لرؤية تقرير وردية كامل' },
+            { title: 'تفاصيل الوردية', desc: 'اضغط أيقونة التفاصيل لرؤية تقرير وردية كامل' },
         ]
     },
 ];
@@ -53,26 +71,36 @@ const shiftHelpTips = [
 const startingCash = ref(0);
 const actualCash = ref(0);
 const lastClosedShift = ref(null);
-const showCloseConfirm = ref(false);
 const searchQuery = ref("");
+const statusFilter = ref("all"); // 'all' | 'Open' | 'Closed'
 
 const shiftDuration = computed(() => {
     if (!shiftStore.currentShift?.openedAt) return "";
     const start = new Date(shiftStore.currentShift.openedAt);
     const now = new Date();
-    const diff = Math.floor((now - start) / 1000);
+    const diff = Math.max(0, Math.floor((now - start) / 1000));
     const hours = Math.floor(diff / 3600);
     const minutes = Math.floor((diff % 3600) / 60);
-    return `${hours} ساعة ${minutes} دقيقة`;
+    return `${hours} س ${minutes} د`;
 });
 
 const filteredShifts = computed(() => {
+    let result = shiftStore.shifts || [];
+    
+    // Status Filter
+    if (statusFilter.value !== "all") {
+        result = result.filter(s => s.status === statusFilter.value);
+    }
+
+    // Search Query
     const q = searchQuery.value.trim().toLowerCase();
-    if (!q) return shiftStore.shifts;
-    return shiftStore.shifts.filter((s) =>
-        (s.cashier && s.cashier.toLowerCase().includes(q)) ||
-        (s.status && s.status.toLowerCase().includes(q))
-    );
+    if (q) {
+        result = result.filter((s) =>
+            (s.cashier && s.cashier.toLowerCase().includes(q)) ||
+            (s.status && s.status.toLowerCase().includes(q))
+        );
+    }
+    return result;
 });
 
 const selectedShift = ref(null);
@@ -87,7 +115,7 @@ const getShiftDuration = (shift) => {
     if (!shift?.openedAt) return "—";
     const start = new Date(shift.openedAt);
     const end = shift.closedAt ? new Date(shift.closedAt) : new Date();
-    const diff = Math.floor((end - start) / 1000);
+    const diff = Math.max(0, Math.floor((end - start) / 1000));
     const hours = Math.floor(diff / 3600);
     const minutes = Math.floor((diff % 3600) / 60);
     return `${hours} ساعة ${minutes} دقيقة`;
@@ -108,11 +136,18 @@ const handleCloseShift = async () => {
         const closed = await shiftStore.closeShift(actualCash.value);
         if (closed) {
             lastClosedShift.value = closed;
-            showCloseConfirm.value = false;
             actualCash.value = 0;
         }
     } catch (err) {
         console.error("Failed to close shift", err);
+    }
+};
+
+const setQuickCash = (amount, target = 'start') => {
+    if (target === 'start') {
+        startingCash.value = (startingCash.value || 0) + amount;
+    } else {
+        actualCash.value = (actualCash.value || 0) + amount;
     }
 };
 
@@ -132,23 +167,36 @@ const formatDate = (dateStr) => {
     });
 };
 
+const formatTimeOnly = (dateStr) => {
+    if (!dateStr) return "—";
+    return new Date(dateStr).toLocaleTimeString("ar-EG", {
+        hour: "2-digit", minute: "2-digit"
+    });
+};
+
 onMounted(() => {
     shiftStore.fetchAllShifts();
 });
 </script>
 
 <template>
-    <div class="shift-page">
+    <div class="shift-page-container">
         <!-- Header -->
-        <div class="shift-header">
-            <div class="shift-header-title">
-                <Clock :size="28" class="text-primary-500" />
-                <h1 class="shift-title">إدارة الورديات</h1>
+        <header class="shift-header">
+            <div class="header-main">
+                <div class="header-icon-box">
+                    <Clock :size="24" class="text-primary-600 dark:text-primary-400" />
+                </div>
+                <div>
+                    <h1 class="shift-title">إدارة الورديات</h1>
+                    <p class="shift-subtitle">متابعة فتح وإغلاق ورديات الصندوق والتقرير المالي للوردية</p>
+                </div>
             </div>
-            <button class="help-icon-btn" @click="showHelp = true" title="دليل الاستخدام">
+            <button class="help-btn" @click="showHelp = true" title="دليل الاستخدام">
                 <HelpCircle :size="18" />
+                <span>دليل الاستخدام</span>
             </button>
-        </div>
+        </header>
 
         <!-- Help Drawer -->
         <HelpDrawer
@@ -161,18 +209,21 @@ onMounted(() => {
             :tips="shiftHelpTips"
         />
 
+        <!-- Layout Wrapper -->
         <div class="shift-grid">
-            <!-- Sidebar: Active Shift & summary -->
-            <div class="shift-sidebar">
-                <!-- ═══ Shift OPEN form ═══ -->
+            <!-- Sidebar: Action Panel -->
+            <aside class="shift-sidebar">
+                <!-- ═══ OPEN SHIFT FORM ═══ -->
                 <div v-if="!shiftStore.currentShift" class="shift-card open-card">
-                    <div class="shift-card-header shift-card-open">
-                        <DoorOpen :size="20" />
-                        <span>فتح وردية جديدة</span>
+                    <div class="card-header border-emerald-100 dark:border-emerald-950 bg-emerald-50/50 dark:bg-emerald-950/20">
+                        <div class="flex items-center gap-2.5 text-emerald-700 dark:text-emerald-400">
+                            <DoorOpen :size="20" />
+                            <span class="font-bold text-base">فتح وردية جديدة</span>
+                        </div>
                     </div>
-                    <div class="shift-card-body">
+                    <div class="card-body">
                         <div class="shift-field">
-                            <label>المبلغ الافتتاحي (النقد في الدرج)</label>
+                            <label class="field-label">المبلغ الافتتاحي في الدرج (كاش)</label>
                             <InputNumber
                                 v-model="startingCash"
                                 :min="0"
@@ -183,50 +234,69 @@ onMounted(() => {
                                 class="modern-input"
                             />
                         </div>
+                        
+                        <!-- Quick Cash Pills -->
+                        <div class="quick-cash-row">
+                            <button type="button" class="quick-chip" @click="setQuickCash(100, 'start')">+100</button>
+                            <button type="button" class="quick-chip" @click="setQuickCash(200, 'start')">+200</button>
+                            <button type="button" class="quick-chip" @click="setQuickCash(500, 'start')">+500</button>
+                            <button type="button" class="quick-chip danger" @click="startingCash = 0">تصفير</button>
+                        </div>
+
                         <Button
-                            label="فتح الوردية"
-                            class="w-full mt-5 open-shift-btn"
+                            label="فتح الوردية الآن"
+                            icon="pi pi-check"
+                            class="w-full mt-4 open-shift-btn"
                             @click="handleOpenShift"
                             :loading="shiftStore.loading"
                         />
                     </div>
                 </div>
 
-                <!-- ═══ Shift ACTIVE info ═══ -->
+                <!-- ═══ ACTIVE SHIFT CARD ═══ -->
                 <div v-if="shiftStore.currentShift" class="shift-card active-card">
-                    <div class="shift-card-header shift-card-active">
+                    <div class="card-header border-green-200 dark:border-green-900 bg-green-50/80 dark:bg-green-950/40 justify-between">
+                        <div class="flex items-center gap-2 text-green-700 dark:text-green-400">
+                            <Clock :size="18" />
+                            <span class="font-bold">الوردية الحالية النشطة</span>
+                        </div>
                         <div class="active-badge">
                             <span class="pulse-dot"></span>
-                            <span>وردية مفتوحة</span>
+                            <span>مفتوحة</span>
                         </div>
                     </div>
-                    <div class="shift-card-body">
-                        <div class="shift-info-grid">
-                            <div class="shift-info-item">
-                                <span class="shift-info-label">الكاشير</span>
-                                <span class="shift-info-value font-bold">{{ shiftStore.currentShift?.cashier }}</span>
-                            </div>
-                            <div class="shift-info-item">
-                                <span class="shift-info-label">وقت الفتح</span>
-                                <span class="shift-info-value">
-                                    {{ new Date(shiftStore.currentShift?.openedAt).toLocaleString("ar-EG") }}
+                    <div class="card-body">
+                        <div class="active-shift-details">
+                            <div class="info-row">
+                                <span class="info-label">الكاشير:</span>
+                                <span class="info-val font-bold text-surface-900 dark:text-surface-50 flex items-center gap-1.5">
+                                    <User :size="14" class="text-primary-500" />
+                                    {{ shiftStore.currentShift?.cashier }}
                                 </span>
                             </div>
-                            <div class="shift-info-item">
-                                <span class="shift-info-label">المدة</span>
-                                <span class="shift-info-value font-semibold text-primary-500">{{ shiftDuration }}</span>
+                            <div class="info-row">
+                                <span class="info-label">وقت الفتح:</span>
+                                <span class="info-val dir-ltr font-mono text-xs">
+                                    {{ formatTimeOnly(shiftStore.currentShift?.openedAt) }}
+                                </span>
                             </div>
-                            <div class="shift-info-item total-start-cash">
-                                <span class="shift-info-label">المبلغ الافتتاحي</span>
-                                <span class="shift-info-value font-black text-primary-600 dark:text-primary-400">
+                            <div class="info-row">
+                                <span class="info-label">مدة الوردية:</span>
+                                <span class="info-val font-bold text-primary-600 dark:text-primary-400">
+                                    {{ shiftDuration }}
+                                </span>
+                            </div>
+                            <div class="info-row highlight-box">
+                                <span class="info-label">المبلغ الافتتاحي:</span>
+                                <span class="info-val font-black text-primary-700 dark:text-primary-300">
                                     {{ formatCurrency(shiftStore.currentShift?.startingCash) }}
                                 </span>
                             </div>
                         </div>
 
-                        <div class="shift-close-section">
+                        <div class="shift-close-form">
                             <div class="shift-field">
-                                <label>النقد الفعلي في الدرج</label>
+                                <label class="field-label text-rose-700 dark:text-rose-400">المبلغ الفعلي بالدرج للإغلاق</label>
                                 <InputNumber
                                     v-model="actualCash"
                                     :min="0"
@@ -237,10 +307,19 @@ onMounted(() => {
                                     class="modern-input"
                                 />
                             </div>
+
+                            <div class="quick-cash-row">
+                                <button type="button" class="quick-chip" @click="setQuickCash(100, 'actual')">+100</button>
+                                <button type="button" class="quick-chip" @click="setQuickCash(500, 'actual')">+500</button>
+                                <button type="button" class="quick-chip" @click="setQuickCash(1000, 'actual')">+1000</button>
+                                <button type="button" class="quick-chip danger" @click="actualCash = 0">تصفير</button>
+                            </div>
+
                             <Button
                                 label="إغلاق الوردية"
                                 severity="danger"
-                                class="w-full mt-5 close-shift-btn"
+                                icon="pi pi-power-off"
+                                class="w-full mt-4 close-shift-btn"
                                 @click="handleCloseShift"
                                 :loading="shiftStore.loading"
                             />
@@ -248,80 +327,71 @@ onMounted(() => {
                     </div>
                 </div>
 
-                <!-- ═══ Last closed shift summary ═══ -->
+                <!-- ═══ LAST CLOSED SUMMARY ═══ -->
                 <div v-if="lastClosedShift" class="shift-card summary-card">
-                    <div class="shift-card-header shift-card-summary">
-                        <Banknote :size="20" />
-                        <span>ملخص آخر وردية مغلقة</span>
+                    <div class="card-header border-amber-200 dark:border-amber-900 bg-amber-50/70 dark:bg-amber-950/30">
+                        <div class="flex items-center gap-2 text-amber-800 dark:text-amber-300">
+                            <Banknote :size="18" />
+                            <span class="font-bold">ملخص آخر وردية تم إغلاقها</span>
+                        </div>
                     </div>
-                    <div class="shift-card-body">
-                        <div class="shift-info-grid">
-                            <div class="shift-info-item">
-                                <span class="shift-info-label">إجمالي المبيعات</span>
-                                <span class="shift-info-value font-bold text-surface-900 dark:text-surface-150">{{ formatCurrency(lastClosedShift.totalSales) }}</span>
-                            </div>
-                            <div class="shift-info-item">
-                                <span class="shift-info-label">النقد المتوقع</span>
-                                <span class="shift-info-value font-medium">{{ formatCurrency(lastClosedShift.expectedCash) }}</span>
-                            </div>
-                            <div class="shift-info-item">
-                                <span class="shift-info-label">النقد الفعلي</span>
-                                <span class="shift-info-value font-bold text-surface-900 dark:text-surface-50">{{ formatCurrency(lastClosedShift.actualCash) }}</span>
-                            </div>
-                            <div class="shift-info-item variance-item">
-                                <span class="shift-info-label">الفرق</span>
-                                <div
-                                    class="shift-info-value font-bold flex items-center gap-1"
-                                    :class="{
-                                        'text-green-600 dark:text-green-400': lastClosedShift.variance >= 0,
-                                        'text-red-600 dark:text-red-400': lastClosedShift.variance < 0,
-                                    }"
-                                >
-                                    <span>{{ formatCurrency(lastClosedShift.variance) }}</span>
-                                    <AlertTriangle v-if="Math.abs(lastClosedShift.variance) > 1" :size="15" class="align-middle" />
-                                </div>
-                            </div>
+                    <div class="card-body text-sm space-y-2.5">
+                        <div class="flex justify-between items-center">
+                            <span class="text-surface-500">المبيعات النقدية:</span>
+                            <span class="font-bold text-surface-900 dark:text-surface-100">{{ formatCurrency(lastClosedShift.totalSales) }}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-surface-500">النقد الفعلي:</span>
+                            <span class="font-bold text-surface-900 dark:text-surface-100">{{ formatCurrency(lastClosedShift.actualCash) }}</span>
+                        </div>
+                        <div class="flex justify-between items-center pt-2 border-t border-surface-200 dark:border-surface-800">
+                            <span class="font-bold text-surface-700 dark:text-surface-300">الفارق / العجز:</span>
+                            <span
+                                class="font-black"
+                                :class="lastClosedShift.variance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'"
+                            >
+                                {{ formatCurrency(lastClosedShift.variance) }}
+                            </span>
                         </div>
                     </div>
                 </div>
-            </div>
+            </aside>
 
-            <!-- Main Panel: Shift History Table -->
-            <div class="shift-main">
-                <!-- Metrics Stats Row -->
-                <div class="shift-stats-cards" v-if="shiftStore.shifts.length > 0">
-                    <div class="stat-card">
-                        <div class="stat-card-icon bg-Purple-50 dark:bg-Purple-950/30 text-Purple-600 dark:text-Purple-400">
+            <!-- Main Panel: Shift Analytics & Compact Table -->
+            <main class="shift-main">
+                <!-- Metric Cards -->
+                <div class="metrics-grid" v-if="shiftStore.shifts.length > 0">
+                    <div class="metric-card">
+                        <div class="metric-icon purple">
                             <Clock :size="20" />
                         </div>
-                        <div class="stat-card-info">
-                            <span class="stat-card-label">إجمالي الورديات</span>
-                            <span class="stat-card-value">{{ shiftStore.shifts.length }}</span>
+                        <div class="metric-content">
+                            <span class="metric-label">إجمالي الورديات</span>
+                            <span class="metric-val">{{ shiftStore.shifts.length }}</span>
                         </div>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-card-icon bg-green-50 dark:bg-green-950/30 text-green-600 dark:text-green-400">
-                            <Banknote :size="20" />
+
+                    <div class="metric-card">
+                        <div class="metric-icon green">
+                            <TrendingUp :size="20" />
                         </div>
-                        <div class="stat-card-info">
-                            <span class="stat-card-label">إجمالي المبيعات النقدية</span>
-                            <span class="stat-card-value text-green-600 dark:text-green-400">
+                        <div class="metric-content">
+                            <span class="metric-label">إجمالي مبيعات الورديات</span>
+                            <span class="metric-val text-emerald-600 dark:text-emerald-400">
                                 {{ formatCurrency(shiftStore.shifts.reduce((sum, s) => sum + (s.totalSales || 0), 0)) }}
                             </span>
                         </div>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-card-icon bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400">
+
+                    <div class="metric-card">
+                        <div class="metric-icon amber">
                             <AlertTriangle :size="20" />
                         </div>
-                        <div class="stat-card-info">
-                            <span class="stat-card-label">صافي الفروقات</span>
+                        <div class="metric-content">
+                            <span class="metric-label">إجمالي الفروقات</span>
                             <span
-                                class="stat-card-value font-bold"
-                                :class="{
-                                    'text-green-600 dark:text-green-400': shiftStore.shifts.reduce((sum, s) => sum + (s.variance || 0), 0) >= 0,
-                                    'text-red-600 dark:text-red-400': shiftStore.shifts.reduce((sum, s) => sum + (s.variance || 0), 0) < 0,
-                                }"
+                                class="metric-val"
+                                :class="shiftStore.shifts.reduce((sum, s) => sum + (s.variance || 0), 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'"
                             >
                                 {{ formatCurrency(shiftStore.shifts.reduce((sum, s) => sum + (s.variance || 0), 0)) }}
                             </span>
@@ -330,249 +400,372 @@ onMounted(() => {
                 </div>
 
                 <!-- Shift History Table Card -->
-                <div class="shift-card shift-history-card">
-                    <div class="shift-history-header">
-                        <div class="flex items-center gap-2">
-                            <History :size="20" class="text-surface-500 dark:text-surface-400" />
-                            <span class="font-bold text-lg text-surface-800 dark:text-surface-100">سجل الورديات السابقة</span>
+                <div class="shift-card history-card">
+                    <!-- Table Toolbar -->
+                    <div class="table-toolbar">
+                        <div class="toolbar-title">
+                            <History :size="20" class="text-primary-500" />
+                            <span>سجل الورديات</span>
+                            <span class="badge-count">{{ filteredShifts.length }}</span>
                         </div>
-                        
-                        <!-- Search Box with proper RTL styling -->
-                        <div class="search-input-wrap">
-                            <Search :size="16" class="search-icon" />
-                            <InputText
-                                v-model="searchQuery"
-                                placeholder="ابحث باسم الكاشير..."
-                                class="pr-10 pl-4 w-full search-input"
-                                autocomplete="off"
-                                size="small"
-                            />
+
+                        <div class="toolbar-actions">
+                            <!-- Status Filter Buttons -->
+                            <div class="status-filter-pills">
+                                <button
+                                    type="button"
+                                    class="pill-btn"
+                                    :class="{ active: statusFilter === 'all' }"
+                                    @click="statusFilter = 'all'"
+                                >
+                                    الكل
+                                </button>
+                                <button
+                                    type="button"
+                                    class="pill-btn green"
+                                    :class="{ active: statusFilter === 'Open' }"
+                                    @click="statusFilter = 'Open'"
+                                >
+                                    مفتوحة
+                                </button>
+                                <button
+                                    type="button"
+                                    class="pill-btn gray"
+                                    :class="{ active: statusFilter === 'Closed' }"
+                                    @click="statusFilter = 'Closed'"
+                                >
+                                    مغلقة
+                                </button>
+                            </div>
+
+                            <!-- Search Input -->
+                            <div class="search-box">
+                                <Search :size="16" class="search-box-icon" />
+                                <input
+                                    v-model="searchQuery"
+                                    type="text"
+                                    placeholder="بحث بالكاشير..."
+                                    class="search-box-input"
+                                />
+                            </div>
                         </div>
                     </div>
-                    
-                    <div class="shift-card-body p-0">
-                        <DataTable
-                            :value="filteredShifts"
-                            :loading="shiftStore.loading"
-                            paginator
-                            :rows="10"
-                            :rowsPerPageOptions="[5, 10, 20, 50]"
-                            emptyMessage="لا توجد ورديات سابقة"
-                            stripedRows
-                            removableSort
-                            scrollable
-                            class="shifts-table"
-                        >
-                            <Column field="cashier" header="الكاشير" sortable style="min-width: 130px" />
-                            <Column field="openedAt" header="بداية الوردية" sortable style="min-width: 170px">
-                                <template #body="{ data }">
-                                    <span class="text-sm font-medium">{{ formatDate(data.openedAt) }}</span>
-                                </template>
-                            </Column>
-                            <Column field="closedAt" header="نهاية الوردية" sortable style="min-width: 170px">
-                                <template #body="{ data }">
-                                    <span class="text-sm text-surface-600 dark:text-surface-400">{{ formatDate(data.closedAt) }}</span>
-                                </template>
-                            </Column>
-                            <Column field="totalSales" header="المبيعات النقدية" sortable style="min-width: 130px">
-                                <template #body="{ data }">
-                                    <span class="font-bold text-surface-800 dark:text-surface-100">{{ formatCurrency(data.totalSales) }}</span>
-                                </template>
-                            </Column>
-                            <Column field="variance" header="الفرق" sortable style="min-width: 120px">
-                                <template #body="{ data }">
-                                    <span
-                                        class="font-bold text-sm"
-                                        :class="{
-                                            'text-green-600 dark:text-green-400': data.variance >= 0,
-                                            'text-red-600 dark:text-red-400': data.variance < 0,
-                                        }"
-                                    >
-                                        {{ formatCurrency(data.variance) }}
-                                    </span>
-                                </template>
-                            </Column>
-                            <Column field="status" header="الحالة" sortable style="min-width: 110px">
-                                <template #body="{ data }">
-                                    <Tag
-                                        :value="data.status === 'Open' ? 'مفتوحة' : 'مغلقة'"
-                                        :severity="data.status === 'Open' ? 'success' : 'secondary'"
-                                    />
-                                </template>
-                            </Column>
-                            <Column header="عرض" style="min-width: 80px; text-align: center">
-                                <template #body="{ data }">
-                                    <button
-                                        class="shift-view-btn"
-                                        @click="viewShiftDetails(data)"
-                                        title="عرض التفاصيل"
-                                    >
-                                        <Eye :size="16" />
-                                    </button>
-                                </template>
-                            </Column>
-                        </DataTable>
+
+                    <!-- Clean Responsive Table without horizontal overflow -->
+                    <div class="table-wrapper">
+                        <table class="compact-table">
+                            <thead>
+                                <tr>
+                                    <th>الكاشير</th>
+                                    <th>التاريخ والبداية</th>
+                                    <th>المبيعات النقدية</th>
+                                    <th>الفرق</th>
+                                    <th>الحالة</th>
+                                    <th class="text-center">التفاصيل</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-if="shiftStore.loading">
+                                    <td colspan="6" class="text-center py-8 text-surface-400">
+                                        <i class="pi pi-spin pi-spinner text-2xl mb-2 block"></i>
+                                        جاري تحميل البيانات...
+                                    </td>
+                                </tr>
+                                <tr v-else-if="filteredShifts.length === 0">
+                                    <td colspan="6" class="text-center py-8 text-surface-400">
+                                        لا توجد ورديات تطابق البحث
+                                    </td>
+                                </tr>
+                                <tr v-for="shift in filteredShifts" :key="shift.id" class="table-row-hover">
+                                    <!-- Cashier -->
+                                    <td>
+                                        <div class="cashier-cell">
+                                            <div class="avatar-mini">
+                                                {{ shift.cashier ? shift.cashier.charAt(0).toUpperCase() : 'U' }}
+                                            </div>
+                                            <span class="cashier-name">{{ shift.cashier }}</span>
+                                        </div>
+                                    </td>
+
+                                    <!-- Start date / time -->
+                                    <td>
+                                        <div class="date-cell">
+                                            <span class="main-date">{{ formatDate(shift.openedAt) }}</span>
+                                            <span class="sub-duration text-xs text-surface-400 flex items-center gap-1">
+                                                <Clock :size="12" />
+                                                {{ getShiftDuration(shift) }}
+                                            </span>
+                                        </div>
+                                    </td>
+
+                                    <!-- Total Sales -->
+                                    <td>
+                                        <span class="font-bold text-surface-900 dark:text-surface-100">
+                                            {{ formatCurrency(shift.totalSales) }}
+                                        </span>
+                                    </td>
+
+                                    <!-- Variance -->
+                                    <td>
+                                        <span
+                                            class="variance-tag"
+                                            :class="shift.variance >= 0 ? 'pos' : 'neg'"
+                                        >
+                                            {{ formatCurrency(shift.variance) }}
+                                        </span>
+                                    </td>
+
+                                    <!-- Status -->
+                                    <td>
+                                        <span
+                                            class="status-chip"
+                                            :class="shift.status === 'Open' ? 'status-open' : 'status-closed'"
+                                        >
+                                            <span class="chip-dot"></span>
+                                            {{ shift.status === 'Open' ? 'مفتوحة' : 'مغلقة' }}
+                                        </span>
+                                    </td>
+
+                                    <!-- Actions -->
+                                    <td class="text-center">
+                                        <button
+                                            class="detail-icon-btn"
+                                            @click="viewShiftDetails(shift)"
+                                            title="عرض التفاصيل الكاملة"
+                                        >
+                                            <Eye :size="16" />
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-            </div>
+            </main>
         </div>
 
-        <!-- Shift Detail Dialog -->
+        <!-- ═══ DETAILED SHIFT DIALOG ═══ -->
         <Dialog
             v-model:visible="showDetailDialog"
-            header="تفاصيل الوردية"
-            :style="{ width: '500px' }"
+            header="تقرير تفاصيل الوردية"
+            :style="{ width: '560px', maxWidth: '95vw' }"
             modal
             dismissableMask
+            class="shift-dialog-custom"
         >
-            <div class="shift-detail-content" v-if="selectedShift">
-                <!-- Header Stats -->
-                <div class="shift-detail-header-card">
-                    <div class="detail-row">
-                        <span class="detail-label">الكاشير:</span>
-                        <span class="detail-value font-bold text-lg text-primary-600 dark:text-primary-400">{{ selectedShift.cashier }}</span>
-                    </div>
-                    <div class="detail-row mt-2">
-                        <span class="detail-label">حالة الوردية:</span>
+            <div class="shift-detail-modal" v-if="selectedShift">
+                <!-- Modal Top Card -->
+                <div class="modal-top-card">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="cashier-avatar-large">
+                                {{ selectedShift.cashier ? selectedShift.cashier.charAt(0).toUpperCase() : 'U' }}
+                            </div>
+                            <div>
+                                <h3 class="font-black text-lg text-surface-900 dark:text-surface-0">{{ selectedShift.cashier }}</h3>
+                                <p class="text-xs text-surface-500">معرف الوردية: #{{ selectedShift.id }}</p>
+                            </div>
+                        </div>
                         <Tag
-                            :value="selectedShift.status === 'Open' ? 'مفتوحة' : 'مغلقة'"
+                            :value="selectedShift.status === 'Open' ? 'وردية مفتوحة' : 'وردية مغلقة'"
                             :severity="selectedShift.status === 'Open' ? 'success' : 'secondary'"
                         />
                     </div>
                 </div>
 
-                <!-- Timing Section -->
-                <div class="shift-detail-section">
-                    <h3 class="section-title">التوقيت والمدة</h3>
-                    <div class="details-list">
-                        <div class="detail-item">
-                            <span class="item-label">بداية الوردية:</span>
-                            <span class="item-value font-medium">{{ formatDate(selectedShift.openedAt) }}</span>
+                <!-- Timings Section -->
+                <div class="detail-block">
+                    <h4 class="block-title">
+                        <Calendar :size="16" />
+                        التوقيت والمدة الزمنية
+                    </h4>
+                    <div class="detail-grid-2">
+                        <div class="detail-box">
+                            <span class="box-label">وقت الفتح</span>
+                            <span class="box-val">{{ formatDate(selectedShift.openedAt) }}</span>
                         </div>
-                        <div class="detail-item animate-row">
-                            <span class="item-label">نهاية الوردية:</span>
-                            <span class="item-value font-medium">{{ formatDate(selectedShift.closedAt) }}</span>
+                        <div class="detail-box">
+                            <span class="box-label">وقت الإغلاق</span>
+                            <span class="box-val">{{ formatDate(selectedShift.closedAt) }}</span>
                         </div>
-                        <div class="detail-item border-t border-dashed border-surface-200 dark:border-surface-700 pt-2 mt-1">
-                            <span class="item-label font-bold text-surface-700 dark:text-surface-300">المدة الإجمالية:</span>
-                            <span class="item-value font-bold text-primary-500">
-                                {{ getShiftDuration(selectedShift) }}
-                            </span>
+                        <div class="detail-box col-span-2 highlight font-bold">
+                            <span class="box-label">مدة الوردية الإجمالية</span>
+                            <span class="box-val text-primary-600 dark:text-primary-400">{{ getShiftDuration(selectedShift) }}</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- Financial Section -->
-                <div class="shift-detail-section">
-                    <h3 class="section-title">التقرير المالي</h3>
-                    <div class="details-list">
-                        <div class="detail-item">
-                            <span class="item-label">المبلغ الافتتاحي:</span>
-                            <span class="item-value font-semibold">{{ formatCurrency(selectedShift.startingCash) }}</span>
+                <!-- Detailed Financial Report -->
+                <div class="detail-block">
+                    <h4 class="block-title">
+                        <FileText :size="16" />
+                        التقرير المالي للدرج والصندوق
+                    </h4>
+                    <div class="ledger-list">
+                        <div class="ledger-row">
+                            <span>المبلغ الافتتاحي (بداية الوردية):</span>
+                            <span class="font-semibold">{{ formatCurrency(selectedShift.startingCash) }}</span>
                         </div>
-                        <div class="detail-item">
-                            <span class="item-label">مبيعات النقد:</span>
-                            <span class="item-value font-bold text-green-600 dark:text-green-400">+{{ formatCurrency(selectedShift.totalSales) }}</span>
+                        <div class="ledger-row text-emerald-600 dark:text-emerald-400 font-medium">
+                            <span>+ مبيعات الكاش النقدي:</span>
+                            <span class="font-bold">{{ formatCurrency(selectedShift.totalSales) }}</span>
                         </div>
-                        <div class="detail-item" v-if="selectedShift.totalCollections > 0">
-                            <span class="item-label">مقبوضات ديون العملاء (كاش):</span>
-                            <span class="item-value font-bold text-emerald-600 dark:text-emerald-400">+{{ formatCurrency(selectedShift.totalCollections) }}</span>
+                        <div class="ledger-row text-emerald-600 dark:text-emerald-400 font-medium" v-if="selectedShift.totalCollections > 0">
+                            <span>+ تحصيلات ديون عملاء (كاش):</span>
+                            <span class="font-bold">{{ formatCurrency(selectedShift.totalCollections) }}</span>
                         </div>
-                        <div class="detail-item" v-if="selectedShift.totalExpenses > 0">
-                            <span class="item-label">مصروفات نقدية:</span>
-                            <span class="item-value font-bold text-rose-600 dark:text-rose-400">-{{ formatCurrency(selectedShift.totalExpenses) }}</span>
+                        <div class="ledger-row text-rose-600 dark:text-rose-400 font-medium" v-if="selectedShift.totalExpenses > 0">
+                            <span>- المصروفات النقدية الخارجية:</span>
+                            <span class="font-bold">{{ formatCurrency(selectedShift.totalExpenses) }}</span>
                         </div>
-                        <div class="detail-item border-t border-dashed border-surface-200 dark:border-surface-700 pt-2 mt-2">
-                            <span class="item-label font-bold text-surface-700 dark:text-surface-300">المبلغ المتوقع في الدرج:</span>
-                            <span class="item-value font-bold text-surface-900 dark:text-surface-100">{{ formatCurrency(selectedShift.expectedCash) }}</span>
+
+                        <div class="ledger-row total-expected">
+                            <span>النقد المتوقع تواجده بالدرج:</span>
+                            <span class="font-bold text-surface-900 dark:text-surface-100 text-base">
+                                {{ formatCurrency(selectedShift.expectedCash) }}
+                            </span>
                         </div>
-                        <div class="detail-item">
-                            <span class="item-label font-bold text-surface-700 dark:text-surface-300">النقد الفعلي المُستلم:</span>
-                            <span class="item-value font-bold text-surface-900 dark:text-surface-100">{{ formatCurrency(selectedShift.actualCash) }}</span>
+
+                        <div class="ledger-row">
+                            <span>النقد الفعلي الجردي المُستلم:</span>
+                            <span class="font-bold text-surface-900 dark:text-surface-100 text-base">
+                                {{ formatCurrency(selectedShift.actualCash) }}
+                            </span>
                         </div>
-                        <div class="detail-item border-t border-surface-200 dark:border-surface-700 pt-2 mt-2">
-                            <span class="item-label font-bold">الفرق (عجز / زيادة):</span>
-                            <span
-                                class="item-value font-black text-lg"
-                                :class="{
-                                    'text-green-600 dark:text-green-400': selectedShift.variance >= 0,
-                                    'text-red-600 dark:text-red-400': selectedShift.variance < 0,
-                                }"
-                            >
+
+                        <div
+                            class="ledger-row final-variance"
+                            :class="selectedShift.variance >= 0 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300'"
+                        >
+                            <span class="font-black text-base flex items-center gap-1">
+                                <AlertTriangle v-if="selectedShift.variance < 0" :size="18" />
+                                الفارق والنتيجة (عجز / زيادة):
+                            </span>
+                            <span class="font-black text-lg">
                                 {{ formatCurrency(selectedShift.variance) }}
-                                <AlertTriangle v-if="Math.abs(selectedShift.variance) > 1" :size="16" class="inline ms-1 align-text-bottom" />
                             </span>
                         </div>
                     </div>
                 </div>
             </div>
             <template #footer>
-                <Button label="إغلاق" outlined severity="secondary" @click="showDetailDialog = false" class="w-full" />
+                <Button label="إغلاق التقرير" outlined severity="secondary" @click="showDetailDialog = false" class="w-full" />
             </template>
         </Dialog>
     </div>
 </template>
 
 <style scoped>
-.shift-page {
-    padding: 2rem;
+/* ═══ Container Layout ═══ */
+.shift-page-container {
+    padding: 1.75rem;
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    gap: 1.75rem;
     max-width: 1400px;
     margin: 0 auto;
     width: 100%;
+    overflow-x: hidden; /* Strict no horizontal scroll on main viewport */
 }
 
 @media (max-width: 768px) {
-    .shift-page {
+    .shift-page-container {
         padding: 1rem;
-        gap: 1.5rem;
+        gap: 1.25rem;
     }
 }
 
+/* ═══ Header ═══ */
 .shift-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     width: 100%;
     border-bottom: 1px solid var(--p-surface-200);
-    padding-bottom: 1rem;
+    padding-bottom: 1.25rem;
 }
 
 .dark .shift-header {
     border-color: var(--p-surface-800);
 }
 
-.shift-header-title {
+.header-main {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 1rem;
+}
+
+.header-icon-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 1rem;
+    background: var(--p-primary-50);
+    border: 1px solid var(--p-primary-200);
+}
+
+.dark .header-icon-box {
+    background: rgba(99, 102, 241, 0.15);
+    border-color: rgba(99, 102, 241, 0.3);
 }
 
 .shift-title {
-    font-size: 1.75rem;
+    font-size: 1.5rem;
     font-weight: 900;
     color: var(--p-surface-900);
     margin: 0;
-    letter-spacing: -0.02em;
+    line-height: 1.2;
 }
 
 .dark .shift-title {
     color: var(--p-surface-0);
 }
 
-/* ═══ Layout Grid ═══ */
+.shift-subtitle {
+    font-size: 0.85rem;
+    color: var(--p-surface-500);
+    margin-top: 0.25rem;
+}
+
+.help-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.875rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--p-surface-200);
+    background: var(--p-surface-0);
+    color: var(--p-surface-700);
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.dark .help-btn {
+    background: var(--p-surface-900);
+    border-color: var(--p-surface-800);
+    color: var(--p-surface-200);
+}
+
+.help-btn:hover {
+    background: var(--p-surface-100);
+    color: var(--p-primary-600);
+}
+
+/* ═══ Main Grid ═══ */
 .shift-grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 2rem;
+    gap: 1.75rem;
     width: 100%;
 }
 
 @media (min-width: 1024px) {
     .shift-grid {
-        grid-template-columns: 380px 1fr;
+        grid-template-columns: 360px 1fr;
         align-items: start;
     }
 }
@@ -580,458 +773,694 @@ onMounted(() => {
 .shift-sidebar {
     display: flex;
     flex-direction: column;
-    gap: 1.75rem;
+    gap: 1.5rem;
 }
 
 .shift-main {
     display: flex;
     flex-direction: column;
-    gap: 1.75rem;
+    gap: 1.5rem;
+    min-width: 0; /* Prevents flex/grid children from causing overflow */
 }
 
-/* ═══ Stats Cards ═══ */
-.shift-stats-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 1.25rem;
-}
-
-.stat-card {
-    display: flex;
-    align-items: center;
-    gap: 1.25rem;
-    padding: 1.5rem;
-    border-radius: 1.25rem;
-    background: var(--p-surface-0);
-    border: 1px solid var(--p-surface-200);
-    box-shadow: 0 10px 25px -15px rgba(0, 0, 0, 0.05);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.stat-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 20px 35px -15px rgba(0, 0, 0, 0.08);
-    border-color: var(--p-primary-300);
-}
-
-.dark .stat-card {
-    background: var(--p-surface-900);
-    border-color: var(--p-surface-800);
-    box-shadow: 0 10px 30px -20px rgba(0, 0, 0, 0.3);
-}
-
-.dark .stat-card:hover {
-    border-color: var(--p-primary-800);
-}
-
-.stat-card-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 3.25rem;
-    height: 3.25rem;
-    border-radius: 1rem;
-    flex-shrink: 0;
-    box-shadow: inset 0 -2px 4px rgba(0, 0, 0, 0.02);
-}
-
-.stat-card-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-}
-
-.stat-card-label {
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: var(--p-surface-500);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.stat-card-value {
-    font-size: 1.5rem;
-    font-weight: 900;
-    color: var(--p-surface-900);
-    letter-spacing: -0.01em;
-}
-
-.dark .stat-card-value {
-    color: var(--p-surface-50);
-}
-
-/* ═══ Card ═══ */
+/* ═══ Cards General ═══ */
 .shift-card {
     border-radius: 1.25rem;
     border: 1px solid var(--p-surface-200);
     background: var(--p-surface-0);
+    box-shadow: 0 4px 20px -5px rgba(0, 0, 0, 0.05);
     overflow: hidden;
-    box-shadow: 0 10px 30px -15px rgba(0, 0, 0, 0.05);
-    transition: box-shadow 0.25s ease;
+    transition: all 0.2s ease;
 }
 
 .dark .shift-card {
     background: var(--p-surface-900);
     border-color: var(--p-surface-800);
-    box-shadow: 0 10px 30px -20px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 20px -5px rgba(0, 0, 0, 0.3);
 }
 
-.shift-card-header {
+.card-header {
     display: flex;
     align-items: center;
-    gap: 0.625rem;
-    padding: 1.125rem 1.5rem;
-    font-weight: 800;
-    font-size: 1.05rem;
+    padding: 1rem 1.25rem;
     border-bottom: 1px solid var(--p-surface-200);
 }
 
-.dark .shift-card-header {
+.dark .card-header {
     border-color: var(--p-surface-800);
 }
 
-.shift-card-open {
-    background: linear-gradient(135deg, var(--p-primary-50), rgba(255, 255, 255, 0));
-    color: var(--p-primary-700);
+.card-body {
+    padding: 1.25rem;
 }
 
-.dark .shift-card-open {
-    background: linear-gradient(135deg, color-mix(in srgb, var(--p-primary-500), transparent 90%), transparent);
-    color: var(--p-primary-300);
-}
-
-.shift-card-active {
-    background: linear-gradient(135deg, #f0fdf4, rgba(255, 255, 255, 0));
-    color: #166534;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.dark .shift-card-active {
-    background: linear-gradient(135deg, rgba(34, 197, 94, 0.08), transparent);
-    color: #4ade80;
-}
-
-.shift-card-summary {
-    background: linear-gradient(135deg, #fffbeb, rgba(255, 255, 255, 0));
-    color: #92400e;
-}
-
-.dark .shift-card-summary {
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), transparent);
-    color: #fbbf24;
-}
-
-.shift-card-body {
-    padding: 1.5rem;
-}
-
-/* Pulse Dot Animation */
+/* ═══ Active Shift Specifics ═══ */
 .active-badge {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 0.625rem;
+    gap: 0.5rem;
     background: #dcfce7;
     color: #15803d;
-    padding: 0.375rem 0.875rem;
+    padding: 0.25rem 0.625rem;
     border-radius: 9999px;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 800;
-    box-shadow: 0 2px 8px rgba(34, 197, 94, 0.15);
 }
 
 .dark .active-badge {
     background: rgba(34, 197, 94, 0.2);
     color: #4ade80;
-    box-shadow: none;
 }
 
 .pulse-dot {
-    width: 7px;
-    height: 7px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background-color: #22c55e;
-    display: inline-block;
     animation: active-pulse 1.8s infinite ease-in-out;
 }
 
 @keyframes active-pulse {
-    0%, 100% {
-        transform: scale(0.85);
-        opacity: 0.6;
-        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
-    }
-    50% {
-        transform: scale(1.2);
-        opacity: 1;
-        box-shadow: 0 0 0 6px rgba(34, 197, 94, 0);
-    }
+    0%, 100% { transform: scale(0.85); opacity: 0.6; }
+    50% { transform: scale(1.2); opacity: 1; }
 }
 
-/* ──═ Shift History Header ═── */
-.shift-history-header {
+.active-shift-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.info-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 1.25rem;
-    padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid var(--p-surface-200);
-    background: var(--p-surface-50);
+    font-size: 0.875rem;
 }
 
-.dark .shift-history-header {
-    border-color: var(--p-surface-800);
-    background: var(--p-surface-950);
+.info-label {
+    color: var(--p-surface-500);
+    font-weight: 600;
 }
 
-/* Search Box Container */
-.search-input-wrap {
-    position: relative;
-    width: 100%;
-    max-width: 18rem;
-}
-
-.search-icon {
-    position: absolute;
-    right: 0.875rem;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--p-surface-450);
-    pointer-events: none;
-    z-index: 1;
-}
-
-.search-input {
-    padding-right: 2.75rem !important;
-    border-radius: 0.75rem !important;
-}
-
-/* ═══ Fields ═══ */
-.shift-field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.shift-field label {
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: var(--p-surface-600);
-}
-
-.dark .shift-field label {
-    color: var(--p-surface-300);
-}
-
-.modern-input :deep(.p-inputtext) {
-    border-radius: 0.75rem !important;
-    padding: 0.625rem 0.875rem;
-}
-
-.open-shift-btn {
-    border-radius: 0.75rem !important;
-    padding: 0.625rem 1.25rem !important;
-    font-weight: 800 !important;
-}
-
-.close-shift-btn {
-    border-radius: 0.75rem !important;
-    padding: 0.625rem 1.25rem !important;
-    font-weight: 800 !important;
-}
-
-.shift-close-section {
-    margin-top: 1.5rem;
-    padding-top: 1.5rem;
-    border-top: 1px dashed var(--p-surface-200);
-}
-
-.dark .shift-close-section {
-    border-color: var(--p-surface-800);
-}
-
-/* ═══ Info Grid ═══ */
-.shift-info-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
-
-.shift-info-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.925rem;
-    padding-bottom: 0.625rem;
-    border-bottom: 1px solid var(--p-surface-100);
-}
-
-.dark .shift-info-item {
-    border-color: var(--p-surface-850);
-}
-
-.shift-info-item:last-child {
-    border-bottom: none;
-    padding-bottom: 0;
-}
-
-.total-start-cash {
+.highlight-box {
     background: var(--p-surface-50);
     padding: 0.75rem 1rem;
     border-radius: 0.75rem;
-    border: 1px solid var(--p-surface-150);
+    border: 1px solid var(--p-surface-200);
     margin-top: 0.25rem;
 }
 
-.dark .total-start-cash {
+.dark .highlight-box {
     background: var(--p-surface-950);
-    border-color: var(--p-surface-850);
+    border-color: var(--p-surface-800);
 }
 
-.variance-item {
+.shift-close-form {
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px dashed var(--p-surface-200);
+}
+
+.dark .shift-close-form {
+    border-color: var(--p-surface-800);
+}
+
+/* Quick Cash Pills */
+.quick-cash-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.quick-chip {
+    flex: 1;
+    padding: 0.35rem 0.5rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--p-surface-200);
     background: var(--p-surface-50);
-    padding: 0.625rem 0.875rem;
-    border-radius: 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--p-surface-700);
+    cursor: pointer;
+    transition: all 0.15s ease;
 }
 
-.dark .variance-item {
-    background: var(--p-surface-950);
+.dark .quick-chip {
+    background: var(--p-surface-800);
+    border-color: var(--p-surface-700);
+    color: var(--p-surface-200);
 }
 
-.shift-info-label {
-    font-size: 0.825rem;
+.quick-chip:hover {
+    background: var(--p-primary-500);
+    color: #ffffff;
+    border-color: var(--p-primary-500);
+}
+
+.quick-chip.danger:hover {
+    background: var(--p-red-500, #ef4444);
+    color: #ffffff;
+    border-color: var(--p-red-500, #ef4444);
+}
+
+/* ═══ Metrics Grid ═══ */
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.25rem;
+}
+
+.metric-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem;
+    border-radius: 1.25rem;
+    background: var(--p-surface-0);
+    border: 1px solid var(--p-surface-200);
+    box-shadow: 0 4px 15px -5px rgba(0, 0, 0, 0.03);
+}
+
+.dark .metric-card {
+    background: var(--p-surface-900);
+    border-color: var(--p-surface-800);
+}
+
+.metric-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 0.875rem;
+    flex-shrink: 0;
+}
+
+.metric-icon.purple {
+    background: #f3e8ff;
+    color: #9333ea;
+}
+.dark .metric-icon.purple {
+    background: rgba(147, 51, 234, 0.2);
+    color: #c084fc;
+}
+
+.metric-icon.green {
+    background: #dcfce7;
+    color: #16a34a;
+}
+.dark .metric-icon.green {
+    background: rgba(22, 163, 74, 0.2);
+    color: #4ade80;
+}
+
+.metric-icon.amber {
+    background: #fef3c7;
+    color: #d97706;
+}
+.dark .metric-icon.amber {
+    background: rgba(217, 119, 6, 0.2);
+    color: #fbbf24;
+}
+
+.metric-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.metric-label {
+    font-size: 0.75rem;
     font-weight: 700;
     color: var(--p-surface-500);
 }
 
-.shift-info-value {
+.metric-val {
+    font-size: 1.25rem;
+    font-weight: 900;
+    color: var(--p-surface-900);
+}
+
+.dark .metric-val {
+    color: var(--p-surface-0);
+}
+
+/* ═══ Table Card & Toolbar ═══ */
+.history-card {
+    display: flex;
+    flex-direction: column;
+}
+
+.table-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding: 1.25rem;
+    border-bottom: 1px solid var(--p-surface-200);
+    background: var(--p-surface-50);
+}
+
+.dark .table-toolbar {
+    background: var(--p-surface-950);
+    border-color: var(--p-surface-800);
+}
+
+.toolbar-title {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    font-weight: 800;
+    font-size: 1.05rem;
     color: var(--p-surface-800);
 }
 
-.dark .shift-info-value {
+.dark .toolbar-title {
+    color: var(--p-surface-100);
+}
+
+.badge-count {
+    background: var(--p-primary-100);
+    color: var(--p-primary-700);
+    padding: 0.15rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 800;
+}
+
+.dark .badge-count {
+    background: rgba(99, 102, 241, 0.2);
+    color: var(--p-primary-300);
+}
+
+.toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+/* Status Filter Pills */
+.status-filter-pills {
+    display: flex;
+    background: var(--p-surface-200);
+    padding: 0.2rem;
+    border-radius: 0.625rem;
+}
+
+.dark .status-filter-pills {
+    background: var(--p-surface-800);
+}
+
+.pill-btn {
+    padding: 0.35rem 0.75rem;
+    border: none;
+    background: transparent;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--p-surface-600);
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.dark .pill-btn {
+    color: var(--p-surface-400);
+}
+
+.pill-btn.active {
+    background: var(--p-surface-0);
+    color: var(--p-surface-900);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.dark .pill-btn.active {
+    background: var(--p-surface-700);
+    color: var(--p-surface-0);
+}
+
+.search-box {
+    position: relative;
+}
+
+.search-box-icon {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--p-surface-400);
+    pointer-events: none;
+}
+
+.search-box-input {
+    padding: 0.4rem 2.25rem 0.4rem 0.75rem;
+    border-radius: 0.625rem;
+    border: 1px solid var(--p-surface-300);
+    background: var(--p-surface-0);
+    font-size: 0.85rem;
+    color: var(--p-surface-800);
+    outline: none;
+    transition: all 0.15s ease;
+    width: 170px;
+}
+
+.dark .search-box-input {
+    background: var(--p-surface-900);
+    border-color: var(--p-surface-700);
+    color: var(--p-surface-100);
+}
+
+.search-box-input:focus {
+    border-color: var(--p-primary-500);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+/* ═══ Compact Table Styling (Strict No-Horizontal Scroll) ═══ */
+.table-wrapper {
+    width: 100%;
+    overflow-x: auto; /* Fallback for extreme narrow viewports */
+}
+
+.compact-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: right;
+    font-size: 0.875rem;
+}
+
+.compact-table th {
+    padding: 0.875rem 1rem;
+    background: var(--p-surface-100);
+    color: var(--p-surface-600);
+    font-weight: 700;
+    font-size: 0.8rem;
+    border-bottom: 1px solid var(--p-surface-200);
+}
+
+.dark .compact-table th {
+    background: var(--p-surface-950);
+    color: var(--p-surface-400);
+    border-color: var(--p-surface-800);
+}
+
+.compact-table td {
+    padding: 0.875rem 1rem;
+    border-bottom: 1px solid var(--p-surface-150);
+    vertical-align: middle;
+}
+
+.dark .compact-table td {
+    border-color: var(--p-surface-850);
+}
+
+.table-row-hover:hover {
+    background: var(--p-surface-50);
+}
+
+.dark .table-row-hover:hover {
+    background: var(--p-surface-850);
+}
+
+/* Cashier Cell */
+.cashier-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+}
+
+.avatar-mini {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    background: var(--p-primary-100);
+    color: var(--p-primary-700);
+    font-weight: 800;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.dark .avatar-mini {
+    background: rgba(99, 102, 241, 0.25);
+    color: var(--p-primary-300);
+}
+
+.cashier-name {
+    font-weight: 700;
+    color: var(--p-surface-900);
+}
+
+.dark .cashier-name {
+    color: var(--p-surface-100);
+}
+
+.date-cell {
+    display: flex;
+    flex-direction: column;
+}
+
+.main-date {
+    font-weight: 600;
+    color: var(--p-surface-800);
+}
+
+.dark .main-date {
     color: var(--p-surface-200);
 }
 
-/* ═══ View Action Button ═══ */
-.shift-view-btn {
+/* Variance Tag */
+.variance-tag {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 0.5rem;
+    font-weight: 800;
+    font-size: 0.8rem;
+}
+
+.variance-tag.pos {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.dark .variance-tag.pos {
+    background: rgba(34, 197, 94, 0.2);
+    color: #4ade80;
+}
+
+.variance-tag.neg {
+    background: #ffe4e6;
+    color: #be123c;
+}
+
+.dark .variance-tag.neg {
+    background: rgba(225, 29, 72, 0.2);
+    color: #fb7185;
+}
+
+/* Status Chip */
+.status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.status-open {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.dark .status-open {
+    background: rgba(34, 197, 94, 0.15);
+    color: #4ade80;
+}
+
+.status-closed {
+    background: var(--p-surface-200);
+    color: var(--p-surface-700);
+}
+
+.dark .status-closed {
+    background: var(--p-surface-800);
+    color: var(--p-surface-300);
+}
+
+.chip-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background-color: currentColor;
+}
+
+/* Detail Button */
+.detail-icon-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2.25rem;
-    height: 2.25rem;
-    border-radius: 0.625rem;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.5rem;
     border: 1px solid var(--p-surface-200);
     background: var(--p-surface-0);
     color: var(--p-surface-600);
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
 }
 
-.dark .shift-view-btn {
+.dark .detail-icon-btn {
     background: var(--p-surface-800);
     border-color: var(--p-surface-700);
     color: var(--p-surface-300);
 }
 
-.shift-view-btn:hover {
-    background: var(--p-primary-50);
-    border-color: var(--p-primary-300);
-    color: var(--p-primary-600);
-    transform: scale(1.05);
+.detail-icon-btn:hover {
+    background: var(--p-primary-500);
+    color: #ffffff;
+    border-color: var(--p-primary-500);
 }
 
-.dark .shift-view-btn:hover {
-    background: rgba(99, 102, 241, 0.15);
-    border-color: rgba(99, 102, 241, 0.3);
-    color: var(--p-primary-400);
-}
-
-/* ═══ Detail Dialog ═══ */
-.shift-detail-content {
+/* ═══ Modal Details Styling ═══ */
+.shift-detail-modal {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
-    padding-top: 0.5rem;
+    gap: 1.25rem;
 }
 
-.shift-detail-header-card {
-    padding: 1.25rem;
-    border-radius: 1rem;
-    background: linear-gradient(135deg, var(--p-surface-50), var(--p-surface-100));
+.modal-top-card {
+    padding: 1rem 1.25rem;
+    border-radius: 0.875rem;
+    background: var(--p-surface-100);
     border: 1px solid var(--p-surface-200);
 }
 
-.dark .shift-detail-header-card {
-    background: linear-gradient(135deg, var(--p-surface-950), var(--p-surface-900));
+.dark .modal-top-card {
+    background: var(--p-surface-950);
     border-color: var(--p-surface-800);
 }
 
-.detail-row {
+.cashier-avatar-large {
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 50%;
+    background: var(--p-primary-500);
+    color: #ffffff;
+    font-size: 1.25rem;
+    font-weight: 900;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
 }
 
-.detail-label {
-    font-size: 0.9rem;
-    font-weight: 700;
-    color: var(--p-surface-500);
-}
-
-.shift-detail-section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.875rem;
-}
-
-.section-title {
-    font-size: 0.95rem;
-    font-weight: 800;
-    color: var(--p-surface-700);
-    margin: 0;
-    padding-bottom: 0.35rem;
-    border-bottom: 2.5px solid var(--p-primary-500);
-    width: fit-content;
-}
-
-.dark .section-title {
-    color: var(--p-surface-300);
-}
-
-.details-list {
+.detail-block {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-    padding: 1.125rem 1.25rem;
-    border-radius: 1rem;
-    background: var(--p-surface-0);
-    border: 1px solid var(--p-surface-150);
 }
 
-.dark .details-list {
-    background: var(--p-surface-950);
-    border-color: var(--p-surface-850);
-}
-
-.detail-item {
+.block-title {
+    font-size: 0.875rem;
+    font-weight: 800;
+    color: var(--p-surface-700);
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    font-size: 0.9rem;
+    gap: 0.5rem;
+    margin: 0;
 }
 
-.item-label {
+.dark .block-title {
+    color: var(--p-surface-300);
+}
+
+.detail-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+.detail-box {
+    padding: 0.75rem;
+    border-radius: 0.75rem;
+    background: var(--p-surface-50);
+    border: 1px solid var(--p-surface-200);
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.dark .detail-box {
+    background: var(--p-surface-900);
+    border-color: var(--p-surface-800);
+}
+
+.detail-box.highlight {
+    background: var(--p-primary-50);
+    border-color: var(--p-primary-200);
+}
+
+.dark .detail-box.highlight {
+    background: rgba(99, 102, 241, 0.15);
+    border-color: rgba(99, 102, 241, 0.3);
+}
+
+.box-label {
+    font-size: 0.75rem;
     color: var(--p-surface-500);
     font-weight: 600;
 }
 
-.item-value {
-    color: var(--p-surface-800);
+.box-val {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--p-surface-900);
 }
 
-.dark .item-value {
-    color: var(--p-surface-150);
+.dark .box-val {
+    color: var(--p-surface-100);
+}
+
+/* Ledger List */
+.ledger-list {
+    display: flex;
+    flex-direction: column;
+    border-radius: 0.875rem;
+    border: 1px solid var(--p-surface-200);
+    overflow: hidden;
+}
+
+.dark .ledger-list {
+    border-color: var(--p-surface-800);
+}
+
+.ledger-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    border-bottom: 1px solid var(--p-surface-150);
+    background: var(--p-surface-0);
+}
+
+.dark .ledger-row {
+    background: var(--p-surface-900);
+    border-color: var(--p-surface-850);
+}
+
+.ledger-row:last-child {
+    border-bottom: none;
+}
+
+.total-expected {
+    background: var(--p-surface-100);
+}
+
+.dark .total-expected {
+    background: var(--p-surface-950);
 }
 </style>

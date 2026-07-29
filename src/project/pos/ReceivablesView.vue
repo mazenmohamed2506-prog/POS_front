@@ -2,14 +2,18 @@
 import { ref, onMounted, computed, nextTick } from "vue";
 import { useReceivableStore } from "@/stores/pos/receivableStore";
 import { useReportStore } from "@/stores/pos/reportStore";
+import { usePaymentMethodStore } from "@/stores/pos/paymentMethodStore";
+import { useOrderStore } from "@/stores/pos/orderStore";
 import {
     CreditCard, Search, HelpCircle, Eye, DollarSign, ArrowRight, Wallet,
-    User as UserIcon, FileText, List, Printer, Download, RefreshCw, Phone, Users
+    User as UserIcon, FileText, List, Printer, Download, RefreshCw, Phone, Users, Filter, ChevronDown
 } from "lucide-vue-next";
 import HelpDrawer from "@/components/HelpDrawer.vue";
 
 const receivableStore = useReceivableStore();
 const reportStore = useReportStore();
+const paymentMethodStore = usePaymentMethodStore();
+const orderStore = useOrderStore();
 
 const reportForm = ref({
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
@@ -48,11 +52,11 @@ const reportSummary = computed(() => {
     const data = reportStore.accountsReceivableData;
     const items = reportItems.value;
 
-    const totalBalance = (data && !Array.isArray(data) && data.totalBalance !== undefined)
-        ? Number(data.totalBalance || 0)
-        : items.reduce((s, i) => s + (i.balance || i.totalDue || i.amount || 0), 0);
+    const totalBalance = (data && !Array.isArray(data) && (data.totalOutstandingAmount !== undefined || data.totalBalance !== undefined))
+        ? Number(data.totalOutstandingAmount ?? data.totalBalance ?? 0)
+        : items.reduce((s, i) => s + (i.outstandingBalance ?? i.balance ?? i.totalDue ?? i.amount ?? 0), 0);
 
-    const totalClients = items.length || (data && data.totalClients) || 0;
+    const totalClients = items.length || (data && (data.totalClients ?? data.items?.length)) || 0;
 
     return { totalBalance, totalClients };
 });
@@ -76,7 +80,7 @@ const exportReportCsv = () => {
     items.forEach(item => {
         const name = `"${(item.customerName || item.clientName || '').replace(/"/g, '""')}"`;
         const phone = `"${(item.phone || '').replace(/"/g, '""')}"`;
-        const bal = item.balance ?? item.totalDue ?? item.amount ?? 0;
+        const bal = item.outstandingBalance ?? item.balance ?? item.totalDue ?? item.amount ?? 0;
         csvContent += `${name},${phone},${bal}\n`;
     });
 
@@ -114,8 +118,15 @@ const totalOutstanding = computed(() => {
 // Main View State
 const currentView = ref('list'); // 'list' | 'detail'
 
-// Details
+// Details & Expandable Invoices & Filtering
+const expandedRows = ref({});
+const isPrintingClient = ref(false);
 const showPaymentDialog = ref(false);
+const invoiceStatusFilter = ref('ALL'); // 'ALL' | 'UNPAID' | 'PAID'
+const showInvoiceDialog = ref(false);
+const selectedInvoice = ref(null);
+const loadingClientId = ref(null);
+
 const paymentForm = ref({
     clientId: null,
     saleInvoiceId: null,
@@ -124,16 +135,98 @@ const paymentForm = ref({
     notes: ""
 });
 
-onMounted(() => {
-    receivableStore.fetchReceivables();
+const filteredClientInvoices = computed(() => {
+    const invoices = receivableStore.clientDetails?.invoices || [];
+    if (invoiceStatusFilter.value === 'UNPAID') {
+        return invoices.filter(inv => inv.remainingAmount > 0 || inv.paymentStatus === 'UNPAID' || inv.paymentStatus === 'PARTIALLY_PAID');
+    }
+    if (invoiceStatusFilter.value === 'PAID') {
+        return invoices.filter(inv => inv.remainingAmount <= 0 && inv.paymentStatus === 'PAID');
+    }
+    return invoices;
 });
 
-const openClientDetails = async (clientId) => {
+const toggleRowExpansion = (target) => {
+    if (!target) return;
+    const invId = (typeof target === 'object' && target !== null) ? (target.id ?? target.invoiceNo) : target;
+
+    if (invId === undefined || invId === null) return;
+
+    const current = { ...(expandedRows.value || {}) };
+    const strKey = String(invId);
+    const numKey = typeof invId === 'number' ? invId : Number(invId);
+
+    if (current[strKey] || (!isNaN(numKey) && current[numKey])) {
+        delete current[strKey];
+        if (!isNaN(numKey)) delete current[numKey];
+    } else {
+        current[strKey] = true;
+        if (!isNaN(numKey)) current[numKey] = true;
+    }
+    expandedRows.value = current;
+};
+
+const openInvoiceDetailsDialog = (invoice) => {
+    if (!invoice) return;
+    selectedInvoice.value = invoice;
+    showInvoiceDialog.value = true;
+};
+
+const printSingleInvoice = () => {
+    window.print();
+};
+
+const printClientStatement = async () => {
+    isPrintingClient.value = true;
+    // Auto-expand all invoices for print view so all items are visible on print output
+    if (filteredClientInvoices.value) {
+        const expanded = {};
+        filteredClientInvoices.value.forEach(inv => {
+            const key = inv.id ?? inv.invoiceNo;
+            if (key) expanded[key] = true;
+        });
+        expandedRows.value = expanded;
+    }
+    await nextTick();
+    setTimeout(() => {
+        window.print();
+        setTimeout(() => {
+            isPrintingClient.value = false;
+        }, 500);
+    }, 150);
+};
+
+// Backend-driven payment methods for debt repayment (strictly excludes 'Credit' / 'On Account')
+const paymentMethodOptions = computed(() => {
+    const methods = paymentMethodStore.getMethodsForContext('debt_repayment') || [];
+    return methods.map(m => ({
+        label: m.name || m.label,
+        value: m.code || m.value
+    }));
+});
+
+onMounted(() => {
+    receivableStore.fetchReceivables();
+    paymentMethodStore.fetchPaymentMethods('debt_repayment');
+});
+
+const openClientDetails = async (target) => {
+    const clientId = (typeof target === 'object' && target !== null)
+        ? (target.clientId ?? target.id ?? target.customerId ?? target.Id)
+        : target;
+
+    if (clientId === undefined || clientId === null) {
+        console.warn("openClientDetails: Could not determine clientId from target", target);
+        return;
+    }
     try {
+        loadingClientId.value = clientId;
         await receivableStore.getClientReceivables(clientId);
         currentView.value = 'detail';
-    } catch {
-        // Error handled in store
+    } catch (err) {
+        console.error("Failed to open client details:", err);
+    } finally {
+        loadingClientId.value = null;
     }
 };
 
@@ -145,11 +238,13 @@ const backToList = () => {
 
 const openPaymentDialog = () => {
     if (!receivableStore.clientDetails) return;
+    paymentMethodStore.fetchPaymentMethods('debt_repayment');
+    const firstMethod = paymentMethodOptions.value[0]?.value || "Cash";
     paymentForm.value = {
         clientId: receivableStore.clientDetails.clientId,
         saleInvoiceId: null,
         amount: receivableStore.clientDetails.outstandingBalance || 0,
-        paymentMethod: "Cash",
+        paymentMethod: firstMethod,
         notes: ""
     };
     showPaymentDialog.value = true;
@@ -233,8 +328,8 @@ const getPaymentStatusConfig = (status) => {
                         <DollarSign :size="22" />
                     </div>
                     <div class="kpi-info">
-                        <span class="kpi-label text-pink-700 dark:text-pink-300">إجمالي المبالغ المستحقة لنا</span>
-                        <span class="kpi-value text-pink-600 dark:text-pink-400">{{ formatCurrency(totalOutstanding) }}</span>
+                        <span class="kpi-label text-pink-700 dark:text-pink-300">إجمالي المبالغ المستحقة لنا (من الـ Backend)</span>
+                        <span class="kpi-value text-pink-600 dark:text-pink-400">{{ formatCurrency(receivableStore.totalOutstandingAmount) }}</span>
                     </div>
                 </div>
             </div>
@@ -267,7 +362,12 @@ const getPaymentStatusConfig = (status) => {
                 >
                     <Column field="clientName" header="العميل" sortable>
                         <template #body="{ data }">
-                            <span class="font-bold">{{ data.clientName || 'عميل نقدي' }}</span>
+                            <span
+                                class="font-bold text-surface-900 dark:text-surface-100 hover:text-pink-600 cursor-pointer transition-colors"
+                                @click.stop="openClientDetails(data)"
+                            >
+                                {{ data.clientName || 'عميل نقدي' }}
+                            </span>
                         </template>
                     </Column>
                     <Column field="clientPhone" header="رقم الهاتف">
@@ -278,9 +378,21 @@ const getPaymentStatusConfig = (status) => {
                             <span class="font-bold text-red-500">{{ formatCurrency(data.outstandingBalance) }}</span>
                         </template>
                     </Column>
-                    <Column header="إجراءات" style="width: 100px; text-align: center">
+                    <Column header="إجراءات" style="min-width: 140px; text-align: center">
                         <template #body="{ data }">
-                            <Button icon="pi pi-eye" outlined rounded severity="secondary" @click="openClientDetails(data.clientId)" title="عرض التفاصيل وتسجيل دفعة" />
+                            <Button
+                                label="عرض الحساب"
+                                severity="info"
+                                outlined
+                                size="small"
+                                :loading="loadingClientId === (data.clientId || data.id)"
+                                @click.stop="openClientDetails(data)"
+                                title="عرض كشف حساب العميل والتفاصيل"
+                            >
+                                <template #icon>
+                                    <Eye :size="15" class="me-1" />
+                                </template>
+                            </Button>
                         </template>
                     </Column>
                 </DataTable>
@@ -394,10 +506,10 @@ const getPaymentStatusConfig = (status) => {
                                         </template>
                                     </Column>
 
-                                    <Column field="balance" header="المبلغ المستحق / الرصيد" sortable style="min-width: 160px">
+                                    <Column field="outstandingBalance" header="المبلغ المستحق / الرصيد" sortable style="min-width: 160px">
                                         <template #body="{ data }">
                                             <span class="font-bold text-pink-600 text-base">
-                                                {{ formatCurrency(data.balance ?? data.totalDue ?? data.amount ?? 0) }}
+                                                {{ formatCurrency(data.outstandingBalance ?? data.balance ?? data.totalDue ?? data.amount ?? 0) }}
                                             </span>
                                         </template>
                                     </Column>
@@ -415,16 +527,44 @@ const getPaymentStatusConfig = (status) => {
 
         <!-- Detail View -->
         <div v-else-if="currentView === 'detail' && receivableStore.clientDetails">
-            <div class="page-header">
+            <div class="page-header no-print">
                 <div class="flex items-center gap-3">
-                    <Button icon="pi pi-arrow-right" rounded text severity="secondary" @click="backToList" title="العودة للقائمة" />
+                    <Button rounded text severity="secondary" @click="backToList" title="العودة للقائمة">
+                        <template #icon>
+                            <ArrowRight :size="20" />
+                        </template>
+                    </Button>
                     <div>
                         <h1 class="page-title">{{ receivableStore.clientDetails.clientName || 'عميل' }}</h1>
-                        <p class="page-subtitle">تفاصيل الحساب المالي للعميل</p>
+                        <p class="page-subtitle">تفاصيل الحساب المالي للعميل والمستحقات الآجلة</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
-                    <Button label="تسجيل دفعة مستلمة" icon="pi pi-money-bill" severity="success" @click="openPaymentDialog" />
+                    <Button label="طباعة كشف حساب" severity="secondary" outlined @click="printClientStatement">
+                        <template #icon>
+                            <Printer :size="16" class="me-1" />
+                        </template>
+                    </Button>
+                    <Button label="تسجيل دفعة مستلمة" severity="success" @click="openPaymentDialog">
+                        <template #icon>
+                            <DollarSign :size="18" class="me-1" />
+                        </template>
+                    </Button>
+                </div>
+            </div>
+
+            <!-- Printable Official Client Header -->
+            <div class="print-official-header">
+                <div class="print-header-content">
+                    <div class="print-header-brand">
+                        <h2>كشف حساب تفصيلي للعميل (الذمم المدينة)</h2>
+                        <p>نظام إدارة المبيعات والمخازن (POS System)</p>
+                    </div>
+                    <div class="print-header-meta">
+                        <p><span>العميل:</span> {{ receivableStore.clientDetails.clientName || '—' }}</p>
+                        <p v-if="receivableStore.clientDetails.clientPhone"><span>الهاتف:</span> {{ receivableStore.clientDetails.clientPhone }}</p>
+                        <p><span>تاريخ كشف الحساب:</span> {{ new Date().toLocaleDateString('ar-EG') }}</p>
+                    </div>
                 </div>
             </div>
 
@@ -450,30 +590,75 @@ const getPaymentStatusConfig = (status) => {
                 </div>
             </div>
 
-            <div class="content-card">
-                <h2 class="font-bold text-lg p-4 border-b border-surface-200 dark:border-surface-700">سجل فواتير المبيعات (الآجلة)</h2>
+            <div class="content-card mb-6">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 border-b border-surface-200 dark:border-surface-700 bg-surface-50/50 dark:bg-surface-900/30 no-print">
+                    <div class="flex items-center gap-2">
+                        <h2 class="font-bold text-lg">سجل فواتير المبيعات (الآجلة) وتفاصيل الأصناف</h2>
+                        <span class="text-xs font-semibold text-surface-500">({{ filteredClientInvoices.length }} فاتورة)</span>
+                    </div>
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                        <label class="text-xs font-bold text-surface-600 dark:text-surface-400 select-none flex items-center gap-1">
+                            <Filter :size="14" /> تصفية الفواتير:
+                        </label>
+                        <Select
+                            v-model="invoiceStatusFilter"
+                            :options="[
+                                { label: 'جميع الفواتير', value: 'ALL' },
+                                { label: 'الفواتير غير المدفوعة فقط (المستحقات)', value: 'UNPAID' },
+                                { label: 'الفواتير المدفوعة بالكامل فقط', value: 'PAID' }
+                            ]"
+                            optionLabel="label"
+                            optionValue="value"
+                            size="small"
+                            class="w-full sm:w-64"
+                        />
+                    </div>
+                </div>
                 <DataTable
-                    :value="receivableStore.clientDetails.invoices"
+                    :value="filteredClientInvoices"
                     :loading="receivableStore.loading"
-                    paginator
-                    :rows="10"
-                    emptyMessage="لا يوجد فواتير"
+                    :paginator="!isPrintingClient"
+                    :rows="isPrintingClient ? 999999 : 10"
+                    v-model:expandedRows="expandedRows"
+                    dataKey="id"
+                    emptyMessage="لا يوجد فواتير مطابقة لخيارات التصفية"
                     stripedRows
                     class="main-table"
                 >
-                    <Column field="invoiceNo" header="رقم الفاتورة"></Column>
+                    <Column style="width: 3.5rem; text-align: center" class="no-print">
+                        <template #body="{ data }">
+                            <Button
+                                type="button"
+                                rounded
+                                text
+                                severity="secondary"
+                                size="small"
+                                @click.stop="toggleRowExpansion(data)"
+                                :title="expandedRows[data.id] ? 'إغلاق أصناف الفاتورة' : 'عرض أصناف الفاتورة'"
+                            >
+                                <template #icon>
+                                    <ChevronDown
+                                        :size="18"
+                                        class="transition-transform duration-200"
+                                        :class="{ 'rotate-180 text-pink-600 font-bold': expandedRows[data.id], 'text-surface-500': !expandedRows[data.id] }"
+                                    />
+                                </template>
+                            </Button>
+                        </template>
+                    </Column>
+                    <Column field="invoiceNo" header="رقم الفاتورة" sortable></Column>
                     <Column field="invoiceDate" header="التاريخ">
                         <template #body="{ data }">{{ formatDate(data.invoiceDate) }}</template>
                     </Column>
-                    <Column field="totalAmount" header="الإجمالي">
+                    <Column field="totalAmount" header="إجمالي الفاتورة">
                         <template #body="{ data }">{{ formatCurrency(data.totalAmount) }}</template>
                     </Column>
                     <Column field="paidAmount" header="المدفوع">
                         <template #body="{ data }">{{ formatCurrency(data.paidAmount) }}</template>
                     </Column>
-                    <Column field="remainingAmount" header="المتبقي">
+                    <Column field="remainingAmount" header="المتبقي المستحق">
                         <template #body="{ data }">
-                            <span class="font-bold" :class="data.remainingAmount > 0 ? 'text-red-500' : 'text-green-500'">
+                            <span class="font-bold text-base" :class="data.remainingAmount > 0 ? 'text-red-500' : 'text-green-500'">
                                 {{ formatCurrency(data.remainingAmount) }}
                             </span>
                         </template>
@@ -484,6 +669,97 @@ const getPaymentStatusConfig = (status) => {
                                 {{ getPaymentStatusConfig(data.paymentStatus).label }}
                             </span>
                         </template>
+                    </Column>
+                    <Column header="عرض وطباعة" style="min-width: 150px; text-align: center" class="no-print">
+                        <template #body="{ data }">
+                            <div class="flex items-center justify-center gap-1">
+                                <Button
+                                    label="عرض الأصناف"
+                                    size="small"
+                                    severity="info"
+                                    :loading="loadingInvoiceId === data.id"
+                                    @click.stop="openInvoiceDetailsDialog(data)"
+                                    title="عرض الأصناف ومحتويات الفاتورة"
+                                >
+                                    <template #icon>
+                                        <Eye :size="14" class="me-1" />
+                                    </template>
+                                </Button>
+                                <Button
+                                    icon="pi pi-print"
+                                    size="small"
+                                    severity="secondary"
+                                    outlined
+                                    @click="openInvoiceDetailsDialog(data)"
+                                    title="فتح ومعاينة الفاتورة منفردة"
+                                >
+                                    <template #icon>
+                                        <Printer :size="14" />
+                                    </template>
+                                </Button>
+                            </div>
+                        </template>
+                    </Column>
+                    <template #rowexpansion="{ data }">
+                        <div class="p-3 bg-surface-50 dark:bg-surface-900/50 rounded-lg my-1">
+                            <div class="flex items-center justify-between mb-2">
+                                <h4 class="font-bold text-xs text-surface-700 dark:text-surface-300">تفاصيل الأصناف والمنتجات المشتراة في الفاتورة ({{ data.invoiceNo }}):</h4>
+                                <Button label="معاينة وطباعة الفاتورة" size="small" text severity="primary" @click="openInvoiceDetailsDialog(data)" class="no-print">
+                                    <template #icon><Printer :size="14" class="me-1" /></template>
+                                </Button>
+                            </div>
+                            <DataTable :value="data.items" size="small" stripedRows responsiveLayout="scroll" v-if="data.items && data.items.length">
+                                <Column field="productName" header="اسم المنتج"></Column>
+                                <Column field="quantity" header="الكمية والوحدة">
+                                    <template #body="{ data: item }">
+                                        <span class="font-semibold">{{ item.quantity }}</span> {{ item.unitName || '' }}
+                                    </template>
+                                </Column>
+                                <Column field="unitPrice" header="سعر الوحدة">
+                                    <template #body="{ data: item }">{{ formatCurrency(item.unitPrice) }}</template>
+                                </Column>
+                                <Column field="totalPrice" header="الإجمالي">
+                                    <template #body="{ data: item }">
+                                        <span class="font-bold text-surface-900 dark:text-surface-100">{{ formatCurrency(item.totalPrice) }}</span>
+                                    </template>
+                                </Column>
+                            </DataTable>
+                            <div v-else class="text-xs text-surface-400 p-2">لا توجد تفاصيل أصناف لهذه الفاتورة</div>
+                        </div>
+                    </template>
+                </DataTable>
+            </div>
+
+            <!-- Payment History -->
+            <div class="content-card mt-4" v-if="receivableStore.clientDetails.paymentHistory && receivableStore.clientDetails.paymentHistory.length > 0">
+                <h2 class="font-bold text-lg p-4 border-b border-surface-200 dark:border-surface-700">سجل المدفوعات المستلمة</h2>
+                <DataTable
+                    :value="receivableStore.clientDetails.paymentHistory"
+                    :loading="receivableStore.loading"
+                    paginator
+                    :rows="10"
+                    emptyMessage="لا يوجد مدفوعات"
+                    stripedRows
+                    class="main-table"
+                >
+                    <Column field="paymentDate" header="تاريخ الدفع" sortable>
+                        <template #body="{ data }">{{ formatDate(data.paymentDate) }}</template>
+                    </Column>
+                    <Column field="amount" header="المبلغ">
+                        <template #body="{ data }">
+                            <span class="font-bold text-green-600">{{ formatCurrency(data.amount) }}</span>
+                        </template>
+                    </Column>
+                    <Column field="paymentMethod" header="طريقة الدفع">
+                        <template #body="{ data }">
+                            <span class="status-chip status-info">{{ data.paymentMethod }}</span>
+                        </template>
+                    </Column>
+                    <Column field="notes" header="ملاحظات">
+                        <template #body="{ data }">{{ data.notes || '—' }}</template>
+                    </Column>
+                    <Column field="createdBy" header="بواسطة">
+                        <template #body="{ data }">{{ data.createdBy || '—' }}</template>
                     </Column>
                 </DataTable>
             </div>
@@ -527,7 +803,7 @@ const getPaymentStatusConfig = (status) => {
                     <label class="font-bold required">طريقة الدفع</label>
                     <Select
                         v-model="paymentForm.paymentMethod"
-                        :options="[{label: 'نقدي (كاش)', value: 'Cash'}, {label: 'تحويل بنكي', value: 'BankTransfer'}, {label: 'بطاقة بنكية', value: 'Card'}]"
+                        :options="paymentMethodOptions"
                         optionLabel="label"
                         optionValue="value"
                         fluid
@@ -542,6 +818,94 @@ const getPaymentStatusConfig = (status) => {
                 <div class="flex justify-end gap-2">
                     <Button label="إلغاء" outlined severity="secondary" @click="showPaymentDialog = false" />
                     <Button label="تأكيد الاستلام" severity="success" @click="savePayment" :loading="receivableStore.loading" :disabled="!paymentForm.amount" />
+                </div>
+            </template>
+        </Dialog>
+
+        <!-- Single Invoice Details & Print Dialog -->
+        <Dialog
+            v-model:visible="showInvoiceDialog"
+            header="تفاصيل الفاتورة وأصنافها"
+            :style="{ width: '650px' }"
+            modal
+        >
+            <div v-if="selectedInvoice" class="p-2 flex flex-col gap-4">
+                <!-- Printable Official Single Invoice Header -->
+                <div class="print-official-header">
+                    <div class="print-header-content">
+                        <div class="print-header-brand">
+                            <h2>فاتورة مبيعات تفصيلية</h2>
+                            <p>نظام إدارة المبيعات والمخازن (POS System)</p>
+                        </div>
+                        <div class="print-header-meta">
+                            <p><span>العميل:</span> {{ receivableStore.clientDetails?.clientName || '—' }}</p>
+                            <p><span>رقم الفاتورة:</span> {{ selectedInvoice.invoiceNo }}</p>
+                            <p><span>تاريخ الفاتورة:</span> {{ formatDate(selectedInvoice.invoiceDate) }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Invoice Details Box -->
+                <div class="grid grid-cols-3 gap-3 bg-surface-50 dark:bg-surface-800 p-4 rounded-xl border border-surface-200 dark:border-surface-700">
+                    <div>
+                        <span class="text-xs text-surface-500 block">رقم الفاتورة</span>
+                        <span class="font-bold text-base text-pink-600">{{ selectedInvoice.invoiceNo }}</span>
+                    </div>
+                    <div>
+                        <span class="text-xs text-surface-500 block">تاريخ الفاتورة</span>
+                        <span class="font-medium text-sm">{{ formatDate(selectedInvoice.invoiceDate) }}</span>
+                    </div>
+                    <div>
+                        <span class="text-xs text-surface-500 block">حالة الدفع</span>
+                        <span class="status-chip" :class="getPaymentStatusConfig(selectedInvoice.paymentStatus).class">
+                            {{ getPaymentStatusConfig(selectedInvoice.paymentStatus).label }}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Items Table -->
+                <div>
+                    <h4 class="font-bold text-sm mb-2 text-surface-700 dark:text-surface-300">أصناف ومحتويات الفاتورة:</h4>
+                    <DataTable :value="selectedInvoice.items" stripedRows size="small" emptyMessage="لا توجد تفاصيل أصناف لهذه الفاتورة">
+                        <Column field="productName" header="اسم المنتج"></Column>
+                        <Column field="quantity" header="الكمية والوحدة">
+                            <template #body="{ data: item }">
+                                <span class="font-bold">{{ item.quantity }}</span> {{ item.unitName || '' }}
+                            </template>
+                        </Column>
+                        <Column field="unitPrice" header="سعر الوحدة">
+                            <template #body="{ data: item }">{{ formatCurrency(item.unitPrice) }}</template>
+                        </Column>
+                        <Column field="totalPrice" header="الإجمالي">
+                            <template #body="{ data: item }">
+                                <span class="font-bold text-surface-900 dark:text-surface-100">{{ formatCurrency(item.totalPrice) }}</span>
+                            </template>
+                        </Column>
+                    </DataTable>
+                </div>
+
+                <!-- Summary Breakdown -->
+                <div class="flex flex-col gap-1.5 border-t border-surface-200 dark:border-surface-700 pt-3 text-sm">
+                    <div class="flex justify-between">
+                        <span class="text-surface-600">إجمالي الفاتورة:</span>
+                        <span class="font-bold">{{ formatCurrency(selectedInvoice.totalAmount) }}</span>
+                    </div>
+                    <div class="flex justify-between text-blue-600">
+                        <span>المبلغ المدفوع:</span>
+                        <span class="font-bold">{{ formatCurrency(selectedInvoice.paidAmount) }}</span>
+                    </div>
+                    <div class="flex justify-between text-red-600 font-bold text-base border-t border-dashed pt-1">
+                        <span>المتبقي المستحق:</span>
+                        <span>{{ formatCurrency(selectedInvoice.remainingAmount) }}</span>
+                    </div>
+                </div>
+            </div>
+            <template #footer>
+                <div class="flex justify-between items-center w-full no-print">
+                    <Button label="طباعة الفاتورة" severity="primary" @click="printSingleInvoice">
+                        <template #icon><Printer :size="16" class="me-1" /></template>
+                    </Button>
+                    <Button label="إغلاق" outlined severity="secondary" @click="showInvoiceDialog = false" />
                 </div>
             </template>
         </Dialog>

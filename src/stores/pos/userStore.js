@@ -1,10 +1,12 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { apiGet, apiPost, apiPut, apiDelete } from "@/utilities/fetchApi";
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from "@/utilities/fetchApi";
 import { useToastStore } from "@/stores/base/toastStore";
 
 export const useUserStore = defineStore("user", () => {
     const users = ref([]);
+    const roles = ref([]);
+    const allPages = ref([]);
     const loading = ref(false);
     const error = ref(null);
     const toastStore = useToastStore();
@@ -14,11 +16,18 @@ export const useUserStore = defineStore("user", () => {
             id: apiUser.id,
             username: apiUser.username || apiUser.userName || "",
             role: apiUser.role || "",
+            roleId: apiUser.roleId || null,
             isActive: apiUser.isActive ?? true,
             createdAt: apiUser.createdAt || null,
+            pages: (apiUser.pages || []).map(p => ({
+                id: p.id,
+                name: p.name,
+                path: p.path,
+            })),
         };
     }
 
+    // ── Fetch Users ──
     async function fetchUsers() {
         loading.value = true;
         error.value = null;
@@ -35,6 +44,7 @@ export const useUserStore = defineStore("user", () => {
         }
     }
 
+    // ── Fetch Single User ──
     async function getUserById(id) {
         loading.value = true;
         error.value = null;
@@ -50,6 +60,41 @@ export const useUserStore = defineStore("user", () => {
         }
     }
 
+    // ── Fetch Roles with Pages ──
+    async function fetchRoles() {
+        try {
+            const response = await apiGet("/Users/roles");
+            roles.value = (response.data || []).map(r => ({
+                id: r.id,
+                name: r.name,
+                pages: (r.pages || []).map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    path: p.path,
+                })),
+            }));
+        } catch (err) {
+            console.error("Failed to fetch roles:", err);
+            toastStore.addErrorToast("حدث خطأ أثناء تحميل الأدوار");
+        }
+    }
+
+    // ── Fetch All System Pages ──
+    async function fetchAllPages() {
+        try {
+            const response = await apiGet("/Pages/all");
+            allPages.value = (response.data || []).map(p => ({
+                id: p.id,
+                name: p.name,
+                path: p.path,
+            }));
+        } catch (err) {
+            console.error("Failed to fetch all pages:", err);
+            toastStore.addErrorToast("حدث خطأ أثناء تحميل الصفحات");
+        }
+    }
+
+    // ── Create User ──
     async function createUser(userData) {
         loading.value = true;
         error.value = null;
@@ -73,6 +118,7 @@ export const useUserStore = defineStore("user", () => {
         }
     }
 
+    // ── Update User ──
     async function updateUser(id, userData) {
         loading.value = true;
         error.value = null;
@@ -98,6 +144,21 @@ export const useUserStore = defineStore("user", () => {
         }
     }
 
+    // ── Toggle User Active/Inactive ──
+    async function toggleUserActive(id) {
+        try {
+            await apiPatch(`/Users/${id}/toggle-active`, {}, false);
+            toastStore.addSuccessToast("تم تحديث حالة المستخدم");
+            await fetchUsers();
+        } catch (err) {
+            console.error("Failed to toggle user active:", err);
+            const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء تحديث حالة المستخدم";
+            toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء تحديث حالة المستخدم");
+            throw err;
+        }
+    }
+
+    // ── Delete User ──
     async function deleteUser(id) {
         loading.value = true;
         error.value = null;
@@ -115,14 +176,38 @@ export const useUserStore = defineStore("user", () => {
         }
     }
 
+    // ── Assign Pages to Role ──
+    async function assignPagesToRole(roleId, pageIds) {
+        loading.value = true;
+        error.value = null;
+        try {
+            await apiPost("/Pages/assign", { roleId, pageIds }, false);
+            toastStore.addSuccessToast("تم تحديث صلاحيات الدور بنجاح");
+            await fetchRoles();
+        } catch (err) {
+            console.error("Failed to assign pages:", err);
+            const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء تعيين الصلاحيات";
+            toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء تعيين الصلاحيات");
+            throw err;
+        } finally {
+            loading.value = false;
+        }
+    }
+
     return {
         users,
+        roles,
+        allPages,
         loading,
         error,
         fetchUsers,
         getUserById,
+        fetchRoles,
+        fetchAllPages,
         createUser,
         updateUser,
+        toggleUserActive,
         deleteUser,
+        assignPagesToRole,
     };
 });

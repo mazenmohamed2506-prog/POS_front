@@ -159,6 +159,14 @@ const openEditEmployee = (emp) => {
 };
 
 const saveEmployee = async () => {
+    if (!employeeForm.value.fullName || employeeForm.value.fullName.trim() === '') {
+        toastStore.addWarningToast("يرجى إدخال اسم الموظف");
+        return;
+    }
+    if (!employeeForm.value.position || employeeForm.value.position.trim() === '') {
+        toastStore.addWarningToast("يرجى إدخال المسمى الوظيفي");
+        return;
+    }
     if (employeeForm.value.email && !isValidEmail(employeeForm.value.email)) {
         toastStore.addErrorToast("البريد الإلكتروني غير صحيح (مثال: mail@example.com)");
         return;
@@ -168,12 +176,20 @@ const saveEmployee = async () => {
         return;
     }
     try {
+        let parsedHireDate;
+        if (employeeForm.value.hireDate) {
+            const d = new Date(employeeForm.value.hireDate);
+            parsedHireDate = isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+        } else {
+            parsedHireDate = new Date().toISOString();
+        }
+
         const payload = {
-            fullName: employeeForm.value.fullName,
-            position: employeeForm.value.position || "",
+            fullName: employeeForm.value.fullName.trim(),
+            position: employeeForm.value.position.trim(),
             phone: employeeForm.value.phone || "",
             email: employeeForm.value.email || "",
-            hireDate: employeeForm.value.hireDate ? new Date(employeeForm.value.hireDate).toISOString() : new Date().toISOString(),
+            hireDate: parsedHireDate,
             monthlySalary: Number(employeeForm.value.monthlySalary || 0),
             salaryType: employeeForm.value.salaryType || "Monthly",
             userId: employeeForm.value.userId ? Number(employeeForm.value.userId) : null
@@ -188,14 +204,19 @@ const saveEmployee = async () => {
         showEmployeeDialog.value = false;
     } catch (err) {
         console.error("Failed to save employee:", err);
+        // If it's a synchronous error or an error not handled by the store, show it
+        if (!(err?.response)) {
+            toastStore.addErrorToast("حدث خطأ غير متوقع: " + (err.message || ""));
+        }
     }
 };
 
-const openNewSalary = (employeeName = "", amount = 0) => {
+const openNewSalary = (employeeName = "", amount = 0, employeeId = null) => {
     const currentMonth = new Date().toLocaleDateString("ar-EG", { month: "long", year: "numeric" });
     salaryForm.value = {
         paymentDate: new Date().toISOString().split('T')[0],
         employeeName: employeeName || "",
+        employeeId: employeeId,
         amount: amount || 0,
         payPeriod: currentMonth,
         notes: ""
@@ -204,9 +225,20 @@ const openNewSalary = (employeeName = "", amount = 0) => {
 };
 
 const submitSalary = async () => {
+    if (!salaryForm.value.employeeId) {
+        toastStore.addWarningToast("يرجى اختيار الموظف");
+        return;
+    }
+    if (!salaryForm.value.amount || salaryForm.value.amount <= 0) {
+        toastStore.addWarningToast("يرجى إدخال مبلغ صحيح");
+        return;
+    }
     try {
         const payload = {
-            ...salaryForm.value,
+            employeeId: salaryForm.value.employeeId,
+            amount: Number(salaryForm.value.amount),
+            paymentMethod: "Cash", // Defaulting to Cash for now
+            notes: salaryForm.value.notes,
             paymentDate: new Date(salaryForm.value.paymentDate).toISOString()
         };
         await payrollStore.logSalary(payload);
@@ -450,7 +482,7 @@ const getSalaryTypeLabel = (type) => {
                                         <button class="action-edit-btn" @click="openEditEmployee(data)" title="تعديل الموظف">
                                             <Pencil :size="15" />
                                         </button>
-                                        <button class="action-pay-btn" @click="openNewSalary(data.fullName, data.monthlySalary)" title="تسجيل راتب">
+                                        <button class="action-pay-btn" @click="openNewSalary(data.fullName, data.monthlySalary, data.id)" title="تسجيل راتب">
                                             <DollarSign :size="15" />
                                         </button>
                                     </div>
@@ -662,7 +694,7 @@ const getSalaryTypeLabel = (type) => {
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div class="flex flex-col gap-1.5">
-                        <label class="font-bold text-sm">المسمى الوظيفي (المنصب)</label>
+                        <label class="font-bold text-sm required">المسمى الوظيفي (المنصب)</label>
                         <InputText v-model="employeeForm.position" fluid placeholder="مثال: كاشير / مدير فرع" />
                     </div>
                     <div class="flex flex-col gap-1.5">

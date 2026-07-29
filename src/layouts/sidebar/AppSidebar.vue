@@ -20,15 +20,16 @@ const baseStore = useBaseStore();
 const posStore = usePosStore();
 
 const model = computed(() => {
-    const role = posStore.role; // "Manager" | "Cashier"
+    const role = posStore.role; 
+    const authorizedPages = posStore.pages || [];
+
     return baseStore.menuModel.map((group) => {
         const filteredItems = group.items ? group.items.filter((item) => {
-            // Cashier can only see POS and Shifts
-            if (role === "Cashier") {
-                return item.to === "/pos" || item.to === "/shifts";
-            }
-            // Manager can see everything
-            return true;
+            // SuperAdmin can see everything regardless of the pages list (fail-safe)
+            if (role === "SuperAdmin") return true;
+            
+            // Check if the item's path is in the authorized pages list
+            return authorizedPages.includes(item.to);
         }) : [];
 
         return {

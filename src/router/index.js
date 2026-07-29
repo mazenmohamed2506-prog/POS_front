@@ -97,12 +97,6 @@ const router = createRouter({
                     meta: { roles: ["Manager", "SuperAdmin"] },
                 },
                 {
-                    path: "pages",
-                    name: "Pages",
-                    component: () => import("@/project/pos/PagesView.vue"),
-                    meta: { roles: ["Manager", "SuperAdmin"] },
-                },
-                {
                     path: "stock-count",
                     name: "StockCount",
                     component: () => import("@/project/pos/StockCountView.vue"),
@@ -168,14 +162,21 @@ router.beforeEach(async (to, from, next) => {
         return next({ name: "login" });
     }
 
-    // Role-based access
-    const allowedRoles = to.meta?.roles;
-    if (allowedRoles && !allowedRoles.includes(posStore.role)) {
-        // Cashier trying to access Manager page → redirect to POS
-        if (posStore.role === "Cashier") {
-            return next("/pos");
+    // Dynamic Role-based Page Access
+    if (posStore.role !== "SuperAdmin") {
+        const authorizedPages = posStore.pages || [];
+        const isPublicPath = to.path === "/" || to.name === "login" || to.name === "NotFound";
+        
+        if (!isPublicPath) {
+            const hasAccess = authorizedPages.includes(to.path);
+            if (!hasAccess) {
+                // Redirect to the first authorized page, or POS, or dashboard
+                if (authorizedPages.length > 0) {
+                    return next(authorizedPages[0]);
+                }
+                return next(posStore.role === "Cashier" ? "/pos" : "/dashboard");
+            }
         }
-        return next({ name: "NotFound" });
     }
 
     next();

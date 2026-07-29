@@ -37,6 +37,7 @@ export const usePosStore = defineStore("pos", () => {
     // ═══════════════════════════════════════════
     const user = ref(JSON.parse(localStorage.getItem("posUser") || "null"));
     const role = ref(localStorage.getItem("posRole") || ""); // "Manager" | "Cashier"
+    const pages = ref(JSON.parse(localStorage.getItem("posPages") || "[]")); // Array of authorized paths
     const isAuthenticated = computed(() => !!user.value);
 
     // ═══════════════════════════════════════════
@@ -96,7 +97,7 @@ export const usePosStore = defineStore("pos", () => {
         try {
             // Call the real API endpoint
             const response = await apiPost("/Auth/login", { username, password });
-            const data = response.data; // Response contains token, username, role
+            const data = response.data; // Response contains token, username, role, pages
 
             const userData = {
                 id: data.username,
@@ -107,8 +108,10 @@ export const usePosStore = defineStore("pos", () => {
 
             user.value = userData;
             role.value = userData.role;
+            pages.value = data.pages || [];
             localStorage.setItem("posUser", JSON.stringify(userData));
             localStorage.setItem("posRole", userData.role);
+            localStorage.setItem("posPages", JSON.stringify(pages.value));
             localStorage.setItem("accessToken", data.token);
 
             // Sync with base and auth stores
@@ -142,9 +145,11 @@ export const usePosStore = defineStore("pos", () => {
     function logout() {
         user.value = null;
         role.value = "";
+        pages.value = [];
         cart.value = [];
         localStorage.removeItem("posUser");
         localStorage.removeItem("posRole");
+        localStorage.removeItem("posPages");
         localStorage.removeItem("accessToken");
         localStorage.removeItem("currentShift");
 
@@ -160,50 +165,83 @@ export const usePosStore = defineStore("pos", () => {
     //  BARCODE / CART ACTIONS
     // ═══════════════════════════════════════════
     async function scanBarcode(code) {
+        if (!code) return null;
+        const cleanCode = code.trim().toLowerCase();
         loading.value = true;
         try {
-            // Try API barcode lookup first
-            const response = await apiGet(`/Products/barcode/${code}`);
-            const apiProd = response.data;
-            if (apiProd) {
-                const units = apiProd.productUnits || [];
-                const baseUnit = units.find(u => u.conversionFactor === 1) || units[0] || {};
-                return {
-                    id: apiProd.id,
-                    name: apiProd.name,
-                    sku: `PROD-${apiProd.id}`,
-                    barcode: baseUnit.barcode || code,
-                    price: baseUnit.price || 0,
-                    unit: baseUnit.unitName || "قطعة",
-                    category: apiProd.categoryName || "عام",
-                    isActive: apiProd.isActive ?? true,
-                    units: units.map(u => ({
-                        id: u.id,
-                        name: u.unitName,
-                        barcode: u.barcode,
-                        factor: u.conversionFactor,
-                        price: u.price
-                    }))
-                };
-            }
-            return null;
-        } catch {
-            // Fallback: search locally in loaded products
-            const found = products.value.find(
-                (p) => p.barcode === code || p.sku === code
+            // 1. Search locally in loaded products first (fast & offline capable)
+            const localDirectMatch = products.value.find(
+                (p) => (p.barcode && p.barcode.toLowerCase() === cleanCode) ||
+                       (p.sku && p.sku.toLowerCase() === cleanCode)
             );
-            if (found) return found;
+            if (localDirectMatch) return localDirectMatch;
 
             for (const p of products.value) {
-                const matchedUnit = p.units?.find((u) => u.barcode === code);
+                const matchedUnit = p.units?.find(
+                    (u) => u.barcode && u.barcode.toLowerCase() === cleanCode
+                );
                 if (matchedUnit) {
                     return {
                         ...p,
-                        price: matchedUnit.price || p.price * (matchedUnit.factor || 1),
-                        unit: matchedUnit.name
+                        price: matchedUnit.sellingPrice || matchedUnit.price || (p.price * (matchedUnit.factor || 1)),
+                        unit: matchedUnit.name || matchedUnit.unitName || p.unit,
+                        selectedUnitId: matchedUnit.id
                     };
                 }
             }
+
+            // 2. Try API barcode lookup if not found locally
+            try {
+                const response = await apiGet(`/Products/barcode/${encodeURIComponent(code.trim())}`);
+                const apiProd = response.data;
+                if (apiProd) {
+                    // Match with local products array by Id if available
+                    const localProd = products.value.find(p => p.id === apiProd.id);
+                    if (localProd) {
+                        const matchedUnit = localProd.units?.find(u =>
+                            (u.barcode && u.barcode.toLowerCase() === cleanCode) ||
+                            u.id === apiProd.productUnitId
+                        );
+                        if (matchedUnit) {
+                            return {
+                                ...localProd,
+                                price: matchedUnit.sellingPrice || matchedUnit.price || localProd.price,
+                                unit: matchedUnit.name || localProd.unit,
+                                selectedUnitId: matchedUnit.id
+                            };
+                        }
+                        return localProd;
+                    }
+
+                    // Format from API BarcodeSearchResponseDto
+                    const unitPrice = apiProd.sellingPrice ?? apiProd.price ?? 0;
+                    return {
+                        id: apiProd.id,
+                        name: apiProd.name,
+                        sku: apiProd.sku || `PROD-${apiProd.id}`,
+                        barcode: apiProd.barcode || code,
+                        price: unitPrice,
+                        costPrice: apiProd.costPrice ?? 0,
+                        unit: apiProd.unit || "قطعة",
+                        category: apiProd.category || "عام",
+                        isActive: true,
+                        units: [
+                            {
+                                id: apiProd.productUnitId,
+                                name: apiProd.unit || "قطعة",
+                                barcode: apiProd.barcode || code,
+                                factor: 1,
+                                price: unitPrice,
+                                sellingPrice: unitPrice,
+                                costPrice: apiProd.costPrice ?? 0
+                            }
+                        ]
+                    };
+                }
+            } catch {
+                // Not found on API
+            }
+
             return null;
         } finally {
             loading.value = false;
@@ -485,7 +523,7 @@ export const usePosStore = defineStore("pos", () => {
         fetchOrders, processReturn,
         fetchSettings, updateSettings,
         // Data
-        products, inventory, orders, purchases, settings, loading,
+        products, inventory, orders, purchases, settings, loading, pages,
         // Demo
         resetDemo
     };

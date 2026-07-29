@@ -1,14 +1,16 @@
 <script setup>
-import { ref, onMounted, nextTick, computed } from "vue";
+import { ref, onMounted, onUnmounted, nextTick, computed } from "vue";
 import { usePosStore } from "@/stores/pos/posStore";
 import { useToastStore } from "@/stores/base/toastStore";
-import { Barcode, Trash2, Plus, Minus, CreditCard, Banknote, ShoppingCart, XCircle, Search, RotateCcw, Receipt, Package, AlertTriangle, HelpCircle, User, Wallet, Printer, CheckCircle, UserPlus } from "lucide-vue-next";
+import { usePaymentMethodStore } from "@/stores/pos/paymentMethodStore";
+import { Barcode, Trash2, Plus, Minus, CreditCard, Banknote, ShoppingCart, XCircle, Search, RotateCcw, Receipt, Package, AlertTriangle, HelpCircle, User, Wallet, Printer, CheckCircle, UserPlus, ArrowRightLeft } from "lucide-vue-next";
 import HelpDrawer from "@/components/HelpDrawer.vue";
 import { apiGet, apiPost } from "@/utilities/fetchApi";
 
 const posStore = ref(null);
 posStore.value = usePosStore();
 const toastStore = useToastStore();
+const paymentMethodStore = usePaymentMethodStore();
 
 const barcodeInput = ref("");
 const barcodeInputRef = ref(null);
@@ -118,13 +120,82 @@ const focusBarcode = async () => {
     barcodeInputRef.value?.$el?.focus();
 };
 
+// Global keydown listener for DevTools blocking & auto-focusing barcode scanner search anywhere on POS page
+const handleGlobalKeyDown = (e) => {
+    // 1. Prevent F12 and DevTools shortcuts
+    if (
+        e.key === "F12" ||
+        (e.ctrlKey && e.shiftKey && ["i", "j", "c", "I", "J", "C"].includes(e.key))
+    ) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+    }
+
+    // 2. Ignore shortcut modifier keys
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+    // 3. Do not interfere if user is typing in another input (e.g. modals, textareas)
+    const target = e.target;
+    const inputEl = barcodeInputRef.value?.$el || barcodeInputRef.value;
+    const isOtherInput = target && (
+        target.tagName === 'TEXTAREA' ||
+        (target.tagName === 'INPUT' && target !== inputEl) ||
+        target.isContentEditable
+    );
+    if (isOtherInput) return;
+
+    // 4. Do not interfere if a modal is open
+    if (showAddCustomerDialog.value || showReturnDialog.value || showReceiptModal.value) return;
+
+    // 5. If in sell mode and search input is not currently focused, auto-focus it
+    if (posMode.value === 'sell' && inputEl && document.activeElement !== inputEl) {
+        if (e.key.length === 1 || e.key === 'Enter') {
+            inputEl.focus();
+        }
+    }
+};
+
 onMounted(() => {
+    window.addEventListener("keydown", handleGlobalKeyDown);
     posStore.value.fetchProducts();
     posStore.value.fetchInventory();
     posStore.value.fetchOrders();
+    paymentMethodStore.fetchPaymentMethods('pos_sale');
     fetchCustomers();
     focusBarcode();
 });
+
+onUnmounted(() => {
+    window.removeEventListener("keydown", handleGlobalKeyDown);
+});
+
+const posPaymentMethods = computed(() => {
+    return paymentMethodStore.getMethodsForContext('pos_sale');
+});
+
+const directPaymentMethods = computed(() => {
+    return posPaymentMethods.value.filter(pm => pm.type !== 'credit' && !pm.requiresCustomer);
+});
+
+const creditPaymentMethods = computed(() => {
+    return posPaymentMethods.value.filter(pm => pm.type === 'credit' || pm.requiresCustomer);
+});
+
+const hasCreditMethod = computed(() => {
+    return creditPaymentMethods.value.length > 0;
+});
+
+const getShortLabel = (pm) => {
+    const codeMap = {
+        'cash': 'نقدي',
+        'card': 'بطاقة',
+        'banktransfer': 'تحويل',
+        'bank_transfer': 'تحويل',
+        'credit': 'آجل'
+    };
+    return codeMap[pm.code.toLowerCase()] || pm.name;
+};
 
 // Categories list computed dynamically
 const categories = computed(() => {
@@ -142,11 +213,17 @@ const getShelfStock = (productId) => {
 const filteredProducts = computed(() => {
     return posStore.value.products.filter((p) => {
         const matchesCategory = selectedCategory.value === "الكل" || p.category === selectedCategory.value;
-        const matchesQuery = !searchQuery.value.trim() ||
-            p.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-            p.sku.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-            p.barcode.includes(searchQuery.value);
-        return matchesCategory && matchesQuery;
+        const q = searchQuery.value.trim().toLowerCase();
+        if (!q) return matchesCategory;
+
+        const matchesName = p.name ? p.name.toLowerCase().includes(q) : false;
+        const matchesSku = p.sku ? p.sku.toLowerCase().includes(q) : false;
+        const matchesBarcode = p.barcode ? p.barcode.toLowerCase().includes(q) : false;
+        const matchesUnitBarcode = Array.isArray(p.units)
+            ? p.units.some((u) => u.barcode && u.barcode.toLowerCase().includes(q))
+            : false;
+
+        return matchesCategory && (matchesName || matchesSku || matchesBarcode || matchesUnitBarcode);
     });
 });
 
@@ -191,13 +268,17 @@ const handleProductClick = (product) => {
     focusBarcode();
 };
 
-// Scan barcode
+// Scan barcode or submit search
 const handleScan = async () => {
-    const code = barcodeInput.value.trim();
+    const code = searchQuery.value.trim();
     if (!code) return;
 
     try {
-        const product = await posStore.value.scanBarcode(code);
+        let product = await posStore.value.scanBarcode(code);
+        if (!product && filteredProducts.value.length === 1) {
+            product = filteredProducts.value[0];
+        }
+
         if (product) {
             if (product.isActive === false) {
                 toastStore.addWarningToast(`المنتج "${product.name}" غير نشط ولا يمكن بيعه.`);
@@ -207,22 +288,39 @@ const handleScan = async () => {
                     toastStore.addWarningToast("المنتج غير متوفر على الرف");
                 } else {
                     posStore.value.addToCart(product);
+                    searchQuery.value = "";
                 }
             }
+        } else {
+            toastStore.addErrorToast("المنتج غير موجود");
         }
     } catch (err) {
-        toastStore.addErrorToast("المنتج غير موجود");
+        toastStore.addErrorToast("حدث خطأ أثناء مسح الباركود");
     }
-    barcodeInput.value = "";
     focusBarcode();
 };
 
 // Checkout
-const handleCheckout = async (method) => {
+const handleCheckout = async (methodCode) => {
     if (posStore.value.cart.length === 0) return;
+
+    const pm = posPaymentMethods.value.find(m => m.code.toLowerCase() === methodCode.toLowerCase()) || { code: methodCode, type: methodCode === 'credit' ? 'credit' : 'direct', requiresCustomer: methodCode === 'credit' };
+
+    // Credit payment requires a customer
+    if ((pm.type === 'credit' || pm.requiresCustomer || methodCode.toLowerCase() === 'credit') && !selectedCustomerId.value) {
+        toastStore.addWarningToast("يجب اختيار عميل أولاً لاستخدام البيع الآجل (على الحساب)");
+        return;
+    }
+
     try {
-        const order = await posStore.value.checkout(method);
+        const custId = selectedCustomerId.value || null;
+        const isCredit = pm.type === 'credit' || methodCode.toLowerCase() === 'credit';
+        const paidAmount = isCredit ? 0 : null;
+        const order = await posStore.value.checkout(pm.code, custId, paidAmount);
         if (order) {
+            completedOrder.value = order;
+            showReceiptModal.value = true;
+            selectedCustomerId.value = null;
             focusBarcode();
         }
     } catch (err) {
@@ -432,30 +530,45 @@ const getStockClass = (stock) => {
                 </div>
 
                 <div class="checkout-actions">
-                    <button
-                        class="pay-btn pay-cash"
-                        :disabled="posStore.cart.length === 0 || posStore.loading || !posStore.isShiftOpen"
-                        @click="handleCheckout('cash')"
-                    >
-                        <Banknote :size="20" />
-                        <span class="pay-btn-label">نقدي</span>
-                    </button>
-                    <button
-                        class="pay-btn pay-card"
-                        :disabled="posStore.cart.length === 0 || posStore.loading || !posStore.isShiftOpen"
-                        @click="handleCheckout('card')"
-                    >
-                        <CreditCard :size="20" />
-                        <span class="pay-btn-label">بطاقة</span>
-                    </button>
-                    <button
-                        class="pay-btn pay-credit"
-                        :disabled="posStore.cart.length === 0 || posStore.loading || !posStore.isShiftOpen"
-                        @click="handleCheckout('credit')"
-                    >
-                        <Wallet :size="20" />
-                        <span class="pay-btn-label">آجل</span>
-                    </button>
+                    <!-- Direct Payment Methods Row -->
+                    <div class="pay-row pay-row-direct">
+                        <button
+                            v-for="pm in directPaymentMethods"
+                            :key="pm.code"
+                            class="pay-btn"
+                            :class="{
+                                'pay-cash': pm.code.toLowerCase() === 'cash',
+                                'pay-card': pm.code.toLowerCase() === 'card',
+                                'pay-transfer': pm.code.toLowerCase() === 'banktransfer' || pm.code.toLowerCase() === 'bank_transfer'
+                            }"
+                            :disabled="posStore.cart.length === 0 || posStore.loading || !posStore.isShiftOpen"
+                            @click="handleCheckout(pm.code)"
+                            :title="pm.name"
+                        >
+                            <Banknote v-if="pm.code.toLowerCase() === 'cash'" :size="20" />
+                            <CreditCard v-else-if="pm.code.toLowerCase() === 'card'" :size="20" />
+                            <ArrowRightLeft v-else :size="20" />
+                            <span class="pay-btn-label">{{ getShortLabel(pm) }}</span>
+                        </button>
+                    </div>
+                    <!-- Credit / On-Account Row -->
+                    <div v-if="hasCreditMethod" class="pay-row pay-row-credit">
+                        <button
+                            v-for="pm in creditPaymentMethods"
+                            :key="pm.code"
+                            class="pay-btn pay-credit"
+                            :disabled="posStore.cart.length === 0 || posStore.loading || !posStore.isShiftOpen || !selectedCustomerId"
+                            @click="handleCheckout(pm.code)"
+                            :title="!selectedCustomerId ? 'يجب اختيار عميل أولاً' : pm.name"
+                        >
+                            <Wallet :size="18" />
+                            <span class="pay-btn-label">{{ getShortLabel(pm) }}</span>
+                            <span v-if="!selectedCustomerId" class="pay-credit-lock">🔒</span>
+                        </button>
+                    </div>
+                    <div v-if="hasCreditMethod && !selectedCustomerId" class="credit-hint">
+                        <span>⚠ اختر عميل لتفعيل البيع الآجل</span>
+                    </div>
                 </div>
 
                 <div v-if="!posStore.isShiftOpen" class="shift-warning">
@@ -493,15 +606,15 @@ const getStockClass = (stock) => {
 
             <!-- ═══ SELL MODE ═══ -->
             <template v-if="posMode === 'sell'">
-                <!-- Search & scan topbar -->
+                <!-- Unified Search & Scan Topbar -->
                 <div class="pos-search-bar">
-                    <form @submit.prevent="handleScan" class="search-group">
-                        <div class="search-field">
-                            <Barcode :size="16" class="search-icon" />
+                    <form @submit.prevent="handleScan" class="search-group" style="width: 100%;">
+                        <div class="search-field" style="width: 100%;">
+                            <Search :size="16" class="search-icon" />
                             <InputText
                                 ref="barcodeInputRef"
-                                v-model="barcodeInput"
-                                placeholder= "مسح الباركود..."
+                                v-model="searchQuery"
+                                placeholder="بحث بالاسم، الرمز، أو مسح الباركود..."
                                 autocomplete="off"
                                 size="small"
                                 fluid
@@ -509,18 +622,6 @@ const getStockClass = (stock) => {
                             />
                         </div>
                     </form>
-                    <div class="search-field">
-                        <Search :size="16" class="search-icon" />
-                        <InputText
-                            v-model="searchQuery"
-                            placeholder="بحث بالاسم أو الرمز..."
-                            
-                            autocomplete="off"
-                            size="small"
-                            fluid
-                            class="search-input"
-                        />
-                    </div>
                 </div>
 
                 <!-- Categories Tabs -->
@@ -1292,7 +1393,21 @@ const getStockClass = (stock) => {
 /* ── Payment Buttons ── */
 .checkout-actions {
     display: flex;
-    gap: 0.625rem;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.pay-row {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.pay-row-direct {
+    /* Direct payment methods row */
+}
+
+.pay-row-credit {
+    /* Credit / On-Account row */
 }
 
 .pay-btn {
@@ -1300,17 +1415,18 @@ const getStockClass = (stock) => {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.625rem;
-    padding: 1rem;
+    gap: 0.5rem;
+    padding: 0.875rem 0.75rem;
     border-radius: 0.75rem;
     border: none;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     font-weight: 800;
     cursor: pointer;
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     overflow: hidden;
     color: white;
+    letter-spacing: 0.01em;
 }
 
 .pay-btn::after {
@@ -1335,36 +1451,48 @@ const getStockClass = (stock) => {
     transform: translateY(0) scale(0.98);
 }
 
+/* Cash */
 .pay-cash {
     background: linear-gradient(135deg, #22c55e, #16a34a);
 }
-
 .pay-cash:not(:disabled):hover {
     box-shadow: 0 6px 20px rgba(34, 197, 94, 0.35);
 }
 
-.pay-card {
-    background: linear-gradient(135deg, #6366f1, #4f46e5);
-}
-
-.pay-card:not(:disabled):hover {
-    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35);
-}
-
-.pay-credit {
-    background: linear-gradient(135deg, #ec4899, #db2777);
-}
-
-.pay-credit:not(:disabled):hover {
-    box-shadow: 0 6px 20px rgba(236, 72, 153, 0.35);
-}
-
+/* Card */
 .pay-card {
     background: linear-gradient(135deg, #3b82f6, #2563eb);
 }
-
 .pay-card:not(:disabled):hover {
     box-shadow: 0 6px 20px rgba(59, 130, 246, 0.35);
+}
+
+/* Bank Transfer */
+.pay-transfer {
+    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+}
+.pay-transfer:not(:disabled):hover {
+    box-shadow: 0 6px 20px rgba(139, 92, 246, 0.35);
+}
+
+/* Credit / On-Account (آجل) */
+.pay-credit {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    font-size: 0.85rem;
+    padding: 0.65rem 0.75rem;
+}
+.pay-credit:not(:disabled):hover {
+    box-shadow: 0 6px 20px rgba(245, 158, 11, 0.35);
+}
+.pay-credit:disabled {
+    opacity: 0.3;
+}
+
+.pay-credit-lock {
+    position: relative;
+    z-index: 1;
+    font-size: 0.7rem;
+    margin-inline-start: 0.15rem;
 }
 
 .pay-btn-label {
@@ -1392,6 +1520,33 @@ const getStockClass = (stock) => {
     background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0.08));
     color: #fbbf24;
     border-color: rgba(245, 158, 11, 0.25);
+}
+
+/* ── Credit Hint ── */
+.credit-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #fce7f3, #fbcfe8);
+    color: #9d174d;
+    border: 1px solid #f9a8d4;
+    animation: fadeIn 0.3s ease;
+}
+
+.dark .credit-hint {
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.12), rgba(236, 72, 153, 0.08));
+    color: #f472b6;
+    border-color: rgba(236, 72, 153, 0.25);
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 /* ══════════════════════════════════════════════

@@ -4,10 +4,10 @@ import { apiGet, apiPost, apiPut } from "@/utilities/fetchApi";
 import { useToastStore } from "@/stores/base/toastStore";
 
 export const usePayrollStore = defineStore("payroll", () => {
-    // Required State
     const employees = ref([]);
     const slips = ref([]);
     const employeeSlips = ref([]);
+    const payments = ref([]);
     const isLoading = ref(false);
     const error = ref(null);
     const toastStore = useToastStore();
@@ -104,11 +104,12 @@ export const usePayrollStore = defineStore("payroll", () => {
         isLoading.value = true;
         error.value = null;
         try {
-            const response = await apiPost("/Payroll/payments", payload, false);
+            const response = await apiPost("/Payroll/direct-payment", payload, false);
             toastStore.addSuccessToast("تم تسجيل الدفعة بنجاح");
             
-            // Reactivity: Refresh slips list
+            // Reactivity: Refresh slips and payments list
             await fetchSlips();
+            await fetchPayments();
             
             return response.data;
         } catch (err) {
@@ -158,10 +159,28 @@ export const usePayrollStore = defineStore("payroll", () => {
         }
     }
 
+    // 7. fetchPayments (GET /api/Payroll/payments)
+    async function fetchPayments(params = {}) {
+        isLoading.value = true;
+        error.value = null;
+        try {
+            const response = await apiGet("/Payroll/payments", { params });
+            payments.value = response.data || [];
+            return response.data;
+        } catch (err) {
+            console.error("Failed to fetch salary payments:", err);
+            error.value = err.message || "Failed to load salary payments";
+            toastStore.addErrorToast("حدث خطأ أثناء تحميل سجل المدفوعات");
+            throw err;
+        } finally {
+            isLoading.value = false;
+        }
+    }
+
     // Aliases for compatibility with older UI components
-    const salaries = slips;
+    const salaries = payments;
     const loading = isLoading;
-    const fetchSalaries = fetchSlips;
+    const fetchSalaries = fetchPayments;
     const logSalary = processPayment; // Old API used to expect similar logging payload
 
     return {
@@ -169,6 +188,7 @@ export const usePayrollStore = defineStore("payroll", () => {
         employees,
         slips,
         employeeSlips,
+        payments,
         isLoading,
         error,
         
@@ -184,6 +204,7 @@ export const usePayrollStore = defineStore("payroll", () => {
         processPayment,
         fetchSlips,
         fetchEmployeeSlips,
+        fetchPayments,
 
         // Aliased actions
         fetchSalaries,

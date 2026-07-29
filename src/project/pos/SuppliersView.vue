@@ -54,11 +54,11 @@ const reportSummary = computed(() => {
     const data = reportStore.accountsPayableData;
     const items = reportItems.value;
 
-    const totalBalance = (data && !Array.isArray(data) && data.totalBalance !== undefined)
-        ? Number(data.totalBalance || 0)
-        : items.reduce((s, i) => s + (i.balance || i.totalDue || i.amount || 0), 0);
+    const totalBalance = (data && !Array.isArray(data) && (data.totalRemainingAmount !== undefined || data.totalBalance !== undefined))
+        ? Number(data.totalRemainingAmount ?? data.totalBalance ?? 0)
+        : items.reduce((s, i) => s + (i.remaining ?? i.balance ?? i.totalDue ?? i.amount ?? 0), 0);
 
-    const totalSuppliers = items.length || (data && data.totalSuppliers) || 0;
+    const totalSuppliers = items.length || (data && (data.totalSuppliers ?? data.items?.length)) || 0;
 
     return { totalBalance, totalSuppliers };
 });
@@ -82,7 +82,7 @@ const exportReportCsv = () => {
     items.forEach(item => {
         const name = `"${(item.supplierName || item.name || '').replace(/"/g, '""')}"`;
         const phone = `"${(item.phone || '').replace(/"/g, '""')}"`;
-        const bal = item.balance ?? item.totalDue ?? item.amount ?? 0;
+        const bal = item.remaining ?? item.balance ?? item.totalDue ?? item.amount ?? 0;
         csvContent += `${name},${phone},${bal}\n`;
     });
 
@@ -543,10 +543,10 @@ const confirmDelete = async (supplier) => {
                                     </template>
                                 </Column>
 
-                                <Column field="balance" header="المبلغ المستحق للمورد" sortable style="min-width: 170px">
+                                <Column field="remaining" header="المبلغ المستحق للمورد" sortable style="min-width: 170px">
                                     <template #body="{ data }">
                                         <span class="font-bold text-indigo-600 text-base">
-                                            {{ formatCurrency(data.balance ?? data.totalDue ?? data.amount ?? 0) }}
+                                            {{ formatCurrency(data.remaining ?? data.balance ?? data.totalDue ?? data.amount ?? 0) }}
                                         </span>
                                     </template>
                                 </Column>

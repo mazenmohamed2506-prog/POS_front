@@ -106,7 +106,7 @@ const props = defineProps({
     modelValue: { type: Boolean, default: false },
     pageTitle: { type: String, default: 'دليل الاستخدام' },
     pageSubtitle: { type: String, default: 'كل ما تحتاجه في مكان واحد' },
-    pageIcon: { type: Object, default: null },
+    pageIcon: { type: [Object, Function], default: null },
     headerGradient: { type: String, default: 'linear-gradient(135deg, #6366f1, #8b5cf6)' },
     sections: { type: Array, default: () => [] },
     tips: { type: Array, default: () => [] },

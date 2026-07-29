@@ -74,21 +74,24 @@ const filteredMonthlyReportItems = computed(() => {
 
 const monthlyReportSummary = computed(() => {
     const data = reportStore.monthlyFinancialData;
-    const items = monthlyReportItems.value;
+    if (!data) return { totalSales: 0, totalPurchases: 0, totalExpenses: 0, netIncome: 0 };
 
-    if (data && !Array.isArray(data) && data.totalSales !== undefined) {
-        return {
-            totalSales: Number(data.totalSales || 0),
-            totalPurchases: Number(data.totalPurchases || 0),
-            totalExpenses: Number(data.totalExpenses || 0),
-            netIncome: Number(data.netIncome ?? data.netProfit ?? 0)
-        };
+    if (!Array.isArray(data)) {
+        const totalSales = Number(data.salesRevenue ?? data.totalSales ?? 0);
+        const totalPurchases = Number(data.purchaseTotal ?? data.totalPurchases ?? 0);
+        const totalExpenses = data.generalExpenses !== undefined
+            ? (Number(data.generalExpenses || 0) + Number(data.salaryExpenses || 0) + Number(data.damagedInventoryLoss || 0))
+            : Number(data.totalExpenses || 0);
+        const netIncome = Number(data.netProfit ?? data.netIncome ?? 0);
+
+        return { totalSales, totalPurchases, totalExpenses, netIncome };
     }
 
-    const totalSales = items.reduce((s, i) => s + (i.totalSales || i.sales || 0), 0);
-    const totalPurchases = items.reduce((s, i) => s + (i.totalPurchases || i.purchases || 0), 0);
-    const totalExpenses = items.reduce((s, i) => s + (i.totalExpenses || i.expenses || 0), 0);
-    const netIncome = items.reduce((s, i) => s + (i.netIncome ?? i.netProfit ?? ((i.totalSales || 0) - (i.totalExpenses || 0))), 0);
+    const items = data.items || data.months || data.records || [];
+    const totalSales = items.reduce((s, i) => s + (i.salesRevenue || i.totalSales || i.sales || 0), 0);
+    const totalPurchases = items.reduce((s, i) => s + (i.purchaseTotal || i.totalPurchases || i.purchases || 0), 0);
+    const totalExpenses = items.reduce((s, i) => s + (i.totalExpenses || ((i.generalExpenses || 0) + (i.salaryExpenses || 0) + (i.damagedInventoryLoss || 0))), 0);
+    const netIncome = items.reduce((s, i) => s + (i.netProfit ?? i.netIncome ?? ((i.salesRevenue || i.totalSales || 0) - (i.totalExpenses || 0))), 0);
 
     return { totalSales, totalPurchases, totalExpenses, netIncome };
 });
@@ -219,7 +222,7 @@ const exportMonthlyReportCsv = () => {
                                 <h3 class="section-title">تكلفة البضاعة المباعة (COGS)</h3>
                                 <div class="report-row">
                                     <span>إجمالي تكلفة المبيعات</span>
-                                    <span class="font-bold text-red-500">- {{ formatCurrency(reportStore.profitLossData.totalCostOfGoodsSold) }}</span>
+                                    <span class="font-bold text-red-500">- {{ formatCurrency(reportStore.profitLossData.totalCogs ?? reportStore.profitLossData.totalCostOfGoodsSold ?? 0) }}</span>
                                 </div>
                             </div>
 
@@ -242,11 +245,11 @@ const exportMonthlyReportCsv = () => {
                                 </div>
                                 <div class="report-row indent">
                                     <span>رواتب الموظفين (Payroll)</span>
-                                    <span class="text-red-500">{{ formatCurrency(reportStore.profitLossData.totalPayroll) }}</span>
+                                    <span class="text-red-500">{{ formatCurrency(reportStore.profitLossData.totalSalaries ?? reportStore.profitLossData.totalPayroll ?? 0) }}</span>
                                 </div>
                                 <div class="report-row indent">
                                     <span>قيمة التوالف والفاقد (Damages)</span>
-                                    <span class="text-red-500">{{ formatCurrency(reportStore.profitLossData.totalDamagesCost) }}</span>
+                                    <span class="text-red-500">{{ formatCurrency(reportStore.profitLossData.totalDamagedLoss ?? reportStore.profitLossData.totalDamagesCost ?? 0) }}</span>
                                 </div>
                             </div>
 
