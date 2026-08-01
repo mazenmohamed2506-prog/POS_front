@@ -39,15 +39,15 @@ const monthlyReportForm = ref({
 
 const generatePnlReport = () => {
     reportStore.fetchProfitLossReport({
-        startDate: new Date(reportForm.value.startDate).toISOString(),
-        endDate: new Date(reportForm.value.endDate + 'T23:59:59').toISOString()
+        startDate: reportForm.value.startDate,
+        endDate: reportForm.value.endDate
     });
 };
 
 const generateMonthlyReport = () => {
     reportStore.fetchMonthlyFinancialReport({
-        startDate: new Date(monthlyReportForm.value.startDate).toISOString(),
-        endDate: new Date(monthlyReportForm.value.endDate + 'T23:59:59').toISOString()
+        startDate: monthlyReportForm.value.startDate,
+        endDate: monthlyReportForm.value.endDate
     });
 };
 
@@ -59,16 +59,34 @@ const monthlyReportItems = computed(() => {
     const data = reportStore.monthlyFinancialData;
     if (!data) return [];
     if (Array.isArray(data)) return data;
-    return data.items || data.months || data.records || [];
+    if (data.items && Array.isArray(data.items)) return data.items;
+
+    const totalExpenses = (data.generalExpenses || 0) + (data.salaryExpenses || 0) + (data.damagedInventoryLoss || 0);
+
+    return [
+        { category: 'المبيعات والإيرادات', item: 'إجمالي إيرادات المبيعات (Sales Revenue)', value: data.salesRevenue || 0, type: 'income', notes: `عدد عمليات البيع: ${data.salesCount || 0}` },
+        { category: 'المشتريات والموردين', item: 'إجمالي فواتير المشتريات (Purchases)', value: data.purchaseTotal || 0, type: 'expense', notes: 'إجمالي قيمة الفواتير الواردة' },
+        { category: 'المشتريات والموردين', item: 'إجمالي المدفوعات للموردين', value: data.supplierPaymentsTotal || 0, type: 'info', notes: 'سدادات خزانة للموردين' },
+        { category: 'المصروفات والرواتب', item: 'المصروفات التشغيلية والعمومية', value: data.generalExpenses || 0, type: 'expense', notes: 'إيجار، كهرباء، صيانة...' },
+        { category: 'المصروفات والرواتب', item: 'إجمالي رواتب الموظفين (Payroll)', value: data.salaryExpenses || 0, type: 'expense', notes: 'أجور مستحقة ومدفوعة' },
+        { category: 'المصروفات والرواتب', item: 'خسائر التوالف والفاقد (Damages)', value: data.damagedInventoryLoss || 0, type: 'expense', notes: 'تكلفة الأصناف التالفة' },
+        { category: 'المصروفات والرواتب', item: 'إجمالي التكاليف والمصروفات الكلية', value: totalExpenses, type: 'summary_expense', notes: 'مجموع المصروفات والرواتب والتوالف' },
+        { category: 'تقييم المخزون', item: 'قيمة مخزون بداية الفترة (Opening Stock)', value: data.openingInventoryValue || 0, type: 'info', notes: 'تقدير تاريخ بداية التقرير' },
+        { category: 'تقييم المخزون', item: 'قيمة مخزون نهاية الفترة (Closing Stock)', value: data.closingInventoryValue || 0, type: 'info', notes: 'تقدير تاريخ نهاية التقرير' },
+        { category: 'الحسابات الآجلة', item: 'مستحقات المبيعات الآجلة (Receivables)', value: data.customerOutstandingReceivables || 0, type: 'info', notes: 'ديون متبقية على العملاء' },
+        { category: 'الحسابات الآجلة', item: 'التزامات المشتريات الآجلة (Payables)', value: data.supplierOutstandingPayables || 0, type: 'info', notes: 'ديون متبقية للموردين' },
+        { category: 'صافي الربح', item: 'صافي الدخل / الربح النهائي (Net Profit)', value: data.netProfit || 0, type: (data.netProfit || 0) >= 0 ? 'profit' : 'loss', notes: 'النتيجة المالية النهائية للفترة' }
+    ];
 });
 
 const filteredMonthlyReportItems = computed(() => {
     const q = monthlySearchQuery.value.trim().toLowerCase();
     if (!q) return monthlyReportItems.value;
     return monthlyReportItems.value.filter(item =>
-        (item.monthName && item.monthName.toLowerCase().includes(q)) ||
-        (item.month && String(item.month).toLowerCase().includes(q)) ||
-        (item.year && String(item.year).includes(q))
+        (item.item && item.item.toLowerCase().includes(q)) ||
+        (item.category && item.category.toLowerCase().includes(q)) ||
+        (item.notes && item.notes.toLowerCase().includes(q)) ||
+        (item.monthName && item.monthName.toLowerCase().includes(q))
     );
 });
 
@@ -123,14 +141,22 @@ const exportMonthlyReportCsv = () => {
     const items = filteredMonthlyReportItems.value;
     if (items.length === 0) return;
 
-    let csvContent = "\uFEFFالشهر,المبيعات,المشتريات,المصروفات,صافي الدخل\n";
+    let csvContent = "\uFEFFالفئة,البيان / البند,القيمة المالية,ملاحظات\n";
     items.forEach(item => {
-        const month = `"${item.monthName || item.month || ''}"`;
-        const sales = item.totalSales || item.sales || 0;
-        const purchases = item.totalPurchases || item.purchases || 0;
-        const expenses = item.totalExpenses || item.expenses || 0;
-        const net = item.netIncome ?? item.netProfit ?? (sales - expenses);
-        csvContent += `${month},${sales},${purchases},${expenses},${net}\n`;
+        if (item.item) {
+            const cat = `"${item.category || ''}"`;
+            const label = `"${item.item || ''}"`;
+            const val = item.value || 0;
+            const notes = `"${item.notes || ''}"`;
+            csvContent += `${cat},${label},${val},${notes}\n`;
+        } else {
+            const month = `"${item.monthName || item.month || ''}"`;
+            const sales = item.totalSales || item.sales || 0;
+            const purchases = item.totalPurchases || item.purchases || 0;
+            const expenses = item.totalExpenses || item.expenses || 0;
+            const net = item.netIncome ?? item.netProfit ?? (sales - expenses);
+            csvContent += `${month},${sales},${purchases},${expenses},${net}\n`;
+        }
     });
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -372,47 +398,67 @@ const exportMonthlyReportCsv = () => {
                             <DataTable
                                 :value="filteredMonthlyReportItems"
                                 :paginator="!isPrintingMonthly"
-                                :rows="isPrintingMonthly ? 999999 : 10"
+                                :rows="isPrintingMonthly ? 999999 : 15"
                                 stripedRows
                                 removableSort
                                 responsiveLayout="scroll"
                             >
-                                <Column field="monthName" header="الشهر / الفترة" sortable style="min-width: 160px">
+                                <Column field="category" header="الفئة المالية" sortable style="min-width: 160px">
                                     <template #body="{ data }">
-                                        <span class="font-bold text-surface-900 dark:text-surface-100">
+                                        <span v-if="data.category" class="font-bold text-surface-700 dark:text-surface-300 text-sm">
+                                            {{ data.category }}
+                                        </span>
+                                        <span v-else class="font-bold text-surface-900 dark:text-surface-100">
                                             {{ data.monthName || data.month || 'الشهر الحالي' }} {{ data.year ? `(${data.year})` : '' }}
                                         </span>
                                     </template>
                                 </Column>
 
-                                <Column field="totalSales" header="المبيعات" sortable style="min-width: 140px">
+                                <Column field="item" header="البيان / البند" sortable style="min-width: 220px">
                                     <template #body="{ data }">
-                                        <span class="font-semibold text-green-600">
-                                            {{ formatCurrency(data.totalSales || data.sales || 0) }}
+                                        <span v-if="data.item" class="font-semibold text-surface-900 dark:text-surface-100">
+                                            {{ data.item }}
+                                        </span>
+                                        <span v-else class="text-surface-500">
+                                            -
                                         </span>
                                     </template>
                                 </Column>
 
-                                <Column field="totalPurchases" header="المشتريات" sortable style="min-width: 140px">
+                                <Column field="value" header="القيمة المالية" sortable style="min-width: 160px">
                                     <template #body="{ data }">
-                                        <span class="font-semibold text-blue-600">
-                                            {{ formatCurrency(data.totalPurchases || data.purchases || 0) }}
-                                        </span>
+                                        <template v-if="data.item">
+                                            <span v-if="data.type === 'income'" class="font-bold text-green-600">
+                                                {{ formatCurrency(data.value) }}
+                                            </span>
+                                            <span v-else-if="data.type === 'expense' || data.type === 'summary_expense'" class="font-bold text-red-500">
+                                                - {{ formatCurrency(data.value) }}
+                                            </span>
+                                            <span v-else-if="data.type === 'profit'" class="font-black text-emerald-600 text-base">
+                                                {{ formatCurrency(data.value) }}
+                                            </span>
+                                            <span v-else-if="data.type === 'loss'" class="font-black text-rose-600 text-base">
+                                                {{ formatCurrency(data.value) }}
+                                            </span>
+                                            <span v-else class="font-semibold text-surface-800 dark:text-surface-200">
+                                                {{ formatCurrency(data.value) }}
+                                            </span>
+                                        </template>
+                                        <template v-else>
+                                            <span class="font-semibold text-green-600">
+                                                {{ formatCurrency(data.totalSales || data.sales || 0) }}
+                                            </span>
+                                        </template>
                                     </template>
                                 </Column>
 
-                                <Column field="totalExpenses" header="المصروفات" sortable style="min-width: 140px">
+                                <Column field="notes" header="التفاصيل والملاحظات" style="min-width: 180px">
                                     <template #body="{ data }">
-                                        <span class="font-semibold text-red-500">
-                                            {{ formatCurrency(data.totalExpenses || data.expenses || 0) }}
+                                        <span v-if="data.notes" class="text-sm text-surface-500 dark:text-surface-400">
+                                            {{ data.notes }}
                                         </span>
-                                    </template>
-                                </Column>
-
-                                <Column field="netIncome" header="صافي الدخل" sortable style="min-width: 150px">
-                                    <template #body="{ data }">
-                                        <span class="font-bold text-base" :class="(data.netIncome ?? data.netProfit ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-500'">
-                                            {{ formatCurrency(data.netIncome ?? data.netProfit ?? ((data.totalSales || 0) - (data.totalExpenses || 0))) }}
+                                        <span v-else-if="data.netIncome !== undefined" class="font-bold" :class="(data.netIncome ?? data.netProfit ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-500'">
+                                            صافي الدخل: {{ formatCurrency(data.netIncome ?? data.netProfit ?? 0) }}
                                         </span>
                                     </template>
                                 </Column>
