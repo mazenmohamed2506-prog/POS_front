@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { apiGet, apiPost, apiPut } from "@/utilities/fetchApi";
+import { apiGet, apiPost, apiPut, apiDelete } from "@/utilities/fetchApi";
 import { useToastStore } from "@/stores/base/toastStore";
 
 export const usePayrollStore = defineStore("payroll", () => {
@@ -8,6 +8,7 @@ export const usePayrollStore = defineStore("payroll", () => {
     const slips = ref([]);
     const employeeSlips = ref([]);
     const payments = ref([]);
+    const adjustments = ref([]);
     const isLoading = ref(false);
     const error = ref(null);
     const toastStore = useToastStore();
@@ -76,16 +77,16 @@ export const usePayrollStore = defineStore("payroll", () => {
         }
     }
 
-    // 3. generateObligations (POST /api/Payroll/generate-obligations)
-    async function generateObligations() {
+    // 3. generateObligations (POST /api/Payroll/generate-obligations?month=X&year=Y)
+    async function generateObligations(month, year) {
         isLoading.value = true;
         error.value = null;
         try {
-            const response = await apiPost("/Payroll/generate-obligations", {}, false);
+            const response = await apiPost(`/Payroll/generate-obligations?month=${month}&year=${year}`, {}, false);
             toastStore.addSuccessToast("تم توليد التزامات الرواتب بنجاح");
             
-            // Reactivity: Refresh slips list
-            await fetchSlips();
+            // Reactivity: Refresh slips list for the same month
+            await fetchSlips(month, year);
             
             return response.data;
         } catch (err) {
@@ -99,7 +100,7 @@ export const usePayrollStore = defineStore("payroll", () => {
         }
     }
 
-    // 4. processPayment (POST /api/Payroll/payments)
+    // 4. processPayment (POST /api/Payroll/direct-payment) — direct payment by employeeId
     async function processPayment(payload) {
         isLoading.value = true;
         error.value = null;
@@ -107,8 +108,7 @@ export const usePayrollStore = defineStore("payroll", () => {
             const response = await apiPost("/Payroll/direct-payment", payload, false);
             toastStore.addSuccessToast("تم تسجيل الدفعة بنجاح");
             
-            // Reactivity: Refresh slips and payments list
-            await fetchSlips();
+            // Reactivity: Refresh payments list
             await fetchPayments();
             
             return response.data;
@@ -123,11 +123,37 @@ export const usePayrollStore = defineStore("payroll", () => {
         }
     }
 
-    // 5. fetchSlips (GET /api/Payroll/slips)
-    async function fetchSlips(params = {}) {
+    // 4b. recordSlipPayment (POST /api/Payroll/payments) — payment against a specific salarySlipId
+    async function recordSlipPayment(payload) {
         isLoading.value = true;
         error.value = null;
         try {
+            const response = await apiPost("/Payroll/payments", payload, false);
+            toastStore.addSuccessToast("تم تسجيل الدفعة على القسيمة بنجاح");
+            
+            // Reactivity: Refresh slips and payments
+            await fetchPayments();
+            
+            return response.data;
+        } catch (err) {
+            console.error("Failed to record slip payment:", err);
+            const detail = err.response?.data?.detail || err.response?.data?.message || err.response?.data || "حدث خطأ أثناء تسجيل الدفعة";
+            error.value = typeof detail === "string" ? detail : JSON.stringify(detail);
+            toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء تسجيل الدفعة");
+            throw err;
+        } finally {
+            isLoading.value = false;
+        }
+    }
+
+    // 5. fetchSlips (GET /api/Payroll/slips?month=X&year=Y)
+    async function fetchSlips(month, year) {
+        isLoading.value = true;
+        error.value = null;
+        try {
+            const params = {};
+            if (month) params.month = month;
+            if (year) params.year = year;
             const response = await apiGet("/Payroll/slips", { params });
             slips.value = response.data || [];
             return response.data;
@@ -177,11 +203,68 @@ export const usePayrollStore = defineStore("payroll", () => {
         }
     }
 
+    // 8. Adjustments Actions (GET, POST, DELETE /api/Payroll/adjustments)
+    async function fetchAdjustments(params = {}) {
+        isLoading.value = true;
+        error.value = null;
+        try {
+            const response = await apiGet("/Payroll/adjustments", { params });
+            adjustments.value = response.data || [];
+            return response.data;
+        } catch (err) {
+            console.error("Failed to fetch adjustments:", err);
+            error.value = err.message || "Failed to load adjustments";
+            toastStore.addErrorToast("حدث خطأ أثناء تحميل التعديلات (السلف/الخصومات/البونص)");
+            throw err;
+        } finally {
+            isLoading.value = false;
+        }
+    }
+
+    async function addAdjustment(payload) {
+        isLoading.value = true;
+        error.value = null;
+        try {
+            const response = await apiPost("/Payroll/adjustments", payload, false);
+            toastStore.addSuccessToast("تم تسجيل التعديل بنجاح");
+            
+            // Refresh adjustments
+            await fetchAdjustments();
+            return response.data;
+        } catch (err) {
+            console.error("Failed to add adjustment:", err);
+            const detail = err.response?.data?.detail || err.response?.data?.message || err.response?.data || "حدث خطأ أثناء تسجيل التعديل";
+            error.value = typeof detail === "string" ? detail : JSON.stringify(detail);
+            toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء تسجيل التعديل");
+            throw err;
+        } finally {
+            isLoading.value = false;
+        }
+    }
+
+    async function deleteAdjustment(id) {
+        isLoading.value = true;
+        error.value = null;
+        try {
+            const response = await apiDelete(`/Payroll/adjustments/${id}`, {}, false);
+            toastStore.addSuccessToast("تم حذف التعديل بنجاح");
+            
+            await fetchAdjustments();
+            return response.data;
+        } catch (err) {
+            console.error("Failed to delete adjustment:", err);
+            toastStore.addErrorToast("حدث خطأ أثناء حذف التعديل");
+            throw err;
+        } finally {
+            isLoading.value = false;
+        }
+    }
+
     // Aliases for compatibility with older UI components
     const salaries = payments;
     const loading = isLoading;
     const fetchSalaries = fetchPayments;
-    const logSalary = processPayment; // Old API used to expect similar logging payload
+    const logSalary = processPayment;
 
     return {
         // State
@@ -189,6 +272,7 @@ export const usePayrollStore = defineStore("payroll", () => {
         slips,
         employeeSlips,
         payments,
+        adjustments,
         isLoading,
         error,
         
@@ -202,9 +286,13 @@ export const usePayrollStore = defineStore("payroll", () => {
         updateEmployee,
         generateObligations,
         processPayment,
+        recordSlipPayment,
         fetchSlips,
         fetchEmployeeSlips,
         fetchPayments,
+        fetchAdjustments,
+        addAdjustment,
+        deleteAdjustment,
 
         // Aliased actions
         fetchSalaries,

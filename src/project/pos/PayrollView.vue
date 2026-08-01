@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, nextTick } from "vue";
+import { ref, computed, onMounted, nextTick, watch } from "vue";
 import { usePayrollStore } from "@/stores/pos/payrollStore";
 import { useReportStore } from "@/stores/pos/reportStore";
 import { useUserStore } from "@/stores/pos/userStore";
@@ -7,7 +7,9 @@ import { useToastStore } from "@/stores/base/toastStore";
 import { isValidEmail, isValidEgyptianPhone } from "@/utilities/validations";
 import {
     Users, Plus, Search, HelpCircle, FileText, List, Pencil, UserCheck,
-    UserPlus, DollarSign, Printer, Download, RefreshCw, Layers, TrendingUp
+    UserPlus, DollarSign, Printer, Download, RefreshCw, Layers, TrendingUp,
+    CalendarDays, CreditCard, Wallet, AlertTriangle, CheckCircle, Clock, CircleDot,
+    Coins, Gift, MinusCircle, Trash2, Scale
 } from "lucide-vue-next";
 import HelpDrawer from "@/components/HelpDrawer.vue";
 
@@ -28,6 +30,7 @@ const helpSections = [
         steps: [
             { title: 'قائمة الموظفين', desc: 'عرض وإدارة الموظفين، ربطهم بحسابات النظام، وتحديد راتب كل موظف ونوعه' },
             { title: 'ربط حساب المستخدم', desc: 'عند إضافة أو تعديل موظف يمكنك ربطه بحساب مستخدم في النظام (كاشير/مدير) أو تركه غير مرتبط' },
+            { title: 'القسائم الشهرية', desc: 'توليد التزامات الرواتب الشهرية لكل الموظفين النشطين وتتبع حالة الدفع لكل قسيمة' },
             { title: 'تسجيل الدفعات والتقارير', desc: 'سجل دفعات الرواتب واستخرج تقارير الرواتب بالفترات الزمنية' },
         ]
     }
@@ -35,15 +38,26 @@ const helpSections = [
 
 const helpTips = [
     'ربط الموظف بحساب المستخدم يتيح تتبع عمليات البيع والشيفتات الخاصة به',
-    'يمكن تعديل الراتب ونوعه (شهري / يومي / بالساعة) في أي وقت'
+    'يمكن تعديل الراتب ونوعه (شهري / يومي / بالساعة) في أي وقت',
+    'استخدم "توليد التزامات الشهر" لإنشاء قسائم رواتب شهرية لجميع الموظفين النشطين',
+    'يمكنك الدفع على أقساط — القسيمة تتبع المبلغ المدفوع والمتبقي تلقائياً'
 ];
 
 const employeeFilters = ref({ global: { value: "", matchMode: "contains" } });
 const slipFilters = ref({ global: { value: "", matchMode: "contains" } });
+const paymentLogFilters = ref({ global: { value: "", matchMode: "contains" } });
+
+// ── Payment Method Options ──
+const paymentMethodOptions = [
+    { label: "كاش (Cash)", value: "Cash" },
+    { label: "بطاقة (Card)", value: "Card" },
+    { label: "تحويل بنكي (Transfer)", value: "Transfer" }
+];
 
 // ── Employee Form & Modal ──
 const showEmployeeDialog = ref(false);
 const editingEmployee = ref(null);
+const showDeactivateConfirm = ref(false);
 const employeeForm = ref({
     fullName: "",
     position: "",
@@ -78,44 +92,283 @@ const userOptions = computed(() => {
     return list;
 });
 
-// ── Salary Log Form & Modal ──
+// ── Salary Slips (Monthly Obligations) ──
+const slipsMonth = ref(new Date().getMonth() + 1);
+const slipsYear = ref(new Date().getFullYear());
+
+const monthOptions = [
+    { label: "يناير", value: 1 }, { label: "فبراير", value: 2 },
+    { label: "مارس", value: 3 }, { label: "أبريل", value: 4 },
+    { label: "مايو", value: 5 }, { label: "يونيو", value: 6 },
+    { label: "يوليو", value: 7 }, { label: "أغسطس", value: 8 },
+    { label: "سبتمبر", value: 9 }, { label: "أكتوبر", value: 10 },
+    { label: "نوفمبر", value: 11 }, { label: "ديسمبر", value: 12 }
+];
+
+const yearOptions = computed(() => {
+    const currentYear = new Date().getFullYear();
+    const years = [];
+    for (let y = currentYear - 2; y <= currentYear + 1; y++) {
+        years.push({ label: String(y), value: y });
+    }
+    return years;
+});
+
+const loadSlips = () => {
+    payrollStore.fetchSlips(slipsMonth.value, slipsYear.value);
+    payrollStore.fetchAdjustments({ month: slipsMonth.value, year: slipsYear.value });
+};
+
+const generateMonthObligations = async () => {
+    try {
+        await payrollStore.generateObligations(slipsMonth.value, slipsYear.value);
+    } catch {
+        // Error handled in store
+    }
+};
+
+const getSlipStatusLabel = (status) => {
+    switch (status) {
+        case "Paid": return "مدفوع بالكامل";
+        case "PartiallyPaid": return "مدفوع جزئياً";
+        case "Pending": return "معلّق";
+        default: return status || "معلّق";
+    }
+};
+
+const getSlipStatusSeverity = (status) => {
+    switch (status) {
+        case "Paid": return "success";
+        case "PartiallyPaid": return "warn";
+        case "Pending": return "danger";
+        default: return "secondary";
+    }
+};
+
+const getSlipStatusIcon = (status) => {
+    switch (status) {
+        case "Paid": return CheckCircle;
+        case "PartiallyPaid": return CircleDot;
+        case "Pending": return Clock;
+        default: return Clock;
+    }
+};
+
+// ── Slip Payment Dialog ──
+const showSlipPaymentDialog = ref(false);
+const selectedSlip = ref(null);
+const slipPaymentForm = ref({
+    amount: 0,
+    paymentMethod: "Cash",
+    notes: ""
+});
+
+const openSlipPayment = (slip) => {
+    selectedSlip.value = slip;
+    const calcNet = Math.max(0, (slip.baseSalary || 0) + (slip.bonusAmount || 0) - (slip.deductionsAmount || 0) - (slip.advanceAmount || 0));
+    const net = (slip.bonusAmount || slip.deductionsAmount || slip.advanceAmount || calcNet) ? calcNet : (slip.baseSalary || 0);
+    const rem = Math.max(0, slip.remainingAmount !== undefined && slip.remainingAmount !== null ? slip.remainingAmount : (net - (slip.paidAmount || 0)));
+
+    slipPaymentForm.value = {
+        amount: rem > 0 ? rem : (slip.baseSalary || 0),
+        paymentMethod: "Cash",
+        notes: ""
+    };
+    showSlipPaymentDialog.value = true;
+};
+
+const submitSlipPayment = async () => {
+    if (!selectedSlip.value) return;
+    const amountVal = Number(slipPaymentForm.value.amount || 0);
+    if (amountVal <= 0) {
+        toastStore.addWarningToast("يرجى إدخال مبلغ صحيح أكبر من الصفر");
+        return;
+    }
+
+    try {
+        const payload = {
+            salarySlipId: Number(selectedSlip.value.id),
+            amount: amountVal,
+            paymentMethod: slipPaymentForm.value.paymentMethod || "Cash",
+            notes: slipPaymentForm.value.notes || null
+        };
+        await payrollStore.recordSlipPayment(payload);
+        showSlipPaymentDialog.value = false;
+        loadSlips();
+    } catch (err) {
+        console.error("Failed to submit slip payment:", err);
+        const errMsg = err?.response?.data?.detail || err?.response?.data?.message || (typeof err?.response?.data === "string" ? err.response.data : "") || err?.message || "حدث خطأ أثناء تسجيل الدفعة";
+        toastStore.addErrorToast(errMsg);
+    }
+};
+
+
+
+
+// ── Direct Salary Payment Dialog ──
 const showSalaryDialog = ref(false);
 const salaryForm = ref({
     paymentDate: new Date().toISOString().split('T')[0],
-    employeeName: "",
+    employeeId: null,
     amount: 0,
+    paymentMethod: "Cash",
     payPeriod: "",
     notes: ""
 });
 
 const employeeDropdownOptions = computed(() => {
     if (!payrollStore.employees || !payrollStore.employees.length) return [];
-    return payrollStore.employees.map(emp => ({
-        label: `${emp.fullName}${emp.position ? ` (${emp.position})` : ''}`,
-        value: emp.fullName,
-        salary: emp.monthlySalary
-    }));
+    return payrollStore.employees
+        .filter(emp => emp.isActive !== false)
+        .map(emp => ({
+            label: `${emp.fullName}${emp.position ? ` (${emp.position})` : ''}`,
+            value: emp.id,
+            salary: emp.monthlySalary
+        }));
 });
 
 const onEmployeeSelect = (event) => {
-    const selectedVal = event.value;
-    const foundEmp = payrollStore.employees.find(e => e.fullName === selectedVal);
+    const selectedId = event.value;
+    const foundEmp = payrollStore.employees.find(e => e.id === selectedId);
     if (foundEmp && foundEmp.monthlySalary) {
         salaryForm.value.amount = foundEmp.monthlySalary;
     }
 };
 
+const openNewSalary = (employeeName = "", amount = 0, employeeId = null) => {
+    const currentMonth = new Date().toLocaleDateString("ar-EG", { month: "long", year: "numeric" });
+    salaryForm.value = {
+        paymentDate: new Date().toISOString().split('T')[0],
+        employeeId: employeeId,
+        amount: amount || 0,
+        paymentMethod: "Cash",
+        payPeriod: currentMonth,
+        notes: ""
+    };
+    showSalaryDialog.value = true;
+};
+
+const submitSalary = async () => {
+    if (!salaryForm.value.employeeId) {
+        toastStore.addWarningToast("يرجى اختيار الموظف");
+        return;
+    }
+    if (!salaryForm.value.amount || salaryForm.value.amount <= 0) {
+        toastStore.addWarningToast("يرجى إدخال مبلغ صحيح");
+        return;
+    }
+    try {
+        const payload = {
+            employeeId: Number(salaryForm.value.employeeId),
+            amount: Number(salaryForm.value.amount),
+            paymentMethod: salaryForm.value.paymentMethod || "Cash",
+            notes: salaryForm.value.notes || null
+        };
+        await payrollStore.processPayment(payload);
+        showSalaryDialog.value = false;
+        // Refresh payments log if filter is active
+        loadPaymentsLog();
+    } catch {
+        // Error handled in store
+    }
+};
+
+// ── Payments Log (Tab 2) with date filter ──
+const paymentLogStartDate = ref(
+    new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
+);
+const paymentLogEndDate = ref(new Date().toISOString().split('T')[0]);
+
+const loadPaymentsLog = () => {
+    const params = {};
+    if (paymentLogStartDate.value) {
+        params.startDate = new Date(paymentLogStartDate.value).toISOString();
+    }
+    if (paymentLogEndDate.value) {
+        params.endDate = new Date(paymentLogEndDate.value + 'T23:59:59').toISOString();
+    }
+    payrollStore.fetchPayments(params);
+};
+
+// ── Report Tab ──
 const reportForm = ref({
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0]
 });
 
-onMounted(() => {
-    payrollStore.fetchEmployees();
-    payrollStore.fetchSalaries();
-    userStore.fetchUsers();
+const isPrintingReport = ref(false);
+const reportSearchQuery = ref("");
+
+const reportItems = computed(() => {
+    const data = reportStore.payrollData;
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    return data.items || data.payrolls || data.salaryPayments || data.records || [];
 });
 
+const filteredReportItems = computed(() => {
+    const q = reportSearchQuery.value.trim().toLowerCase();
+    if (!q) return reportItems.value;
+    return reportItems.value.filter(item =>
+        (item.employeeName && item.employeeName.toLowerCase().includes(q)) ||
+        (item.notes && item.notes.toLowerCase().includes(q))
+    );
+});
+
+const reportSummary = computed(() => {
+    const data = reportStore.payrollData;
+    const items = reportItems.value;
+
+    const totalAmount = (data && !Array.isArray(data) && data.totalAmount !== undefined)
+        ? Number(data.totalAmount || 0)
+        : items.reduce((s, i) => s + (i.amountPaid || i.amount || 0), 0);
+
+    const totalEmployees = new Set(items.map(i => i.employeeId || i.employeeName)).size || items.length;
+    const totalPayments = items.length;
+
+    return { totalAmount, totalEmployees, totalPayments };
+});
+
+const generateReport = () => {
+    reportStore.fetchPayrollReport({
+        startDate: new Date(reportForm.value.startDate).toISOString(),
+        endDate: new Date(reportForm.value.endDate + 'T23:59:59').toISOString()
+    });
+};
+
+const printReport = async () => {
+    isPrintingReport.value = true;
+    await nextTick();
+    setTimeout(() => {
+        window.print();
+        setTimeout(() => {
+            isPrintingReport.value = false;
+        }, 500);
+    }, 150);
+};
+
+const exportReportCsv = () => {
+    const items = filteredReportItems.value;
+    if (items.length === 0) return;
+
+    let csvContent = "\uFEFFالموظف,تاريخ الدفع,المبلغ المدفوع,طريقة الدفع,ملاحظات\n";
+    items.forEach(item => {
+        const emp = `"${(item.employeeName || '').replace(/"/g, '""')}"`;
+        const date = item.paymentDate ? new Date(item.paymentDate).toLocaleDateString('ar-EG') : '';
+        const amt = item.amountPaid || item.amount || 0;
+        const method = getPaymentMethodLabel(item.paymentMethod);
+        const notes = `"${(item.notes || '').replace(/"/g, '""')}"`;
+        csvContent += `${emp},${date},${amt},${method},${notes}\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `تقرير_الرواتب_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+};
+
+// ── Employee Actions ──
 const openNewEmployee = () => {
     editingEmployee.value = null;
     employeeForm.value = {
@@ -158,6 +411,31 @@ const openEditEmployee = (emp) => {
     showEmployeeDialog.value = true;
 };
 
+// Track the original isActive to detect changes
+const originalIsActive = ref(true);
+watch(showEmployeeDialog, (newVal) => {
+    if (newVal && editingEmployee.value) {
+        originalIsActive.value = editingEmployee.value.isActive ?? true;
+    }
+});
+
+const onIsActiveToggle = (newVal) => {
+    if (editingEmployee.value && originalIsActive.value === true && newVal === false) {
+        // Confirm deactivation
+        showDeactivateConfirm.value = true;
+    }
+};
+
+const confirmDeactivate = () => {
+    showDeactivateConfirm.value = false;
+    employeeForm.value.isActive = false;
+};
+
+const cancelDeactivate = () => {
+    showDeactivateConfirm.value = false;
+    employeeForm.value.isActive = true;
+};
+
 const saveEmployee = async () => {
     if (!employeeForm.value.fullName || employeeForm.value.fullName.trim() === '') {
         toastStore.addWarningToast("يرجى إدخال اسم الموظف");
@@ -187,8 +465,8 @@ const saveEmployee = async () => {
         const payload = {
             fullName: employeeForm.value.fullName.trim(),
             position: employeeForm.value.position.trim(),
-            phone: employeeForm.value.phone || "",
-            email: employeeForm.value.email || "",
+            phone: employeeForm.value.phone?.trim() || null,
+            email: employeeForm.value.email?.trim() || null,
             hireDate: parsedHireDate,
             monthlySalary: Number(employeeForm.value.monthlySalary || 0),
             salaryType: employeeForm.value.salaryType || "Monthly",
@@ -211,115 +489,124 @@ const saveEmployee = async () => {
     }
 };
 
-const openNewSalary = (employeeName = "", amount = 0, employeeId = null) => {
-    const currentMonth = new Date().toLocaleDateString("ar-EG", { month: "long", year: "numeric" });
-    salaryForm.value = {
-        paymentDate: new Date().toISOString().split('T')[0],
-        employeeName: employeeName || "",
+// ── Salary Adjustments (Advances, Deductions, Bonuses) ──
+const adjustmentFilters = ref({ global: { value: "", matchMode: "contains" } });
+const showAdjustmentDialog = ref(false);
+const adjustmentForm = ref({
+    employeeId: null,
+    type: "Advance",
+    amount: 0,
+    month: slipsMonth.value,
+    year: slipsYear.value,
+    isInstallment: false,
+    installmentMonths: 6,
+    reason: ""
+});
+
+const adjustmentTypeOptions = [
+    { label: "سُلفة (Advance)", value: "Advance" },
+    { label: "خصم (Deduction)", value: "Deduction" },
+    { label: "مكافأة / بونص (Bonus)", value: "Bonus" }
+];
+
+const openNewAdjustment = (type = "Advance", employeeId = null) => {
+    adjustmentForm.value = {
         employeeId: employeeId,
-        amount: amount || 0,
-        payPeriod: currentMonth,
-        notes: ""
+        type: type,
+        amount: 0,
+        month: slipsMonth.value || (new Date().getMonth() + 1),
+        year: slipsYear.value || new Date().getFullYear(),
+        isInstallment: false,
+        installmentMonths: 6,
+        reason: ""
     };
-    showSalaryDialog.value = true;
+    showAdjustmentDialog.value = true;
 };
 
-const submitSalary = async () => {
-    if (!salaryForm.value.employeeId) {
+const submitAdjustment = async () => {
+    if (!adjustmentForm.value.employeeId) {
         toastStore.addWarningToast("يرجى اختيار الموظف");
         return;
     }
-    if (!salaryForm.value.amount || salaryForm.value.amount <= 0) {
+    if (!adjustmentForm.value.amount || adjustmentForm.value.amount <= 0) {
         toastStore.addWarningToast("يرجى إدخال مبلغ صحيح");
+        return;
+    }
+    if (adjustmentForm.value.isInstallment && (!adjustmentForm.value.installmentMonths || adjustmentForm.value.installmentMonths < 2)) {
+        toastStore.addWarningToast("يرجى إدخال عدد أشهر التقسيط (شهرين على الأقل)");
         return;
     }
     try {
         const payload = {
-            employeeId: salaryForm.value.employeeId,
-            amount: Number(salaryForm.value.amount),
-            paymentMethod: "Cash", // Defaulting to Cash for now
-            notes: salaryForm.value.notes,
-            paymentDate: new Date(salaryForm.value.paymentDate).toISOString()
+            employeeId: Number(adjustmentForm.value.employeeId),
+            type: adjustmentForm.value.type,
+            amount: Number(adjustmentForm.value.amount),
+            month: Number(adjustmentForm.value.month),
+            year: Number(adjustmentForm.value.year),
+            isInstallment: adjustmentForm.value.isInstallment && adjustmentForm.value.type === "Advance",
+            installmentMonths: Number(adjustmentForm.value.installmentMonths || 1),
+            reason: adjustmentForm.value.reason || null
         };
-        await payrollStore.logSalary(payload);
-        showSalaryDialog.value = false;
-    } catch (err) {
-        console.error("Failed to submit salary:", err);
+        await payrollStore.addAdjustment(payload);
+        showAdjustmentDialog.value = false;
+        loadSlips();
+        loadAdjustments();
+    } catch {
+        // Error handled in store
     }
 };
 
-const generateReport = () => {
-    reportStore.fetchPayrollReport({
-        startDate: new Date(reportForm.value.startDate).toISOString(),
-        endDate: new Date(reportForm.value.endDate + 'T23:59:59').toISOString()
+const removeAdjustment = async (id) => {
+    try {
+        await payrollStore.deleteAdjustment(id);
+        loadSlips();
+        loadAdjustments();
+    } catch {
+        // Error handled in store
+    }
+};
+
+const loadAdjustments = () => {
+    payrollStore.fetchAdjustments({
+        month: slipsMonth.value,
+        year: slipsYear.value
     });
 };
 
-// ── Payroll Report Helpers ──
-const isPrintingReport = ref(false);
-const reportSearchQuery = ref("");
-
-const reportItems = computed(() => {
-    const data = reportStore.payrollData;
-    if (!data) return [];
-    if (Array.isArray(data)) return data;
-    return data.items || data.payrolls || data.salaryPayments || data.records || [];
-});
-
-const filteredReportItems = computed(() => {
-    const q = reportSearchQuery.value.trim().toLowerCase();
-    if (!q) return reportItems.value;
-    return reportItems.value.filter(item =>
-        (item.employeeName && item.employeeName.toLowerCase().includes(q)) ||
-        (item.notes && item.notes.toLowerCase().includes(q))
-    );
-});
-
-const reportSummary = computed(() => {
-    const data = reportStore.payrollData;
-    const items = reportItems.value;
-
-    const totalAmount = (data && !Array.isArray(data) && data.totalAmount !== undefined)
-        ? Number(data.totalAmount || 0)
-        : items.reduce((s, i) => s + (i.amountPaid || i.amount || 0), 0);
-
-    const totalEmployees = new Set(items.map(i => i.employeeId || i.employeeName)).size || items.length;
-    const totalPayments = items.length;
-
-    return { totalAmount, totalEmployees, totalPayments };
-});
-
-const printReport = async () => {
-    isPrintingReport.value = true;
-    await nextTick();
-    setTimeout(() => {
-        window.print();
-        setTimeout(() => {
-            isPrintingReport.value = false;
-        }, 500);
-    }, 150);
+const getAdjustmentTypeLabel = (type) => {
+    switch (type) {
+        case "Bonus": return "مكافأة / بونص";
+        case "Deduction": return "خصم";
+        case "Advance": return "سُلفة";
+        default: return type || "سُلفة";
+    }
 };
 
-const exportReportCsv = () => {
-    const items = filteredReportItems.value;
-    if (items.length === 0) return;
-
-    let csvContent = "\uFEFFالموظف,تاريخ الدفع,المبلغ المدفوع,ملاحظات\n";
-    items.forEach(item => {
-        const emp = `"${(item.employeeName || '').replace(/"/g, '""')}"`;
-        const date = item.paymentDate ? new Date(item.paymentDate).toLocaleDateString('ar-EG') : '';
-        const amt = item.amountPaid || item.amount || 0;
-        const notes = `"${(item.notes || '').replace(/"/g, '""')}"`;
-        csvContent += `${emp},${date},${amt},${notes}\n`;
-    });
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `تقرير_الرواتب_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
+const getAdjustmentTypeSeverity = (type) => {
+    switch (type) {
+        case "Bonus": return "success";
+        case "Deduction": return "danger";
+        case "Advance": return "warn";
+        default: return "info";
+    }
 };
 
+// ── Lifecycle & Watchers ──
+watch(activeTab, (newTab) => {
+    if (newTab === "slips") loadSlips();
+    if (newTab === "adjustments") loadAdjustments();
+    if (newTab === "payments") loadPaymentsLog();
+});
+
+onMounted(() => {
+    payrollStore.fetchEmployees();
+    loadSlips();
+    loadPaymentsLog();
+    loadAdjustments();
+    userStore.fetchUsers();
+});
+
+// ── Formatting Helpers ──
 const formatDate = (dateStr) => {
     if (!dateStr) return "—";
     return new Date(dateStr).toLocaleDateString("ar-EG", {
@@ -343,6 +630,29 @@ const getSalaryTypeLabel = (type) => {
         default: return type || "شهري";
     }
 };
+
+const getPaymentMethodLabel = (method) => {
+    switch (method) {
+        case "Cash": return "كاش";
+        case "Card": return "بطاقة";
+        case "Transfer": return "تحويل بنكي";
+        default: return method || "كاش";
+    }
+};
+
+const getPaymentMethodSeverity = (method) => {
+    switch (method) {
+        case "Cash": return "success";
+        case "Card": return "info";
+        case "Transfer": return "warn";
+        default: return "secondary";
+    }
+};
+
+const getMonthLabel = (m) => {
+    const found = monthOptions.find(opt => opt.value === m);
+    return found ? found.label : String(m);
+};
 </script>
 
 <template>
@@ -355,7 +665,7 @@ const getSalaryTypeLabel = (type) => {
                 </div>
                 <div>
                     <h1 class="page-title">الموظفون والرواتب</h1>
-                    <p class="page-subtitle">إدارة ملفات الموظفين، ربط الحسابات، وسجل الرواتب والمستحقات</p>
+                    <p class="page-subtitle">إدارة ملفات الموظفين، ربط الحسابات، القسائم الشهرية، وسجل الرواتب والمستحقات</p>
                 </div>
             </div>
             <div class="flex items-center gap-2">
@@ -370,6 +680,11 @@ const getSalaryTypeLabel = (type) => {
                 <Button label="تسجيل راتب" severity="secondary" outlined @click="() => openNewSalary()">
                     <template #icon>
                         <Plus :size="18" />
+                    </template>
+                </Button>
+                <Button label="سُلفة / خصم / مكافأة" severity="warn" outlined @click="() => openNewAdjustment('Advance')">
+                    <template #icon>
+                        <Coins :size="18" />
                     </template>
                 </Button>
             </div>
@@ -389,6 +704,8 @@ const getSalaryTypeLabel = (type) => {
         <Tabs v-model:value="activeTab">
             <TabList>
                 <Tab value="employees"><Users class="inline-block me-2" :size="16" />قائمة الموظفين</Tab>
+                <Tab value="slips"><Layers class="inline-block me-2" :size="16" />القسائم الشهرية</Tab>
+                <Tab value="adjustments"><Coins class="inline-block me-2" :size="16" />السُلف والخصومات والمكافآت</Tab>
                 <Tab value="data"><List class="inline-block me-2" :size="16" />سجل الرواتب</Tab>
                 <Tab value="report"><FileText class="inline-block me-2" :size="16" />تقرير الرواتب</Tab>
             </TabList>
@@ -492,29 +809,291 @@ const getSalaryTypeLabel = (type) => {
                     </div>
                 </TabPanel>
 
-                <!-- Tab 2: Salary Payments Log -->
+                <!-- Tab 2: Salary Slips (Monthly Obligations) -->
+                <TabPanel value="slips" class="px-0 py-4">
+                    <div class="content-card">
+                        <div class="filter-bar flex justify-between items-center gap-4 flex-wrap">
+                            <div class="flex items-center gap-3 flex-wrap">
+                                <div class="flex items-center gap-2">
+                                    <label class="text-sm font-bold text-surface-700 dark:text-surface-300 whitespace-nowrap">الشهر:</label>
+                                    <Select
+                                        v-model="slipsMonth"
+                                        :options="monthOptions"
+                                        optionLabel="label"
+                                        optionValue="value"
+                                        size="small"
+                                        class="w-32"
+                                    />
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <label class="text-sm font-bold text-surface-700 dark:text-surface-300 whitespace-nowrap">السنة:</label>
+                                    <Select
+                                        v-model="slipsYear"
+                                        :options="yearOptions"
+                                        optionLabel="label"
+                                        optionValue="value"
+                                        size="small"
+                                        class="w-28"
+                                    />
+                                </div>
+                                <Button label="تحميل القسائم" size="small" outlined @click="loadSlips">
+                                    <template #icon><RefreshCw :size="14" class="me-1" /></template>
+                                </Button>
+                            </div>
+                            <Button label="توليد التزامات الشهر" size="small" severity="warn" @click="generateMonthObligations" :loading="payrollStore.isLoading">
+                                <template #icon><Layers :size="14" class="me-1" /></template>
+                            </Button>
+                        </div>
+
+                        <DataTable
+                            :value="payrollStore.slips"
+                            :loading="payrollStore.isLoading"
+                            paginator
+                            :rows="15"
+                            v-model:filters="slipFilters"
+                            :globalFilterFields="['employeeName']"
+                            emptyMessage="لا توجد قسائم لهذا الشهر — اضغط 'توليد التزامات الشهر' لإنشائها"
+                            stripedRows
+                            removableSort
+                            class="main-table"
+                        >
+                            <Column field="employeeName" header="اسم الموظف" sortable style="min-width: 200px">
+                                <template #body="{ data }">
+                                    <span class="font-bold text-surface-900 dark:text-surface-0">{{ data.employeeName }}</span>
+                                </template>
+                            </Column>
+                            <Column header="الفترة" sortable style="min-width: 130px">
+                                <template #body="{ data }">
+                                    <span class="text-sm">{{ getMonthLabel(data.month) }} {{ data.year }}</span>
+                                </template>
+                            </Column>
+                            <Column field="baseSalary" header="الأساسي" sortable style="min-width: 120px">
+                                <template #body="{ data }">
+                                    <span class="text-surface-700 dark:text-surface-200">{{ formatCurrency(data.baseSalary) }}</span>
+                                </template>
+                            </Column>
+                            <Column field="bonusAmount" header="مكافآت (+)" sortable style="min-width: 110px">
+                                <template #body="{ data }">
+                                    <span :class="['font-bold', data.bonusAmount > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-surface-400']">
+                                        +{{ formatCurrency(data.bonusAmount || 0) }}
+                                    </span>
+                                </template>
+                            </Column>
+                            <Column field="deductionsAmount" header="خصومات (-)" sortable style="min-width: 110px">
+                                <template #body="{ data }">
+                                    <span :class="['font-bold', data.deductionsAmount > 0 ? 'text-red-500' : 'text-surface-400']">
+                                        -{{ formatCurrency(data.deductionsAmount || 0) }}
+                                    </span>
+                                </template>
+                            </Column>
+                            <Column field="advanceAmount" header="سُلف (-)" sortable style="min-width: 110px">
+                                <template #body="{ data }">
+                                    <span :class="['font-bold', data.advanceAmount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-surface-400']">
+                                        -{{ formatCurrency(data.advanceAmount || 0) }}
+                                    </span>
+                                </template>
+                            </Column>
+                            <Column field="netSalary" header="الصافي المستحق" sortable style="min-width: 140px">
+                                <template #body="{ data }">
+                                    <span class="font-bold text-blue-600 dark:text-blue-400 text-base">
+                                        {{ formatCurrency(data.netSalary || (data.baseSalary + (data.bonusAmount || 0) - (data.deductionsAmount || 0) - (data.advanceAmount || 0))) }}
+                                    </span>
+                                </template>
+                            </Column>
+                            <Column field="paidAmount" header="المدفوع" sortable style="min-width: 130px">
+                                <template #body="{ data }">
+                                    <span class="font-bold text-emerald-600 dark:text-emerald-400">{{ formatCurrency(data.paidAmount) }}</span>
+                                </template>
+                            </Column>
+                            <Column field="remainingAmount" header="المتبقي" sortable style="min-width: 130px">
+                                <template #body="{ data }">
+                                    <span :class="['font-bold', data.remainingAmount > 0 ? 'text-red-500' : 'text-surface-400']">
+                                        {{ formatCurrency(data.remainingAmount) }}
+                                    </span>
+                                </template>
+                            </Column>
+                            <Column field="status" header="الحالة" sortable style="min-width: 150px">
+                                <template #body="{ data }">
+                                    <div class="flex items-center gap-1.5">
+                                        <component :is="getSlipStatusIcon(data.status)" :size="14" />
+                                        <Tag
+                                            :value="getSlipStatusLabel(data.status)"
+                                            :severity="getSlipStatusSeverity(data.status)"
+                                            class="text-xs"
+                                        />
+                                    </div>
+                                </template>
+                            </Column>
+                            <Column header="إجراء" style="min-width: 120px; text-align: center">
+                                <template #body="{ data }">
+                                    <Button
+                                        v-if="data.status !== 'Paid'"
+                                        label="تسجيل دفعة"
+                                        size="small"
+                                        severity="success"
+                                        outlined
+                                        @click="openSlipPayment(data)"
+                                    >
+                                        <template #icon><DollarSign :size="14" class="me-1" /></template>
+                                    </Button>
+                                    <Tag v-else value="✓ مكتمل" severity="success" class="text-xs" />
+                                </template>
+                            </Column>
+                        </DataTable>
+                    </div>
+                </TabPanel>
+
+                <!-- Tab: Salary Adjustments (Advances, Deductions, Bonuses) -->
+                <TabPanel value="adjustments" class="px-0 py-4">
+                    <div class="content-card">
+                        <div class="filter-bar flex justify-between items-center gap-4 flex-wrap">
+                            <div class="flex items-center gap-3 flex-wrap flex-1">
+                                <div class="relative w-full max-w-xs">
+                                    <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400" />
+                                    <InputText
+                                        v-model="adjustmentFilters.global.value"
+                                        placeholder="بحث باسم الموظف أو السبب..."
+                                        class="ps-9 w-full"
+                                        size="small"
+                                    />
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <label class="text-sm font-bold text-surface-700 dark:text-surface-300 whitespace-nowrap">الشهر:</label>
+                                    <Select
+                                        v-model="slipsMonth"
+                                        :options="monthOptions"
+                                        optionLabel="label"
+                                        optionValue="value"
+                                        size="small"
+                                        class="w-32"
+                                        @change="loadAdjustments"
+                                    />
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <label class="text-sm font-bold text-surface-700 dark:text-surface-300 whitespace-nowrap">السنة:</label>
+                                    <Select
+                                        v-model="slipsYear"
+                                        :options="yearOptions"
+                                        optionLabel="label"
+                                        optionValue="value"
+                                        size="small"
+                                        class="w-28"
+                                        @change="loadAdjustments"
+                                    />
+                                </div>
+                                <Button label="تحديث" size="small" outlined @click="loadAdjustments">
+                                    <template #icon><RefreshCw :size="14" class="me-1" /></template>
+                                </Button>
+                            </div>
+                            <Button label="تسجيل سُلفة / خصم / مكافأة" size="small" severity="warn" @click="() => openNewAdjustment()">
+                                <template #icon><Coins :size="14" class="me-1" /></template>
+                            </Button>
+                        </div>
+
+                        <DataTable
+                            :value="payrollStore.adjustments"
+                            :loading="payrollStore.isLoading"
+                            paginator
+                            :rows="15"
+                            v-model:filters="adjustmentFilters"
+                            :globalFilterFields="['employeeName', 'reason', 'type']"
+                            emptyMessage="لا توجد سُلف أو خصومات أو مكافآت مسجلة لهذا الشهر"
+                            stripedRows
+                            removableSort
+                            class="main-table"
+                        >
+                            <Column field="id" header="#" sortable style="min-width: 70px">
+                                <template #body="{ data }">
+                                    <span class="font-mono text-surface-400 text-sm">{{ data.id }}</span>
+                                </template>
+                            </Column>
+                            <Column field="employeeName" header="اسم الموظف" sortable style="min-width: 180px">
+                                <template #body="{ data }">
+                                    <span class="font-bold text-surface-900 dark:text-surface-0">{{ data.employeeName }}</span>
+                                </template>
+                            </Column>
+                            <Column field="type" header="نوع التعديل" sortable style="min-width: 140px">
+                                <template #body="{ data }">
+                                    <Tag
+                                        :value="getAdjustmentTypeLabel(data.type)"
+                                        :severity="getAdjustmentTypeSeverity(data.type)"
+                                        class="text-xs font-bold"
+                                    />
+                                </template>
+                            </Column>
+                            <Column field="amount" header="المبلغ" sortable style="min-width: 130px">
+                                <template #body="{ data }">
+                                    <span :class="[
+                                        'font-bold text-base',
+                                        data.type === 'Bonus' ? 'text-emerald-600 dark:text-emerald-400' :
+                                        data.type === 'Deduction' ? 'text-red-500' : 'text-amber-600 dark:text-amber-400'
+                                    ]">
+                                        {{ data.type === 'Bonus' ? '+' : '-' }}{{ formatCurrency(data.amount) }}
+                                    </span>
+                                </template>
+                            </Column>
+                            <Column header="الشهر المستهدف" sortable style="min-width: 130px">
+                                <template #body="{ data }">
+                                    <span class="text-sm font-semibold">{{ getMonthLabel(data.month) }} {{ data.year }}</span>
+                                </template>
+                            </Column>
+                            <Column field="reason" header="السبب / التفاصيل" style="min-width: 200px">
+                                <template #body="{ data }">
+                                    <span class="text-sm text-surface-700 dark:text-surface-300">{{ data.reason || '—' }}</span>
+                                </template>
+                            </Column>
+                            <Column field="date" header="تاريخ التسجيل" sortable style="min-width: 130px">
+                                <template #body="{ data }">
+                                    <span class="text-xs text-surface-500">{{ formatDate(data.date) }}</span>
+                                </template>
+                            </Column>
+                            <Column header="حذف" style="min-width: 90px; text-align: center">
+                                <template #body="{ data }">
+                                    <button class="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors" title="إلغاء وحذف التعديل" @click="removeAdjustment(data.id)">
+                                        <Trash2 :size="16" />
+                                    </button>
+                                </template>
+                            </Column>
+                        </DataTable>
+                    </div>
+                </TabPanel>
+
+                <!-- Tab 3: Salary Payments Log -->
                 <TabPanel value="data" class="px-0 py-4">
                     <div class="content-card">
-                        <div class="filter-bar">
-                            <div class="relative w-full max-w-xs">
-                                <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400" />
-                                <InputText
-                                    v-model="slipFilters.global.value"
-                                    placeholder="بحث باسم الموظف أو الفترة..."
-                                    class="ps-9 w-full"
-                                    size="small"
-                                />
+                        <div class="filter-bar flex justify-between items-center gap-4 flex-wrap">
+                            <div class="flex items-center gap-3 flex-wrap flex-1">
+                                <div class="relative w-full max-w-xs">
+                                    <Search :size="16" class="absolute start-3 top-1/2 -translate-y-1/2 text-surface-400" />
+                                    <InputText
+                                        v-model="paymentLogFilters.global.value"
+                                        placeholder="بحث باسم الموظف..."
+                                        class="ps-9 w-full"
+                                        size="small"
+                                    />
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <label class="text-sm font-bold text-surface-700 dark:text-surface-300 whitespace-nowrap">من:</label>
+                                    <InputText type="date" v-model="paymentLogStartDate" size="small" class="w-36" />
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <label class="text-sm font-bold text-surface-700 dark:text-surface-300 whitespace-nowrap">إلى:</label>
+                                    <InputText type="date" v-model="paymentLogEndDate" size="small" class="w-36" />
+                                </div>
+                                <Button label="تحميل" size="small" outlined @click="loadPaymentsLog">
+                                    <template #icon><RefreshCw :size="14" class="me-1" /></template>
+                                </Button>
                             </div>
                         </div>
 
                         <DataTable
-                            :value="payrollStore.salaries"
-                            :loading="payrollStore.loading"
+                            :value="payrollStore.payments"
+                            :loading="payrollStore.isLoading"
                             paginator
                             :rows="15"
-                            v-model:filters="slipFilters"
+                            v-model:filters="paymentLogFilters"
                             :globalFilterFields="['employeeName', 'payPeriod']"
-                            emptyMessage="لا يوجد رواتب مسجلة"
+                            emptyMessage="لا يوجد رواتب مسجلة في هذه الفترة"
                             stripedRows
                             removableSort
                             class="main-table"
@@ -533,13 +1112,22 @@ const getSalaryTypeLabel = (type) => {
                                     <span class="font-bold text-red-500">{{ formatCurrency(data.amount) }}</span>
                                 </template>
                             </Column>
+                            <Column field="paymentMethod" header="طريقة الدفع" sortable style="min-width: 120px">
+                                <template #body="{ data }">
+                                    <Tag
+                                        :value="getPaymentMethodLabel(data.paymentMethod)"
+                                        :severity="getPaymentMethodSeverity(data.paymentMethod)"
+                                        class="text-xs"
+                                    />
+                                </template>
+                            </Column>
                             <Column field="notes" header="ملاحظات"></Column>
                             <Column field="createdBy" header="بواسطة"></Column>
                         </DataTable>
                     </div>
                 </TabPanel>
 
-                <!-- Tab 3: Payroll Report -->
+                <!-- Tab 4: Payroll Report -->
                 <TabPanel value="report" class="px-0 py-4">
                     <!-- Report Controls Card -->
                     <div class="content-card no-print p-4 mb-4">
@@ -662,6 +1250,16 @@ const getSalaryTypeLabel = (type) => {
                                     </template>
                                 </Column>
 
+                                <Column field="paymentMethod" header="طريقة الدفع" sortable style="min-width: 120px">
+                                    <template #body="{ data }">
+                                        <Tag
+                                            :value="getPaymentMethodLabel(data.paymentMethod)"
+                                            :severity="getPaymentMethodSeverity(data.paymentMethod)"
+                                            class="text-xs"
+                                        />
+                                    </template>
+                                </Column>
+
                                 <Column field="notes" header="ملاحظات" style="min-width: 220px">
                                     <template #body="{ data }">
                                         <span class="text-xs text-surface-500">{{ data.notes || '—' }}</span>
@@ -755,7 +1353,7 @@ const getSalaryTypeLabel = (type) => {
                 </div>
 
                 <div v-if="editingEmployee" class="flex items-center gap-3 pt-2">
-                    <ToggleSwitch v-model="employeeForm.isActive" id="employee-active-switch" />
+                    <ToggleSwitch v-model="employeeForm.isActive" id="employee-active-switch" @update:modelValue="onIsActiveToggle" />
                     <label htmlFor="employee-active-switch" class="font-bold text-sm cursor-pointer select-none">
                         حالة الموظف ({{ employeeForm.isActive ? 'نشط' : 'غير نشط' }})
                     </label>
@@ -774,11 +1372,34 @@ const getSalaryTypeLabel = (type) => {
             </template>
         </Dialog>
 
-        <!-- Salary Log Dialog -->
+        <!-- Deactivate Employee Confirmation Dialog -->
+        <Dialog
+            v-model:visible="showDeactivateConfirm"
+            header="تأكيد تعطيل الموظف"
+            :style="{ width: '400px' }"
+            modal
+            :closable="false"
+        >
+            <div class="flex items-start gap-3 py-2">
+                <AlertTriangle :size="24" class="text-amber-500 flex-shrink-0 mt-0.5" />
+                <div>
+                    <p class="font-bold text-surface-900 dark:text-surface-100 mb-1">هل أنت متأكد من تعطيل هذا الموظف؟</p>
+                    <p class="text-sm text-surface-500">تعطيل الموظف سيمنع توليد التزامات رواتب جديدة له. يمكنك إعادة تنشيطه لاحقاً.</p>
+                </div>
+            </div>
+            <template #footer>
+                <div class="flex justify-end gap-2">
+                    <Button label="إلغاء" outlined severity="secondary" @click="cancelDeactivate" />
+                    <Button label="نعم، تعطيل" severity="danger" @click="confirmDeactivate" />
+                </div>
+            </template>
+        </Dialog>
+
+        <!-- Direct Salary Payment Dialog -->
         <Dialog
             v-model:visible="showSalaryDialog"
-            header="تسجيل راتب موظف"
-            :style="{ width: '450px' }"
+            header="تسجيل راتب موظف (دفع مباشر)"
+            :style="{ width: '480px' }"
             modal
         >
             <div class="flex flex-col gap-4 py-4">
@@ -789,33 +1410,41 @@ const getSalaryTypeLabel = (type) => {
                 <div class="flex flex-col gap-2">
                     <label class="font-bold required">اسم الموظف</label>
                     <Select
-                        v-model="salaryForm.employeeName"
+                        v-model="salaryForm.employeeId"
                         :options="employeeDropdownOptions"
                         optionLabel="label"
                         optionValue="value"
-                        placeholder="اختر اسم الموظف..."
+                        placeholder="اختر الموظف..."
                         @change="onEmployeeSelect"
-                        editable
+                        filter
                         fluid
                     />
                 </div>
-                <div class="flex flex-col gap-2">
-                    <label class="font-bold required">المبلغ</label>
-                    <div class="relative w-full">
-                        <InputNumber
-                            v-model="salaryForm.amount"
-                            :min="0"
-                            :minFractionDigits="2"
-                            placeholder="0.00"
-                            :inputStyle="{ paddingInlineEnd: '2.5rem' }"
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div class="flex flex-col gap-2">
+                        <label class="font-bold required">المبلغ</label>
+                        <div class="relative w-full">
+                            <InputNumber
+                                v-model="salaryForm.amount"
+                                :min="0"
+                                :minFractionDigits="2"
+                                placeholder="0.00"
+                                :inputStyle="{ paddingInlineEnd: '2.5rem' }"
+                                fluid
+                            />
+                            <span class="absolute end-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm pointer-events-none font-semibold select-none">ج.م</span>
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <label class="font-bold required">طريقة الدفع</label>
+                        <Select
+                            v-model="salaryForm.paymentMethod"
+                            :options="paymentMethodOptions"
+                            optionLabel="label"
+                            optionValue="value"
                             fluid
                         />
-                        <span class="absolute end-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm pointer-events-none font-semibold select-none">ج.م</span>
                     </div>
-                </div>
-                <div class="flex flex-col gap-2">
-                    <label class="font-bold required">فترة الراتب (مثل: مايو 2024)</label>
-                    <InputText v-model="salaryForm.payPeriod" fluid />
                 </div>
                 <div class="flex flex-col gap-2">
                     <label class="font-bold">ملاحظات إضافية</label>
@@ -825,7 +1454,180 @@ const getSalaryTypeLabel = (type) => {
             <template #footer>
                 <div class="flex justify-end gap-2">
                     <Button label="إلغاء" outlined severity="secondary" @click="showSalaryDialog = false" />
-                    <Button label="حفظ الراتب" @click="submitSalary" :loading="payrollStore.loading" :disabled="!salaryForm.amount || !salaryForm.employeeName || !salaryForm.payPeriod" />
+                    <Button label="حفظ الراتب" @click="submitSalary" :loading="payrollStore.isLoading" :disabled="!salaryForm.amount || !salaryForm.employeeId" />
+                </div>
+            </template>
+        </Dialog>
+
+        <!-- Slip Payment Dialog -->
+        <Dialog
+            v-model:visible="showSlipPaymentDialog"
+            header="تسجيل دفعة على القسيمة"
+            :style="{ width: '450px' }"
+            modal
+        >
+            <div v-if="selectedSlip" class="flex flex-col gap-4 py-4">
+                <!-- Slip summary info -->
+                <div class="bg-surface-50 dark:bg-surface-800 rounded-lg p-3 border border-surface-200 dark:border-surface-700">
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div><span class="text-surface-500">الموظف:</span> <strong>{{ selectedSlip.employeeName }}</strong></div>
+                        <div><span class="text-surface-500">الفترة:</span> <strong>{{ getMonthLabel(selectedSlip.month) }} {{ selectedSlip.year }}</strong></div>
+                        <div><span class="text-surface-500">الراتب الأساسي:</span> <strong>{{ formatCurrency(selectedSlip.baseSalary) }}</strong></div>
+                        <div><span class="text-surface-500">الصافي المستحق:</span> <strong class="text-blue-600 dark:text-blue-400">{{ formatCurrency(Math.max(0, selectedSlip.netSalary || 0)) }}</strong></div>
+                        <div><span class="text-surface-500">إجمالي المدفوع:</span> <strong class="text-emerald-600">{{ formatCurrency(selectedSlip.paidAmount || 0) }}</strong></div>
+                        <div><span class="text-surface-500">المتبقي المستحق:</span> <strong class="text-red-500">{{ formatCurrency(Math.max(0, selectedSlip.remainingAmount || 0)) }}</strong></div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div class="flex flex-col gap-2">
+                        <label class="font-bold required">المبلغ المدفوع</label>
+                        <div class="relative w-full">
+                            <InputNumber
+                                v-model="slipPaymentForm.amount"
+                                :min="0.01"
+                                :max="Math.max(0, selectedSlip.remainingAmount || 0)"
+                                :minFractionDigits="2"
+                                placeholder="0.00"
+                                :inputStyle="{ paddingInlineEnd: '2.5rem' }"
+                                fluid
+                            />
+                            <span class="absolute end-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm pointer-events-none font-semibold select-none">ج.م</span>
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <label class="font-bold required">طريقة الدفع</label>
+                        <Select
+                            v-model="slipPaymentForm.paymentMethod"
+                            :options="paymentMethodOptions"
+                            optionLabel="label"
+                            optionValue="value"
+                            fluid
+                        />
+                    </div>
+                </div>
+                <div class="flex flex-col gap-2">
+                    <label class="font-bold">ملاحظات</label>
+                    <Textarea v-model="slipPaymentForm.notes" rows="2" fluid />
+                </div>
+            </div>
+            <template #footer>
+                <div class="flex justify-end gap-2">
+                    <Button label="إلغاء" outlined severity="secondary" @click="showSlipPaymentDialog = false" />
+                    <Button label="تسجيل الدفعة" severity="success" @click="submitSlipPayment" :loading="payrollStore.isLoading" :disabled="!slipPaymentForm.amount || slipPaymentForm.amount <= 0 || Math.max(0, selectedSlip.remainingAmount || 0) <= 0" />
+                </div>
+            </template>
+        </Dialog>
+
+        <!-- New Salary Adjustment (Advance / Deduction / Bonus) Dialog -->
+        <Dialog
+            v-model:visible="showAdjustmentDialog"
+            header="تسجيل سُلفة / خصم / مكافأة (بونص)"
+            :style="{ width: '520px' }"
+            modal
+        >
+            <div class="flex flex-col gap-4 py-4">
+                <div class="flex flex-col gap-2">
+                    <label class="font-bold required">الموظف</label>
+                    <Select
+                        v-model="adjustmentForm.employeeId"
+                        :options="employeeDropdownOptions"
+                        optionLabel="label"
+                        optionValue="value"
+                        placeholder="اختر الموظف..."
+                        filter
+                        fluid
+                    />
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div class="flex flex-col gap-2">
+                        <label class="font-bold required">نوع التعديل</label>
+                        <Select
+                            v-model="adjustmentForm.type"
+                            :options="adjustmentTypeOptions"
+                            optionLabel="label"
+                            optionValue="value"
+                            fluid
+                        />
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <label class="font-bold required">المبلغ</label>
+                        <div class="relative w-full">
+                            <InputNumber
+                                v-model="adjustmentForm.amount"
+                                :min="0.01"
+                                :minFractionDigits="2"
+                                placeholder="0.00"
+                                :inputStyle="{ paddingInlineEnd: '2.5rem' }"
+                                fluid
+                            />
+                            <span class="absolute end-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm pointer-events-none font-semibold select-none">ج.م</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div class="flex flex-col gap-2">
+                        <label class="font-bold required">بداية الشهر المستهدف</label>
+                        <Select
+                            v-model="adjustmentForm.month"
+                            :options="monthOptions"
+                            optionLabel="label"
+                            optionValue="value"
+                            fluid
+                        />
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <label class="font-bold required">السنة المستهدفة</label>
+                        <Select
+                            v-model="adjustmentForm.year"
+                            :options="yearOptions"
+                            optionLabel="label"
+                            optionValue="value"
+                            fluid
+                        />
+                    </div>
+                </div>
+
+                <!-- Multi-Month Installment Advances Block -->
+                <div v-if="adjustmentForm.type === 'Advance'" class="bg-amber-50 dark:bg-amber-950/40 p-3.5 rounded-lg border border-amber-200 dark:border-amber-800 flex flex-col gap-3">
+                    <div class="flex items-center gap-2.5">
+                        <Checkbox v-model="adjustmentForm.isInstallment" :binary="true" inputId="isInstallment" />
+                        <label for="isInstallment" class="font-bold text-amber-900 dark:text-amber-200 text-sm cursor-pointer select-none">
+                            تقسيط السُلفة على عدة أشهر (سُلفة مقسطة)
+                        </label>
+                    </div>
+
+                    <div v-if="adjustmentForm.isInstallment" class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                        <div class="flex flex-col gap-1.5">
+                            <label class="font-bold text-xs text-amber-800 dark:text-amber-300 required">عدد أشهر التقسيط</label>
+                            <InputNumber
+                                v-model="adjustmentForm.installmentMonths"
+                                :min="2"
+                                :max="120"
+                                placeholder="عدد الأشهر"
+                                fluid
+                            />
+                        </div>
+                        <div class="flex flex-col justify-center gap-1 bg-white dark:bg-surface-900 p-2.5 rounded-md border border-amber-200 dark:border-amber-800 text-xs">
+                            <span class="text-surface-500">القسط الشهري المحسوم:</span>
+                            <strong class="text-amber-600 dark:text-amber-400 text-sm font-bold">
+                                {{ formatCurrency((adjustmentForm.amount || 0) / (adjustmentForm.installmentMonths || 1)) }} / شهر
+                            </strong>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                    <label class="font-bold">السبب / الملاحظات</label>
+                    <Textarea v-model="adjustmentForm.reason" rows="2" placeholder="مثال: خصم بسبب الخطأ في الشيفت / سلفة مقسطة لشراء مستلزمات / بونص مبيعات" fluid />
+                </div>
+            </div>
+            <template #footer>
+                <div class="flex justify-end gap-2">
+                    <Button label="إلغاء" outlined severity="secondary" @click="showAdjustmentDialog = false" />
+                    <Button label="حفظ التعديل" severity="warn" @click="submitAdjustment" :loading="payrollStore.isLoading" :disabled="!adjustmentForm.employeeId || !adjustmentForm.amount" />
                 </div>
             </template>
         </Dialog>

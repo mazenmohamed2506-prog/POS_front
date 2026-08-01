@@ -424,7 +424,9 @@ export const usePosStore = defineStore("pos", () => {
                         productId: item.productId || undefined,
                         batchId: item.batchId || undefined,
                         batchNumber: item.batchNumber || undefined,
-                        reason: item.reason || undefined
+                        action: item.action || "shelf",
+                        damageReason: item.damageReason || item.reason || undefined,
+                        notes: item.notes || undefined
                     };
                 })
             };

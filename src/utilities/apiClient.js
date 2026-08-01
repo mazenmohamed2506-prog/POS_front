@@ -153,6 +153,28 @@ apiClient.interceptors.response.use(
         } else if (status === 404) {
             toastStore.addErrorToast("The request you are looking for could not be found");
             console.warn("Not found");
+        } else if (status === 400) {
+            // Handle validation errors from ASP.NET
+            const data = error?.response?.data;
+            if (data) {
+                if (data.errors) {
+                    // ASP.NET model validation errors
+                    const messages = Object.values(data.errors).flat();
+                    const msg = messages.join(' | ') || 'خطأ في البيانات المدخلة';
+                    toastStore.addErrorToast(msg);
+                } else if (data.detail) {
+                    toastStore.addErrorToast(data.detail);
+                } else if (data.message) {
+                    toastStore.addErrorToast(data.message);
+                } else if (typeof data === 'string') {
+                    toastStore.addErrorToast(data);
+                } else {
+                    toastStore.addErrorToast('خطأ في البيانات المدخلة');
+                }
+            } else {
+                toastStore.addErrorToast('خطأ في البيانات المدخلة');
+            }
+            console.warn("Bad request:", data);
         } else {
             console.warn("An error occurred:", error?.response?.data ?? error.message);
             if (error?.response?.data?.detail) {

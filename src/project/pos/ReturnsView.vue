@@ -1,10 +1,12 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import { usePosStore } from "@/stores/pos/posStore";
-import { RotateCcw, Search, HelpCircle } from "lucide-vue-next";
+import { useToastStore } from "@/stores/base/toastStore";
+import { RotateCcw, Search, HelpCircle, Store, Archive, Trash2, AlertCircle, Info } from "lucide-vue-next";
 import HelpDrawer from "@/components/HelpDrawer.vue";
 
 const posStore = usePosStore();
+const toastStore = useToastStore();
 
 // ── Help Drawer ──
 const showHelp = ref(false);
@@ -16,26 +18,28 @@ const returnsHelpSections = [
         iconColor: '#d97706',
         steps: [
             { title: 'ابحث عن الطلب', desc: 'ابحث برقم الطلب أو طريقة الدفع' },
-            { title: 'اضغط زر المرتجع', desc: 'اختر الطلب واضغط زر "مرتجع" لفتح نافذة المرتجع' },
-            { title: 'حدد الأصناف والكميات', desc: 'اختر المنتجات المراد إرجاعها وحدد كمية كل صنف' },
+            { title: 'اضغط زر المرتجع', desc: 'اختر الطلب واضغط زر "إرجاع أصناف" لفتح النافذة' },
+            { title: 'حدد الكمية والوجهة', desc: 'حدد كمية الإرجاع واختر الوجهة: الرف، المخزن، أو إعدام في التوالف' },
+            { title: 'سبب الإعدام', desc: 'في حالة التوالف، اختر أو اكتب سبب الإعدام لتوثيق الخسارة' },
             { title: 'تأكيد المرتجع', desc: 'اضغط "تأكيد" لإتمام عملية الإرجاع واسترداد المبلغ' },
         ]
     },
     {
-        title: 'قواعد المرتجعات',
+        title: 'وجهات الإرجاع المتاحة',
         icon: HelpCircle,
         color: '#dbeafe',
         iconColor: '#2563eb',
         steps: [
-            { title: 'طلبيات المرتجع فقط', desc: 'لا يمكن إرجاع طلبيات المرتجع السابقة' },
-            { title: 'كمية جزئية', desc: 'يمكن إرجاع جزء من الطلبية وليس بالضرورة كلها' },
+            { title: '🏪 الرف (StoreShelf)', desc: 'إعادة المنتجات إلى رف البيع للبيع المباشر مجدداً' },
+            { title: '📦 المخزن (BackWarehouse)', desc: 'إعادة المنتجات إلى المخزن الخلفي' },
+            { title: '🗑️ إعدام (Damaged / Waste)', desc: 'تسجيل المنتجات كتالفة وعدم إعادتها للمخزون الصالح للبيع' },
         ]
     },
 ];
 const returnsHelpTips = [
-    'المرتجع يعيد المخزون تلقائياً إلى رف البيع',
-    'تأكد من رقم الطلب قبل إجراء المرتجع',
-    'يمكن إرجاع جزء من منتجات الطلبية فقط',
+    'عند اختيار "إعدام"، يتم تسجيل خسارة التوالف تلقائياً في سجلات التوالف المالية',
+    'يمكنك اختيار وجهة الإرجاع لكل صنف على حدة أو تطبيق الوجهة على جميع الأصناف بنقرة واحدة',
+    'يمكنك إرجاع جزء من كمية الفاتورة المتاحة فقط',
 ];
 
 const activeTab = ref("sales"); // 'sales' | 'returns'
@@ -43,6 +47,15 @@ const showReturnDialog = ref(false);
 const selectedOrder = ref(null);
 const returnItems = ref([]);
 const searchQuery = ref("");
+const globalAction = ref("shelf"); // 'shelf' | 'warehouse' | 'damaged'
+
+const damageReasonPresets = [
+    "تالف / مكسور",
+    "منتهي الصلاحية",
+    "عيب تصنيع",
+    "تلف أثناء الشحن",
+    "سبب آخر"
+];
 
 onMounted(() => {
     posStore.fetchOrders();
@@ -51,6 +64,7 @@ onMounted(() => {
 const openReturnDialog = (order) => {
     if (order.type === "return" || order.status === "FullyReturned") return;
     selectedOrder.value = order;
+    globalAction.value = "shelf";
     returnItems.value = (order.items || []).map((item) => {
         const retQty = item.returnedQuantity ?? 0;
         const remQty = item.remainingReturnableQuantity ?? Math.max(0, (item.qty || item.quantity || 0) - retQty);
@@ -59,15 +73,72 @@ const openReturnDialog = (order) => {
             returnedQty: retQty,
             maxReturnable: remQty,
             returnQty: 0,
+            action: "shelf", // 'shelf' | 'warehouse' | 'damaged'
+            damageReasonPreset: "تالف / مكسور",
+            customDamageReason: "",
+            notes: "",
         };
     });
     showReturnDialog.value = true;
 };
 
+const applyGlobalAction = (action) => {
+    globalAction.value = action;
+    returnItems.value.forEach(item => {
+        if (item.maxReturnable > 0) {
+            item.action = action;
+        }
+    });
+};
+
+const getEffectiveDamageReason = (item) => {
+    if (item.damageReasonPreset === "سبب آخر") {
+        return item.customDamageReason.trim();
+    }
+    return item.damageReasonPreset;
+};
+
+const activeReturnItems = computed(() => {
+    return returnItems.value.filter((i) => i.returnQty > 0 && i.returnQty <= i.maxReturnable);
+});
+
+const returnSummary = computed(() => {
+    const active = activeReturnItems.value;
+    const shelfCount = active.filter(i => i.action === 'shelf').length;
+    const warehouseCount = active.filter(i => i.action === 'warehouse').length;
+    const damagedCount = active.filter(i => i.action === 'damaged').length;
+    const totalRefund = active.reduce((sum, i) => sum + (Number(i.returnQty) * Number(i.price)), 0);
+
+    return {
+        totalItems: active.length,
+        shelfCount,
+        warehouseCount,
+        damagedCount,
+        totalRefund
+    };
+});
+
 const handleReturn = async () => {
-    const itemsToReturn = returnItems.value
-        .filter((i) => i.returnQty > 0 && i.returnQty <= i.maxReturnable)
-        .map((i) => ({
+    const active = activeReturnItems.value;
+    if (active.length === 0) {
+        toastStore.addWarningToast("يرجى تحديد كمية صنف واحد على الأقل للإرجاع");
+        return;
+    }
+
+    // Validation check for damaged items
+    for (const item of active) {
+        if (item.action === "damaged") {
+            const reason = getEffectiveDamageReason(item);
+            if (!reason) {
+                toastStore.addErrorToast(`يرجى تحديد سبب الإعدام للصنف "${item.name || item.productName}"`);
+                return;
+            }
+        }
+    }
+
+    const itemsToReturn = active.map((i) => {
+        const reason = i.action === "damaged" ? getEffectiveDamageReason(i) : undefined;
+        return {
             id: i.id,
             name: i.productName || i.name,
             qty: Number(i.returnQty),
@@ -76,11 +147,13 @@ const handleReturn = async () => {
             productId: i.productId || i.product_id,
             batchId: i.batchId,
             batchNumber: i.batchNumber,
-            reason: i.reason,
+            action: i.action,
+            damageReason: reason,
+            reason: reason,
+            notes: i.notes?.trim() || undefined,
             price: i.price
-        }));
-
-    if (itemsToReturn.length === 0) return;
+        };
+    });
 
     await posStore.processReturn(selectedOrder.value.id, itemsToReturn);
     showReturnDialog.value = false;
@@ -280,60 +353,207 @@ const filteredOrders = computed(() => {
         <!-- Return Dialog -->
         <Dialog
             v-model:visible="showReturnDialog"
-            header="معالجة مرتجع الفاتورة"
-            :style="{ width: '600px' }"
+            header="معالجة مرتجع الفاتورة وتحديد الوجهة"
+            :style="{ width: '760px', maxWidth: '95vw' }"
             modal
             dismissableMask
         >
             <div class="return-dialog-content" v-if="selectedOrder">
-                <div class="return-order-info-card p-3 rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700">
-                    <p class="text-sm text-surface-600 dark:text-surface-400">
-                        طلب بيع رقم: <strong class="text-surface-900 dark:text-surface-100 font-mono">{{ selectedOrder.orderNumber }}</strong>
-                    </p>
-                    <p class="text-xs text-surface-500 mt-1">التاريخ: {{ formatDate(selectedOrder.date) }}</p>
+                <!-- Order Info Bar -->
+                <div class="return-order-info-card p-3 rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 flex flex-wrap justify-between items-center gap-2">
+                    <div>
+                        <p class="text-sm text-surface-700 dark:text-surface-300">
+                            طلب بيع رقم: <strong class="text-primary-600 dark:text-primary-400 font-mono text-base ms-1">{{ selectedOrder.orderNumber }}</strong>
+                        </p>
+                        <p class="text-xs text-surface-500 mt-0.5">التاريخ: {{ formatDate(selectedOrder.date) }}</p>
+                    </div>
+                    <div class="text-end">
+                        <span class="text-xs text-surface-500 block">إجمالي الفاتورة الأصلي:</span>
+                        <span class="text-sm font-bold text-surface-900 dark:text-surface-100">{{ formatCurrency(selectedOrder.total) }}</span>
+                    </div>
                 </div>
 
-                <div class="return-items-list mt-3 space-y-2">
+                <!-- Global Action Preset Bar -->
+                <div class="global-action-bar p-3 rounded-xl bg-surface-50 dark:bg-surface-950 border border-surface-200 dark:border-surface-800 flex flex-wrap items-center justify-between gap-3">
+                    <span class="text-xs font-bold text-surface-700 dark:text-surface-300 flex items-center gap-1.5">
+                        <Info :size="15" class="text-primary-500" />
+                        تطبيـق وجهة الإرجاع لجميع الأصناف:
+                    </span>
+                    <div class="flex items-center gap-1.5">
+                        <button
+                            type="button"
+                            class="px-3 py-1 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 border"
+                            :class="globalAction === 'shelf' ? 'bg-emerald-500 text-white border-emerald-600 shadow-sm' : 'bg-surface-100 text-surface-700 hover:bg-surface-200 border-surface-200 dark:bg-surface-800 dark:text-surface-300 dark:border-surface-700'"
+                            @click="applyGlobalAction('shelf')"
+                        >
+                            <Store :size="13" />
+                            <span>🏪 الرف</span>
+                        </button>
+                        <button
+                            type="button"
+                            class="px-3 py-1 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 border"
+                            :class="globalAction === 'warehouse' ? 'bg-blue-500 text-white border-blue-600 shadow-sm' : 'bg-surface-100 text-surface-700 hover:bg-surface-200 border-surface-200 dark:bg-surface-800 dark:text-surface-300 dark:border-surface-700'"
+                            @click="applyGlobalAction('warehouse')"
+                        >
+                            <Archive :size="13" />
+                            <span>📦 المخزن</span>
+                        </button>
+                        <button
+                            type="button"
+                            class="px-3 py-1 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 border"
+                            :class="globalAction === 'damaged' ? 'bg-rose-500 text-white border-rose-600 shadow-sm' : 'bg-surface-100 text-surface-700 hover:bg-surface-200 border-surface-200 dark:bg-surface-800 dark:text-surface-300 dark:border-surface-700'"
+                            @click="applyGlobalAction('damaged')"
+                        >
+                            <Trash2 :size="13" />
+                            <span>🗑️ إعدام (تالف)</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Items Return List -->
+                <div class="return-items-list mt-1 space-y-3 max-h-[380px] overflow-y-auto pe-1">
                     <div
                         v-for="(item, idx) in returnItems"
                         :key="idx"
-                        class="return-item-row p-3 rounded-lg border border-surface-200 dark:border-surface-700 flex items-center justify-between gap-3"
-                        :class="{ 'opacity-65 bg-surface-50 dark:bg-surface-900': item.maxReturnable <= 0 }"
+                        class="return-item-row p-3.5 rounded-xl border transition-all"
+                        :class="[
+                            item.returnQty > 0 
+                                ? (item.action === 'damaged' ? 'border-rose-300 dark:border-rose-900 bg-rose-50/40 dark:bg-rose-950/20' : item.action === 'warehouse' ? 'border-blue-300 dark:border-blue-900 bg-blue-50/40 dark:bg-blue-950/20' : 'border-emerald-300 dark:border-emerald-900 bg-emerald-50/40 dark:bg-emerald-950/20')
+                                : 'border-surface-200 dark:border-surface-700 bg-surface-0 dark:bg-surface-900',
+                            item.maxReturnable <= 0 ? 'opacity-60 bg-surface-100 dark:bg-surface-950' : ''
+                        ]"
                     >
-                        <div class="flex-1">
-                            <div class="font-bold text-surface-800 dark:text-surface-100 flex items-center gap-2">
-                                <span>{{ item.name }}</span>
-                                <Tag v-if="item.maxReturnable <= 0" value="مسترجع بالكامل" severity="danger" size="small" />
-                                <Tag v-else-if="item.returnedQty > 0" :value="'تم إرجاع ' + item.returnedQty" severity="warn" size="small" />
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div class="flex-1">
+                                <div class="font-bold text-surface-900 dark:text-surface-100 flex items-center gap-2 text-base">
+                                    <span>{{ item.name }}</span>
+                                    <Tag v-if="item.maxReturnable <= 0" value="مسترجع بالكامل" severity="danger" size="small" />
+                                    <Tag v-else-if="item.returnedQty > 0" :value="'تم إرجاع ' + item.returnedQty" severity="warn" size="small" />
+                                </div>
+                                <div class="text-xs text-surface-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                                    <span>السعر: <strong>{{ formatCurrency(item.price) }}</strong></span>
+                                    <span>المباع الأصلي: {{ item.qty }}</span>
+                                    <span v-if="item.returnedQty > 0" class="text-amber-600 font-medium">المرتجع سابقاً: {{ item.returnedQty }}</span>
+                                    <span class="text-emerald-600 dark:text-emerald-400 font-bold">المتاح للإرجاع: {{ item.maxReturnable }}</span>
+                                </div>
                             </div>
-                            <div class="text-xs text-surface-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
-                                <span>السعر: {{ formatCurrency(item.price) }}</span>
-                                <span>المباع الأصلي: {{ item.qty }}</span>
-                                <span v-if="item.returnedQty > 0" class="text-amber-600 font-medium">المرتجع سابقاً: {{ item.returnedQty }}</span>
-                                <span class="text-emerald-600 dark:text-emerald-400 font-bold">المتاح للإرجاع: {{ item.maxReturnable }}</span>
+
+                            <div class="w-36">
+                                <InputNumber
+                                    v-if="item.maxReturnable > 0"
+                                    v-model="item.returnQty"
+                                    :min="0"
+                                    :max="item.maxReturnable"
+                                    fluid
+                                    placeholder="0"
+                                    showButtons
+                                    buttonLayout="horizontal"
+                                    :inputStyle="{ textAlign: 'center', fontWeight: 'bold' }"
+                                />
+                                <span v-else class="text-xs font-bold text-danger-500 block text-center">غير متاح للإرجاع</span>
                             </div>
                         </div>
-                        <div class="w-36">
-                            <InputNumber
-                                v-if="item.maxReturnable > 0"
-                                v-model="item.returnQty"
-                                :min="0"
-                                :max="item.maxReturnable"
-                                fluid
-                                placeholder="0"
-                                showButtons
-                                buttonLayout="horizontal"
-                                :inputStyle="{ textAlign: 'center' }"
-                            />
-                            <span v-else class="text-xs font-bold text-danger-500 block text-center">غير متاح للإرجاع</span>
+
+                        <!-- Options for active return items -->
+                        <div v-if="item.returnQty > 0 && item.maxReturnable > 0" class="mt-3 pt-3 border-t border-surface-200 dark:border-surface-800 space-y-2">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <span class="text-xs font-bold text-surface-700 dark:text-surface-300">وجهة هذا الصنف:</span>
+                                <div class="flex items-center gap-1.5">
+                                    <button
+                                        type="button"
+                                        class="px-2.5 py-1 rounded-md text-xs font-semibold transition-colors flex items-center gap-1 border"
+                                        :class="item.action === 'shelf' ? 'bg-emerald-500 text-white border-emerald-600 shadow-xs' : 'bg-surface-100 text-surface-700 hover:bg-surface-200 border-surface-200 dark:bg-surface-800 dark:text-surface-300 dark:border-surface-700'"
+                                        @click="item.action = 'shelf'"
+                                    >
+                                        <Store :size="12" />
+                                        <span>الرف (البيع)</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="px-2.5 py-1 rounded-md text-xs font-semibold transition-colors flex items-center gap-1 border"
+                                        :class="item.action === 'warehouse' ? 'bg-blue-500 text-white border-blue-600 shadow-xs' : 'bg-surface-100 text-surface-700 hover:bg-surface-200 border-surface-200 dark:bg-surface-800 dark:text-surface-300 dark:border-surface-700'"
+                                        @click="item.action = 'warehouse'"
+                                    >
+                                        <Archive :size="12" />
+                                        <span>المخزن</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="px-2.5 py-1 rounded-md text-xs font-semibold transition-colors flex items-center gap-1 border"
+                                        :class="item.action === 'damaged' ? 'bg-rose-500 text-white border-rose-600 shadow-xs' : 'bg-surface-100 text-surface-700 hover:bg-surface-200 border-surface-200 dark:bg-surface-800 dark:text-surface-300 dark:border-surface-700'"
+                                        @click="item.action = 'damaged'"
+                                    >
+                                        <Trash2 :size="12" />
+                                        <span>إعدام (تالف)</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Damaged Reason Fields -->
+                            <div v-if="item.action === 'damaged'" class="p-2.5 rounded-lg bg-rose-100/60 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 space-y-2 mt-2">
+                                <div class="flex items-center gap-1 text-xs font-bold text-rose-700 dark:text-rose-300">
+                                    <AlertCircle :size="14" />
+                                    <span>سبب الإعدام (مطلوب):</span>
+                                </div>
+                                <div class="flex flex-wrap gap-1.5">
+                                    <button
+                                        v-for="preset in damageReasonPresets"
+                                        :key="preset"
+                                        type="button"
+                                        class="px-2 py-0.5 rounded text-xs font-medium border transition-colors"
+                                        :class="item.damageReasonPreset === preset ? 'bg-rose-600 text-white border-rose-700 font-bold' : 'bg-white text-rose-900 border-rose-200 hover:bg-rose-50 dark:bg-surface-800 dark:text-rose-200 dark:border-rose-800'"
+                                        @click="item.damageReasonPreset = preset"
+                                    >
+                                        {{ preset }}
+                                    </button>
+                                </div>
+
+                                <InputText
+                                    v-if="item.damageReasonPreset === 'سبب آخر'"
+                                    v-model="item.customDamageReason"
+                                    placeholder="اكتب سبب الإعدام بالتفصيل..."
+                                    class="w-full text-xs"
+                                    size="small"
+                                />
+                            </div>
+
+                            <!-- Additional Notes (Optional) -->
+                            <div class="mt-1">
+                                <InputText
+                                    v-model="item.notes"
+                                    placeholder="ملاحظات اختيارية..."
+                                    class="w-full text-xs"
+                                    size="small"
+                                />
+                            </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Return Summary Box -->
+                <div v-if="returnSummary.totalItems > 0" class="return-summary-card mt-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex flex-wrap items-center gap-3 text-xs">
+                        <span class="font-bold text-amber-900 dark:text-amber-200">الملخص:</span>
+                        <span v-if="returnSummary.shelfCount > 0" class="text-emerald-700 dark:text-emerald-300 font-semibold">🏪 للرف: {{ returnSummary.shelfCount }}</span>
+                        <span v-if="returnSummary.warehouseCount > 0" class="text-blue-700 dark:text-blue-300 font-semibold">📦 للمخزن: {{ returnSummary.warehouseCount }}</span>
+                        <span v-if="returnSummary.damagedCount > 0" class="text-rose-700 dark:text-rose-300 font-extrabold">🗑️ توالف: {{ returnSummary.damagedCount }}</span>
+                    </div>
+                    <div class="text-end">
+                        <span class="text-xs text-surface-600 dark:text-surface-400 me-2">إجمالي الاسترداد للمشترين:</span>
+                        <span class="text-base font-extrabold text-amber-700 dark:text-amber-400">{{ formatCurrency(returnSummary.totalRefund) }}</span>
                     </div>
                 </div>
             </div>
             <template #footer>
                 <div class="flex gap-2 justify-end w-full">
                     <Button label="إلغاء" outlined severity="secondary" @click="showReturnDialog = false" />
-                    <Button label="تأكيد تنفيذ المرتجع" severity="warn" @click="handleReturn" :loading="posStore.loading" />
+                    <Button
+                        label="تأكيد تنفيذ المرتجع"
+                        severity="warn"
+                        @click="handleReturn"
+                        :loading="posStore.loading"
+                        :disabled="returnSummary.totalItems === 0"
+                    />
                 </div>
             </template>
         </Dialog>
