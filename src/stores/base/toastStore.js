@@ -10,16 +10,17 @@ export const useToastStore = defineStore("toast", () => {
     function formatMessage(msg) {
         if (!msg) return "";
         if (typeof msg === "string") return msg;
-        if (Array.isArray(msg)) return msg.join(" | ");
+        if (Array.isArray(msg)) return msg.filter(Boolean).join(" \n ");
         if (typeof msg === "object") {
             if (msg.detail) return String(msg.detail);
             if (msg.message) return String(msg.message);
+            if (msg.error) return String(msg.error);
             return JSON.stringify(msg);
         }
         return String(msg);
     }
 
-    function addSuccessToast(message, summary = "نجاح", life = 3000) {
+    function addSuccessToast(message, summary = "تمت العملية بنجاح", life = 3500) {
         const text = formatMessage(message);
         if (!text) return;
         if (toastService) {
@@ -32,7 +33,7 @@ export const useToastStore = defineStore("toast", () => {
         }
     }
 
-    function addErrorToast(message, summary = "خطأ", life = 5000) {
+    function addErrorToast(message, summary = "فشل في تنفيذ العملية", life = 6000) {
         const text = formatMessage(message);
         if (!text) return;
         if (toastService) {
@@ -45,7 +46,7 @@ export const useToastStore = defineStore("toast", () => {
         }
     }
 
-    function addWarningToast(message, summary = "تنبيه", life = 4000) {
+    function addWarningToast(message, summary = "تنبيه مهم", life = 4500) {
         const text = formatMessage(message);
         if (!text) return;
         if (toastService) {
@@ -58,7 +59,7 @@ export const useToastStore = defineStore("toast", () => {
         }
     }
 
-    function addInfoToast(message, summary = "معلومة", life = 3500) {
+    function addInfoToast(message, summary = "إشعار النظام", life = 3500) {
         const text = formatMessage(message);
         if (!text) return;
         if (toastService) {
@@ -79,4 +80,5 @@ export const useToastStore = defineStore("toast", () => {
         addInfoToast,
     };
 });
+
 

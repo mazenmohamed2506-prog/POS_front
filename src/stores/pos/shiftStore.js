@@ -81,17 +81,18 @@ export const useShiftStore = defineStore("shift", () => {
         loading.value = true;
         error.value = null;
         try {
+            const startingCashNum = parseFloat(startingCashVal || 0);
             const payload = {
-                startingCash: parseFloat(startingCashVal || 0)
+                startingCash: startingCashNum
             };
             const response = await apiPost("/Shift/open", payload, false);
             currentShift.value = mapApiShiftToFrontend(response.data);
-            toastStore.addSuccessToast("تم فتح الوردية بنجاح");
+            toastStore.addSuccessToast(`تم فتح وردية جديدة بمبلغ رصيد بداية ${startingCashNum} ج.م بنجاح`, "فتح وردية جديدة");
             return currentShift.value;
         } catch (err) {
             console.error("Failed to open shift:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء فتح الوردية";
-            toastStore.addErrorToast(detail);
+            toastStore.addErrorToast(`السبب: ${detail}`, "فشل فتح الوردية");
             throw err;
         } finally {
             loading.value = false;
@@ -102,18 +103,19 @@ export const useShiftStore = defineStore("shift", () => {
         loading.value = true;
         error.value = null;
         try {
+            const actualCashNum = parseFloat(actualCashVal || 0);
             const payload = {
-                actualCash: parseFloat(actualCashVal || 0)
+                actualCash: actualCashNum
             };
             const response = await apiPost("/Shift/close", payload, false);
             const closedShift = mapApiShiftToFrontend(response.data);
             currentShift.value = null;
-            toastStore.addSuccessToast("تم إغلاق الوردية بنجاح");
+            toastStore.addSuccessToast(`تم إغلاق الوردية الحالية وتسليم النقدية الفعلية بقيمة ${actualCashNum} ج.م بنجاح`, "إغلاق الوردية");
             return closedShift;
         } catch (err) {
             console.error("Failed to close shift:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء إغلاق الوردية";
-            toastStore.addErrorToast(detail);
+            toastStore.addErrorToast(`السبب: ${detail}`, "فشل إغلاق الوردية");
             throw err;
         } finally {
             loading.value = false;

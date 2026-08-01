@@ -145,13 +145,13 @@ export const useProductStore = defineStore("product", () => {
             };
 
             const response = await apiPost("/Products", payload, false);
-            toastStore.addSuccessToast("تم إضافة المنتج بنجاح");
+            toastStore.addSuccessToast(`تم إضافة المنتج "${product.name}" بنجاح إلى القائمة`, "إضافة منتج جديد");
             await fetchProducts();
             return response.data ? mapApiProductToFrontend(response.data) : null;
         } catch (err) {
             console.error("Failed to create product:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء إضافة المنتج";
-            toastStore.addErrorToast(detail);
+            toastStore.addErrorToast(`السبب: ${detail}`, "فشل إضافة المنتج");
             throw err;
         } finally {
             loading.value = false;
@@ -216,13 +216,13 @@ export const useProductStore = defineStore("product", () => {
             };
 
             const response = await apiPut(`/Products/${product.id}`, payload, false);
-            toastStore.addSuccessToast("تم تعديل المنتج بنجاح");
+            toastStore.addSuccessToast(`تم حفظ التعديلات على المنتج "${product.name}" بنجاح`, "تحديث بيانات منتج");
             await fetchProducts();
             return response.data ? mapApiProductToFrontend(response.data) : null;
         } catch (err) {
             console.error("Failed to update product:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء تعديل المنتج";
-            toastStore.addErrorToast(detail);
+            toastStore.addErrorToast(`السبب: ${detail}`, "فشل تعديل المنتج");
             throw err;
         } finally {
             loading.value = false;
@@ -233,13 +233,15 @@ export const useProductStore = defineStore("product", () => {
         loading.value = true;
         error.value = null;
         try {
+            const targetProd = products.value.find(p => p.id === productId);
+            const pName = targetProd ? targetProd.name : `رقم ${productId}`;
             await apiDelete(`/Products/${productId}`, {}, false);
-            toastStore.addSuccessToast("تم حذف المنتج بنجاح");
+            toastStore.addSuccessToast(`تم حذف المنتج "${pName}" بنجاح من النظام`, "حذف منتج");
             await fetchProducts();
         } catch (err) {
             console.error("Failed to delete product:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء حذف المنتج";
-            toastStore.addErrorToast(detail);
+            toastStore.addErrorToast(`السبب: ${detail}`, "فشل حذف المنتج");
             throw err;
         } finally {
             loading.value = false;

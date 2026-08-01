@@ -112,12 +112,12 @@ export const useSupplierStore = defineStore("supplier", () => {
             };
 
             await apiPost("/Suppliers", payload, false);
-            toastStore.addSuccessToast("تم إضافة المورد بنجاح");
+            toastStore.addSuccessToast(`تم إضافة المورد "${supplierData.name}" بنجاح`, "إضافة مورد جديد");
             await fetchSuppliers();
         } catch (err) {
             console.error("Failed to create supplier:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء إضافة المورد";
-            toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء إضافة المورد");
+            toastStore.addErrorToast(`السبب: ${typeof detail === "string" ? detail : "بيانات غير صالحة"}`, "فشل إضافة المورد");
             throw err;
         } finally {
             loading.value = false;
@@ -138,12 +138,12 @@ export const useSupplierStore = defineStore("supplier", () => {
             };
 
             await apiPut(`/Suppliers/${id}`, payload, false);
-            toastStore.addSuccessToast("تم تعديل المورد بنجاح");
+            toastStore.addSuccessToast(`تم تحديث بيانات المورد "${supplierData.name}" بنجاح`, "تحديث بيانات مورد");
             await fetchSuppliers();
         } catch (err) {
             console.error("Failed to update supplier:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء تعديل المورد";
-            toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء تعديل المورد");
+            toastStore.addErrorToast(`السبب: ${typeof detail === "string" ? detail : "خطأ أثناء حفظ التعديلات"}`, "فشل تعديل المورد");
             throw err;
         } finally {
             loading.value = false;
@@ -154,31 +154,32 @@ export const useSupplierStore = defineStore("supplier", () => {
         loading.value = true;
         error.value = null;
         try {
+            const sItem = suppliers.value.find(s => s.id === id);
+            const sName = sItem ? sItem.name : `رقم ${id}`;
             await apiDelete(`/Suppliers/${id}`, {}, false);
-            toastStore.addSuccessToast("تم حذف المورد بنجاح");
+            toastStore.addSuccessToast(`تم حذف المورد "${sName}" بنجاح`, "حذف مورد");
             await fetchSuppliers();
         } catch (err) {
             console.error("Failed to delete supplier:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء حذف المورد";
-            toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء حذف المورد");
+            toastStore.addErrorToast(`السبب: ${typeof detail === "string" ? detail : "المورد مرتبط بعمليات سابقة ولا يمكن حذفه"}`, "فشل حذف المورد");
             throw err;
         } finally {
             loading.value = false;
         }
     }
 
-
     async function recordPayment(paymentData) {
         loading.value = true;
         error.value = null;
         try {
             await apiPost("/suppliers/payments", paymentData, false);
-            toastStore.addSuccessToast("تم تسجيل الدفعة بنجاح");
+            toastStore.addSuccessToast(`تم تسديد الدفعة بقيمة ${paymentData.amount || 0} للمورد بنجاح`, "تسديد دفعة مورد");
             await fetchSuppliers();
         } catch (err) {
             console.error("Failed to record payment:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء تسجيل الدفعة";
-            toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء تسجيل الدفعة");
+            toastStore.addErrorToast(`السبب: ${typeof detail === "string" ? detail : "خطأ أثناء تنفيذ عملية السداد"}`, "فشل تسديد الدفعة");
             throw err;
         } finally {
             loading.value = false;

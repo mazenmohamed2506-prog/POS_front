@@ -106,12 +106,12 @@ export const useUserStore = defineStore("user", () => {
             };
 
             await apiPost("/Users", payload, false);
-            toastStore.addSuccessToast("تم إنشاء المستخدم بنجاح");
+            toastStore.addSuccessToast(`تم إنشاء حساب المستخدم "${userData.username}" بنجاح`, "إنشاء مستخدم جديد");
             await fetchUsers();
         } catch (err) {
             console.error("Failed to create user:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء إنشاء المستخدم";
-            toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء إنشاء المستخدم");
+            toastStore.addErrorToast(`السبب: ${typeof detail === "string" ? detail : "اسم المستخدم مستخدم بالفعل أو البيانات غير صالحة"}`, "فشل إنشاء المستخدم");
             throw err;
         } finally {
             loading.value = false;
@@ -132,12 +132,12 @@ export const useUserStore = defineStore("user", () => {
             }
 
             await apiPut(`/Users/${id}`, payload, false);
-            toastStore.addSuccessToast("تم تعديل المستخدم بنجاح");
+            toastStore.addSuccessToast(`تم تحديث بيانات المستخدم "${userData.username}" بنجاح`, "تحديث حساب مستخدم");
             await fetchUsers();
         } catch (err) {
             console.error("Failed to update user:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء تعديل المستخدم";
-            toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء تعديل المستخدم");
+            toastStore.addErrorToast(`السبب: ${typeof detail === "string" ? detail : "خطأ أثناء حفظ تعديلات المستخدم"}`, "فشل تعديل المستخدم");
             throw err;
         } finally {
             loading.value = false;
@@ -147,13 +147,15 @@ export const useUserStore = defineStore("user", () => {
     // ── Toggle User Active/Inactive ──
     async function toggleUserActive(id) {
         try {
+            const u = users.value.find(user => user.id === id);
+            const uName = u ? u.username : `رقم ${id}`;
             await apiPatch(`/Users/${id}/toggle-active`, {}, false);
-            toastStore.addSuccessToast("تم تحديث حالة المستخدم");
+            toastStore.addSuccessToast(`تم تغيير حالة حساب المستخدم "${uName}" بنجاح`, "تحديث حالة الحساب");
             await fetchUsers();
         } catch (err) {
             console.error("Failed to toggle user active:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء تحديث حالة المستخدم";
-            toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء تحديث حالة المستخدم");
+            toastStore.addErrorToast(`السبب: ${typeof detail === "string" ? detail : "تعذر تغيير حالة الحساب"}`, "فشل تحديث الحالة");
             throw err;
         }
     }
@@ -163,13 +165,15 @@ export const useUserStore = defineStore("user", () => {
         loading.value = true;
         error.value = null;
         try {
+            const u = users.value.find(user => user.id === id);
+            const uName = u ? u.username : `رقم ${id}`;
             await apiDelete(`/Users/${id}`, {}, false);
-            toastStore.addSuccessToast("تم حذف المستخدم بنجاح");
+            toastStore.addSuccessToast(`تم حذف حساب المستخدم "${uName}" بنجاح`, "حذف مستخدم");
             await fetchUsers();
         } catch (err) {
             console.error("Failed to delete user:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء حذف المستخدم";
-            toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء حذف المستخدم");
+            toastStore.addErrorToast(`السبب: ${typeof detail === "string" ? detail : "المستخدم مرتبطة به عمليات بالنظام ولا يمكن حذفه"}`, "فشل حذف المستخدم");
             throw err;
         } finally {
             loading.value = false;
@@ -182,12 +186,12 @@ export const useUserStore = defineStore("user", () => {
         error.value = null;
         try {
             await apiPost("/Pages/assign", { roleId, pageIds }, false);
-            toastStore.addSuccessToast("تم تحديث صلاحيات الدور بنجاح");
+            toastStore.addSuccessToast("تم تحديث وحفظ صلاحيات الدور بنجاح", "تعديل الصلاحيات");
             await fetchRoles();
         } catch (err) {
             console.error("Failed to assign pages:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء تعيين الصلاحيات";
-            toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء تعيين الصلاحيات");
+            toastStore.addErrorToast(`السبب: ${typeof detail === "string" ? detail : "خطأ أثناء حفظ تعيين الصلاحيات"}`, "فشل تعديل الصلاحيات");
             throw err;
         } finally {
             loading.value = false;

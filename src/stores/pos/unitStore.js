@@ -29,13 +29,13 @@ export const useUnitStore = defineStore("unit", () => {
         error.value = null;
         try {
             const response = await apiPost("/Units", data, false);
-            toastStore.addSuccessToast("تم إضافة الوحدة بنجاح");
+            toastStore.addSuccessToast(`تم إضافة وحدة القياس "${data.name}" بنجاح`, "إضافة وحدة جديدة");
             await fetchUnits();
             return response.data;
         } catch (err) {
             console.error("Failed to create unit:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء إضافة الوحدة";
-            toastStore.addErrorToast(detail);
+            toastStore.addErrorToast(`السبب: ${detail}`, "فشل إضافة الوحدة");
             throw err;
         } finally {
             loading.value = false;
@@ -47,13 +47,13 @@ export const useUnitStore = defineStore("unit", () => {
         error.value = null;
         try {
             const response = await apiPut(`/Units/${id}`, data, false);
-            toastStore.addSuccessToast("تم تعديل الوحدة بنجاح");
+            toastStore.addSuccessToast(`تم تحديث اسم ووصف وحدة القياس "${data.name}" بنجاح`, "تحديث وحدة قياس");
             await fetchUnits();
             return response.data;
         } catch (err) {
             console.error("Failed to update unit:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء تعديل الوحدة";
-            toastStore.addErrorToast(detail);
+            toastStore.addErrorToast(`السبب: ${detail}`, "فشل تعديل الوحدة");
             throw err;
         } finally {
             loading.value = false;
@@ -64,13 +64,15 @@ export const useUnitStore = defineStore("unit", () => {
         loading.value = true;
         error.value = null;
         try {
+            const target = units.value.find(u => u.id === id);
+            const uName = target ? target.name : `رقم ${id}`;
             await apiDelete(`/Units/${id}`, {}, false);
-            toastStore.addSuccessToast("تم حذف الوحدة بنجاح");
+            toastStore.addSuccessToast(`تم حذف وحدة القياس "${uName}" بنجاح`, "حذف وحدة قياس");
             await fetchUnits();
         } catch (err) {
             console.error("Failed to delete unit:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || "حدث خطأ أثناء حذف الوحدة";
-            toastStore.addErrorToast(detail);
+            toastStore.addErrorToast(`السبب: ${detail}`, "فشل حذف الوحدة");
             throw err;
         } finally {
             loading.value = false;

@@ -74,7 +74,7 @@ export const useDamageStore = defineStore("damage", () => {
                 notes: payload.notes || ""
             };
             const response = await apiPost("/Damages", apiPayload, false);
-            toastStore.addSuccessToast("تم تسجيل التالف بنجاح");
+            toastStore.addSuccessToast(`تم تسجيل التالف لعدد ${payload.quantity || 1} قطعة بنجاح وترحيلها للحسابات`, "تسجيل تالف جديد");
             
             // Refresh damages list and stats
             await fetchDamages();
@@ -84,7 +84,7 @@ export const useDamageStore = defineStore("damage", () => {
         } catch (err) {
             console.error("Failed to add damage:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || err.message || "حدث خطأ أثناء تسجيل التالف";
-            toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء تسجيل التالف");
+            toastStore.addErrorToast(`السبب: ${typeof detail === "string" ? detail : "الكمية المحددة أكبر من المتاح أو المنتج غير موجود"}`, "فشل تسجيل التالف");
             throw err;
         } finally {
             isLoading.value = false;

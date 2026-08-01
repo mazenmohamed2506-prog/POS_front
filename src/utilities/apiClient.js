@@ -97,22 +97,18 @@ apiClient.interceptors.response.use(
     (response) => {
         const toastStore = useToastStore();
         if (response.config.method && response.config.method !== "get") {
-            // Check if success toast should be disabled
             const disableToast = response.config.headers?.disableToast;
 
             if (!disableToast) {
                 const msg = response.data?.returnMessage || response.data?.message;
-                if (msg) {
-                    toastStore.addSuccessToast(msg);
-                } else {
-                    const method = response.config.method.toLowerCase();
-                    if (method === "post") {
-                        toastStore.addSuccessToast("تم حفظ البيانات بنجاح");
-                    } else if (method === "put" || method === "patch") {
-                        toastStore.addSuccessToast("تم التحديث بنجاح");
-                    } else if (method === "delete") {
-                        toastStore.addSuccessToast("تم الحذف بنجاح");
-                    }
+                const method = response.config.method.toLowerCase();
+                
+                if (method === "post") {
+                    toastStore.addSuccessToast(msg || "تم إضافة وحفظ البيانات بنجاح في النظام", "عملية إضافة ناجحة");
+                } else if (method === "put" || method === "patch") {
+                    toastStore.addSuccessToast(msg || "تم تحديث وحفظ التعديلات بنجاح", "عملية تعديل ناجحة");
+                } else if (method === "delete") {
+                    toastStore.addSuccessToast(msg || "تم حذف البيانات وإلغاؤها بنجاح", "عملية حذف ناجحة");
                 }
             }
         }
@@ -122,11 +118,10 @@ apiClient.interceptors.response.use(
         const toastStore = useToastStore();
         const status = error?.response?.status ?? error.status ?? null;
 
-        // Treat API's 300 (validation/business error) as handled: don't spam console/toasts
         if (status === 300) {
             const data = error?.response?.data;
-            const msg = data?.detail || data?.message || data?.returnMessage;
-            if (msg) toastStore.addWarningToast(msg);
+            const msg = data?.detail || data?.message || data?.returnMessage || "تنبيه متعلق بقواعد العمل في النظام";
+            toastStore.addWarningToast(`السبب: ${msg}`, "تنبيه عملي");
             return Promise.reject(error);
         }
 
@@ -161,35 +156,30 @@ apiClient.interceptors.response.use(
             console.warn("Unauthorized access – redirecting to login");
             window.location.replace("/login");
         } else if (status === 403) {
-            toastStore.addErrorToast("غير مصرح لك بالقيام بهذا الإجراء");
-            console.warn("Forbidden access");
+            toastStore.addErrorToast("السبب: ليس لديك الصلاحيات الكافية لتنفيذ هذا الإجراء.", "غير مصرح بالعملية");
         } else if (status === 404) {
-            toastStore.addErrorToast("العنصر المطلوب غير موجود");
-            console.warn("Not found");
+            toastStore.addErrorToast("السبب: السجل أو الصفحة المطلوبة غير موجودة بالخادم.", "العنصر غير موجود");
         } else if (status === 400) {
             const data = error?.response?.data;
+            let reasonStr = "خطأ في البيانات المدخلة";
             if (data) {
                 if (data.errors) {
                     const messages = Object.values(data.errors).flat();
-                    const msg = messages.join(' | ') || 'خطأ في البيانات المدخلة';
-                    toastStore.addErrorToast(msg);
+                    reasonStr = messages.join(' \n ') || 'يرجى مراجعة الحقول والبيانات المدخلة';
                 } else if (data.detail) {
-                    toastStore.addErrorToast(data.detail);
+                    reasonStr = data.detail;
                 } else if (data.message) {
-                    toastStore.addErrorToast(data.message);
+                    reasonStr = data.message;
                 } else if (typeof data === 'string') {
-                    toastStore.addErrorToast(data);
-                } else {
-                    toastStore.addErrorToast('خطأ في البيانات المدخلة');
+                    reasonStr = data;
                 }
-            } else {
-                toastStore.addErrorToast('خطأ في البيانات المدخلة');
             }
-            console.warn("Bad request:", data);
+            toastStore.addErrorToast(`السبب: ${reasonStr}`, "خطأ في مدخلات البيانات");
         } else {
-            const detailMsg = error?.response?.data?.detail || error?.response?.data?.message || "حدث خطأ غير متوقع بالخادم";
-            toastStore.addErrorToast(detailMsg);
-            console.warn("An error occurred:", error?.response?.data ?? error.message);
+            const reasonStr = error?.response?.data?.detail 
+                || error?.response?.data?.message 
+                || (error.message === "Network Error" ? "تعذر الاتصال بالخادم، يرجى التأكد من تشغيل السيرفر أو الاتصال بالشبكة" : "حدث خطأ غير متوقع بالخادم أثناء الإجراء");
+            toastStore.addErrorToast(`السبب: ${reasonStr}`, "خطأ في الاتصال / الخادم");
         }
         return Promise.reject(error);
     }

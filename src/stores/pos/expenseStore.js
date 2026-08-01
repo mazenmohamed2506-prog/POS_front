@@ -35,7 +35,7 @@ export const useExpenseStore = defineStore("expense", () => {
         error.value = null;
         try {
             const response = await apiPost("/Expenses", payload, false);
-            toastStore.addSuccessToast("تم تسجيل المصروف بنجاح");
+            toastStore.addSuccessToast(`تم تسجيل المصروف بقيمة ${payload.amount || 0} ج.م بنجاح`, "تسجيل مصروف جديد");
             
             // Reactivity: Refresh lists and stats
             await Promise.all([
@@ -48,7 +48,7 @@ export const useExpenseStore = defineStore("expense", () => {
             console.error("Failed to add expense:", err);
             const detail = err.response?.data?.detail || err.response?.data?.message || err.response?.data || "حدث خطأ أثناء تسجيل المصروف";
             error.value = typeof detail === "string" ? detail : JSON.stringify(detail);
-            toastStore.addErrorToast(typeof detail === "string" ? detail : "حدث خطأ أثناء تسجيل المصروف");
+            toastStore.addErrorToast(`السبب: ${typeof detail === "string" ? detail : "بيانات المصروف غير صالحة"}`, "فشل تسجيل المصروف");
             throw err;
         } finally {
             isLoading.value = false;
