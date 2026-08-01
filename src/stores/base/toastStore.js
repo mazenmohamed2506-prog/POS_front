@@ -1,58 +1,72 @@
 import { defineStore } from "pinia";
 
 export const useToastStore = defineStore("toast", () => {
-    // We store a reference to PrimeVue's toast service
-    // This is set from a component context where useToast() is available
     let toastService = null;
 
     function setToastService(service) {
         toastService = service;
     }
 
-    function addSuccessToast(message) {
-        if (!message) return;
+    function formatMessage(msg) {
+        if (!msg) return "";
+        if (typeof msg === "string") return msg;
+        if (Array.isArray(msg)) return msg.join(" | ");
+        if (typeof msg === "object") {
+            if (msg.detail) return String(msg.detail);
+            if (msg.message) return String(msg.message);
+            return JSON.stringify(msg);
+        }
+        return String(msg);
+    }
+
+    function addSuccessToast(message, summary = "نجاح", life = 3000) {
+        const text = formatMessage(message);
+        if (!text) return;
         if (toastService) {
             toastService.add({
                 severity: "success",
-                summary: "نجاح",
-                detail: message,
-                life: 3000,
+                summary,
+                detail: text,
+                life,
             });
         }
     }
 
-    function addErrorToast(message) {
-        if (!message) return;
+    function addErrorToast(message, summary = "خطأ", life = 5000) {
+        const text = formatMessage(message);
+        if (!text) return;
         if (toastService) {
             toastService.add({
                 severity: "error",
-                summary: "خطأ",
-                detail: message,
-                life: 5000,
+                summary,
+                detail: text,
+                life,
             });
         }
     }
 
-    function addWarningToast(message) {
-        if (!message) return;
+    function addWarningToast(message, summary = "تنبيه", life = 4000) {
+        const text = formatMessage(message);
+        if (!text) return;
         if (toastService) {
             toastService.add({
                 severity: "warn",
-                summary: "تنبيه",
-                detail: message,
-                life: 4000,
+                summary,
+                detail: text,
+                life,
             });
         }
     }
 
-    function addInfoToast(message) {
-        if (!message) return;
+    function addInfoToast(message, summary = "معلومة", life = 3500) {
+        const text = formatMessage(message);
+        if (!text) return;
         if (toastService) {
             toastService.add({
                 severity: "info",
-                summary: "معلومة",
-                detail: message,
-                life: 3000,
+                summary,
+                detail: text,
+                life,
             });
         }
     }
@@ -65,3 +79,4 @@ export const useToastStore = defineStore("toast", () => {
         addInfoToast,
     };
 });
+

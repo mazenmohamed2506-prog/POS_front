@@ -268,11 +268,16 @@ export const usePosStore = defineStore("pos", () => {
                 isActive: product.isActive ?? true
             });
         }
+        useToastStore().addInfoToast(`تمت إضافة "${product.name}" إلى السلة`);
         return true;
     }
 
     function removeFromCart(productId) {
-        cart.value = cart.value.filter((item) => item.id !== productId);
+        const item = cart.value.find((i) => i.id === productId);
+        cart.value = cart.value.filter((i) => i.id !== productId);
+        if (item) {
+            useToastStore().addInfoToast(`تم حرق/إزالة "${item.name}" من السلة`);
+        }
     }
 
     function updateCartQty(productId, qty) {
@@ -286,7 +291,10 @@ export const usePosStore = defineStore("pos", () => {
         }
     }
 
-    function clearCart() {
+    function clearCart(silent = false) {
+        if (cart.value.length > 0 && !silent) {
+            useToastStore().addInfoToast("تم تفريغ السلة");
+        }
         cart.value = [];
     }
 
@@ -321,7 +329,8 @@ export const usePosStore = defineStore("pos", () => {
                 console.error("Failed to refresh inventory after checkout", e);
             }
 
-            clearCart();
+            clearCart(true);
+            useToastStore().addSuccessToast("تم إتمام الطلب وطباعة الفاتورة بنجاح");
             return order;
         } finally {
             loading.value = false;

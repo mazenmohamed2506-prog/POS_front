@@ -96,12 +96,24 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
     (response) => {
         const toastStore = useToastStore();
-        if (response.config.method !== "get") {
+        if (response.config.method && response.config.method !== "get") {
             // Check if success toast should be disabled
             const disableToast = response.config.headers?.disableToast;
 
             if (!disableToast) {
-                toastStore.addSuccessToast(response.data.returnMessage);
+                const msg = response.data?.returnMessage || response.data?.message;
+                if (msg) {
+                    toastStore.addSuccessToast(msg);
+                } else {
+                    const method = response.config.method.toLowerCase();
+                    if (method === "post") {
+                        toastStore.addSuccessToast("تم حفظ البيانات بنجاح");
+                    } else if (method === "put" || method === "patch") {
+                        toastStore.addSuccessToast("تم التحديث بنجاح");
+                    } else if (method === "delete") {
+                        toastStore.addSuccessToast("تم الحذف بنجاح");
+                    }
+                }
             }
         }
         return response;
@@ -112,6 +124,9 @@ apiClient.interceptors.response.use(
 
         // Treat API's 300 (validation/business error) as handled: don't spam console/toasts
         if (status === 300) {
+            const data = error?.response?.data;
+            const msg = data?.detail || data?.message || data?.returnMessage;
+            if (msg) toastStore.addWarningToast(msg);
             return Promise.reject(error);
         }
 
@@ -127,7 +142,6 @@ apiClient.interceptors.response.use(
                         return apiClient(originalRequest);
                     }
                 } catch (refreshErr) {
-                    // Refresh failed – clear auth data and redirect to login
                     console.warn("Silent refresh failed", refreshErr);
                     [
                         "accessToken", "refreshToken", "expiresAt",
@@ -139,7 +153,6 @@ apiClient.interceptors.response.use(
                 }
             }
 
-            // Token was invalid and no refresh available – clear and redirect
             [
                 "accessToken", "refreshToken", "expiresAt",
                 "userCode", "userName", "userDesc",
@@ -148,17 +161,15 @@ apiClient.interceptors.response.use(
             console.warn("Unauthorized access – redirecting to login");
             window.location.replace("/login");
         } else if (status === 403) {
-            toastStore.addErrorToast("You are not authorized to perform this action");
+            toastStore.addErrorToast("غير مصرح لك بالقيام بهذا الإجراء");
             console.warn("Forbidden access");
         } else if (status === 404) {
-            toastStore.addErrorToast("The request you are looking for could not be found");
+            toastStore.addErrorToast("العنصر المطلوب غير موجود");
             console.warn("Not found");
         } else if (status === 400) {
-            // Handle validation errors from ASP.NET
             const data = error?.response?.data;
             if (data) {
                 if (data.errors) {
-                    // ASP.NET model validation errors
                     const messages = Object.values(data.errors).flat();
                     const msg = messages.join(' | ') || 'خطأ في البيانات المدخلة';
                     toastStore.addErrorToast(msg);
@@ -176,10 +187,9 @@ apiClient.interceptors.response.use(
             }
             console.warn("Bad request:", data);
         } else {
+            const detailMsg = error?.response?.data?.detail || error?.response?.data?.message || "حدث خطأ غير متوقع بالخادم";
+            toastStore.addErrorToast(detailMsg);
             console.warn("An error occurred:", error?.response?.data ?? error.message);
-            if (error?.response?.data?.detail) {
-                toastStore.addErrorToast(error.response.data.detail);
-            }
         }
         return Promise.reject(error);
     }
