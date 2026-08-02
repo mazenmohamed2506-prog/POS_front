@@ -126,7 +126,11 @@ apiClient.interceptors.response.use(
         }
 
         if (status === 401) {
+            const onLoginPage = window.location.pathname === "/login" || window.location.pathname === "/";
             const originalRequest = error.config || {};
+            if (onLoginPage) {
+                return Promise.reject(error);
+            }
             if (!originalRequest._retry) {
                 originalRequest._retry = true;
                 try {

@@ -29,18 +29,34 @@ export const useShiftStore = defineStore("shift", () => {
     }
 
     async function fetchCurrentShift() {
+        const accessToken = localStorage.getItem("accessToken");
+        if (!accessToken) {
+            currentShift.value = null;
+            error.value = null;
+            return null;
+        }
+
         loading.value = true;
         error.value = null;
         try {
             const response = await apiGet("/Shift/current");
             currentShift.value = mapApiShiftToFrontend(response.data);
+            return currentShift.value;
         } catch (err) {
             if (err.response?.status === 404) {
                 currentShift.value = null;
-            } else {
-                console.error("Failed to fetch current shift:", err);
-                error.value = err.message || "Failed to load current shift";
+                return null;
             }
+
+            if (err.response?.status === 401 || err.response?.status === 403) {
+                currentShift.value = null;
+                error.value = null;
+                return null;
+            }
+
+            console.error("Failed to fetch current shift:", err);
+            error.value = err.message || "Failed to load current shift";
+            return null;
         } finally {
             loading.value = false;
         }

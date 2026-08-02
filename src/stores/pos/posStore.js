@@ -38,7 +38,8 @@ export const usePosStore = defineStore("pos", () => {
     const user = ref(JSON.parse(localStorage.getItem("posUser") || "null"));
     const role = ref(localStorage.getItem("posRole") || ""); // "Manager" | "Cashier"
     const pages = ref(JSON.parse(localStorage.getItem("posPages") || "[]")); // Array of authorized paths
-    const isAuthenticated = computed(() => !!user.value);
+    const hasValidAccessToken = () => !!localStorage.getItem("accessToken");
+    const isAuthenticated = computed(() => !!user.value && hasValidAccessToken());
 
     // ═══════════════════════════════════════════
     //  SHIFT STATE
@@ -84,7 +85,7 @@ export const usePosStore = defineStore("pos", () => {
         set: (val) => { posLoading.value = val; }
     });
 
-    // Auto-fetch current shift if user is already authenticated
+    // Auto-fetch current shift only when a real session token exists
     if (isAuthenticated.value) {
         shiftStore.fetchCurrentShift();
     }
