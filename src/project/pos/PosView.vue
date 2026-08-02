@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted, nextTick, computed } from "vue";
 import { usePosStore } from "@/stores/pos/posStore";
 import { useToastStore } from "@/stores/base/toastStore";
 import { usePaymentMethodStore } from "@/stores/pos/paymentMethodStore";
-import { Barcode, Trash2, Plus, Minus, CreditCard, Banknote, ShoppingCart, XCircle, Search, RotateCcw, Receipt, Package, AlertTriangle, HelpCircle, User, Wallet, Printer, CheckCircle, UserPlus, ArrowRightLeft } from "lucide-vue-next";
+import { Barcode, Trash2, Plus, Minus, CreditCard, Banknote, ShoppingCart, XCircle, Search, RotateCcw, Receipt, Package, AlertTriangle, HelpCircle, User, Wallet, Printer, CheckCircle, UserPlus, ArrowRightLeft, ArrowRight, LayoutGrid, Layers, ChevronLeft, ChevronRight, Tag } from "lucide-vue-next";
 import HelpDrawer from "@/components/HelpDrawer.vue";
 import { apiGet, apiPost } from "@/utilities/fetchApi";
 
@@ -16,7 +16,7 @@ const barcodeInput = ref("");
 const barcodeInputRef = ref(null);
 
 // Category and search query
-const selectedCategory = ref("الكل");
+const selectedCategory = ref(null);
 const searchQuery = ref("");
 
 // ── POS Mode: 'sell' or 'returns' ──
@@ -199,9 +199,52 @@ const getShortLabel = (pm) => {
 
 // Categories list computed dynamically
 const categories = computed(() => {
-    const cats = new Set(posStore.value.products.map((p) => p.category));
+    const cats = new Set((posStore.value?.products || []).map((p) => p.category));
     return ["الكل", ...Array.from(cats)];
 });
+
+// Detailed category cards for grid view
+const categoryCards = computed(() => {
+    const prods = posStore.value?.products || [];
+    const catCounts = {};
+    prods.forEach((p) => {
+        const c = p.category || "بدون فئة";
+        catCounts[c] = (catCounts[c] || 0) + 1;
+    });
+
+    const list = Object.keys(catCounts).map((catName) => ({
+        name: catName,
+        count: catCounts[catName],
+        isAll: false
+    }));
+
+    return [
+        { name: "الكل", count: prods.length, isAll: true },
+        ...list
+    ];
+});
+
+// Aesthetic color palettes generator for category cards
+const getCategoryStyle = (index, isAll = false) => {
+    if (isAll) {
+        return {
+            gradient: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
+            lightBg: "rgba(99, 102, 241, 0.1)",
+            iconColor: "#6366f1"
+        };
+    }
+    const colorPalettes = [
+        { gradient: "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)", lightBg: "rgba(59, 130, 246, 0.1)", iconColor: "#3b82f6" },
+        { gradient: "linear-gradient(135deg, #10b981 0%, #047857 100%)", lightBg: "rgba(16, 185, 129, 0.1)", iconColor: "#10b981" },
+        { gradient: "linear-gradient(135deg, #f59e0b 0%, #b45309 100%)", lightBg: "rgba(245, 158, 11, 0.1)", iconColor: "#f59e0b" },
+        { gradient: "linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)", lightBg: "rgba(139, 92, 246, 0.1)", iconColor: "#8b5cf6" },
+        { gradient: "linear-gradient(135deg, #ec4899 0%, #be185d 100%)", lightBg: "rgba(236, 72, 153, 0.1)", iconColor: "#ec4899" },
+        { gradient: "linear-gradient(135deg, #14b8a6 0%, #0f766e 100%)", lightBg: "rgba(20, 184, 166, 0.1)", iconColor: "#14b8a6" },
+        { gradient: "linear-gradient(135deg, #06b6d4 0%, #0e7490 100%)", lightBg: "rgba(6, 182, 212, 0.1)", iconColor: "#06b6d4" },
+        { gradient: "linear-gradient(135deg, #f97316 0%, #c2410c 100%)", lightBg: "rgba(249, 115, 22, 0.1)", iconColor: "#f97316" }
+    ];
+    return colorPalettes[index % colorPalettes.length];
+};
 
 // Helper to get shelf stock from inventory state
 const getShelfStock = (productId) => {
@@ -211,8 +254,8 @@ const getShelfStock = (productId) => {
 
 // Filtered products list based on category & text search
 const filteredProducts = computed(() => {
-    return posStore.value.products.filter((p) => {
-        const matchesCategory = selectedCategory.value === "الكل" || p.category === selectedCategory.value;
+    return (posStore.value?.products || []).filter((p) => {
+        const matchesCategory = !selectedCategory.value || selectedCategory.value === "الكل" || p.category === selectedCategory.value;
         const q = searchQuery.value.trim().toLowerCase();
         if (!q) return matchesCategory;
 
@@ -624,63 +667,126 @@ const getStockClass = (stock) => {
                     </form>
                 </div>
 
-                <!-- Categories Tabs -->
-                <div class="pos-categories">
-                    <div class="categories-scroll">
-                        <button
-                            v-for="cat in categories"
-                            :key="cat"
-                            class="cat-pill"
-                            :class="{ active: selectedCategory === cat }"
-                            @click="selectedCategory = cat"
-                        >
-                            {{ cat }}
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Products Grid -->
-                <div class="pos-grid-wrap">
-                    <Transition name="fade" mode="out-in">
-                        <div v-if="filteredProducts.length === 0" class="pos-empty-state">
-                            <Package :size="48" class="empty-icon" />
-                            <span>لا توجد منتجات مطابقة</span>
+                <Transition name="fade-slide" mode="out-in">
+                    <!-- ═══ 1. CATEGORY GRID VIEW (Initial Default View) ═══ -->
+                    <div v-if="!selectedCategory && !searchQuery.trim()" key="category-grid" class="pos-category-selection-view">
+                        <div class="category-view-header">
+                            <div class="category-view-title flex items-center gap-2">
+                                <LayoutGrid :size="20" class="text-primary-500" />
+                                <h3 class="font-extrabold text-base text-surface-800 dark:text-surface-100">فئات المنتجات</h3>
+                                <span class="category-count-badge">{{ categoryCards.length }} فئة</span>
+                            </div>
+                            <p class="text-xs text-surface-500">اختر فئة لعرض المنتجات التابعة لها في شاشة البيع</p>
                         </div>
-                        <TransitionGroup v-else name="grid" tag="div" class="product-grid">
+
+                        <div class="category-grid">
                             <div
-                                v-for="prod in filteredProducts"
-                                :key="prod.id"
-                                class="p-card"
-                                :class="{
-                                    'p-card-disabled': prod.isActive === false || getShelfStock(prod.id) === 0 || !posStore.isShiftOpen,
-                                    'p-card-oos': getShelfStock(prod.id) === 0 || prod.isActive === false,
-                                    'shake': shakingCardId === prod.id
-                                }"
-                                @click="handleProductClick(prod)"
+                                v-for="(cat, idx) in categoryCards"
+                                :key="cat.name"
+                                class="cat-card"
+                                :style="{ '--cat-accent': getCategoryStyle(idx, cat.isAll).iconColor }"
+                                @click="selectedCategory = cat.name"
                             >
-                                <div class="p-card-cat-strip">
-                                    <span>{{ prod.category }}</span>
+                                <div class="cat-card-header" :style="{ background: getCategoryStyle(idx, cat.isAll).gradient }">
+                                    <div class="cat-card-icon-wrap">
+                                        <LayoutGrid v-if="cat.isAll" :size="26" />
+                                        <Package v-else :size="26" />
+                                    </div>
                                 </div>
-                                <div class="p-card-body">
-                                    <h4 class="p-card-name">{{ prod.name }}</h4>
-                                    <span class="p-card-sku">{{ prod.sku }}</span>
-                                </div>
-                                <div class="p-card-footer">
-                                    <span class="p-card-price">{{ formatCurrency(prod.price) }}</span>
-                                    <span class="p-card-stock" :class="prod.isActive === false ? 'stock-danger' : getStockClass(getShelfStock(prod.id))">
-                                        {{ prod.isActive === false ? 'غير نشط' : (getShelfStock(prod.id) > 0 ? getShelfStock(prod.id) : 'نفذ') }}
-                                    </span>
-                                </div>
-                                <div v-if="prod.isActive === false" class="p-card-oos-overlay" style="background: rgba(239, 68, 68, 0.15);">
-                                    <span style="background: #ef4444; color: white;">غير نشط</span>
-                                </div>
-                                <div v-else-if="getShelfStock(prod.id) === 0" class="p-card-oos-overlay">
-                                    <span>نفذ المخزون</span>
+                                <div class="cat-card-body">
+                                    <h4 class="cat-card-title">{{ cat.name }}</h4>
+                                    <div class="cat-card-meta">
+                                        <span class="cat-card-count">{{ cat.count }} منتج</span>
+                                        <span class="cat-card-arrow">
+                                            <ChevronLeft :size="14" />
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
-                        </TransitionGroup>
-                    </Transition>
-                </div>
+                        </div>
+                    </div>
+
+                    <!-- ═══ 2. PRODUCT GRID VIEW (When Category or Search Selected) ═══ -->
+                    <div v-else key="product-grid" class="pos-products-view flex flex-col flex-1 min-h-0">
+                        <!-- Navigation Bar (Back button, Breadcrumb & Quick Filter) -->
+                        <div class="product-view-nav flex items-center justify-between gap-3 px-4 py-2 bg-surface-0 dark:bg-surface-900 border-b border-surface-200 dark:border-surface-800 flex-shrink-0">
+                            <div class="flex items-center gap-3">
+                                <button
+                                    class="back-to-cats-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-extrabold text-xs bg-primary-50 dark:bg-primary-950/60 hover:bg-primary-100 dark:hover:bg-primary-900/80 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-800 transition-all cursor-pointer shadow-sm"
+                                    @click="selectedCategory = null; searchQuery = ''"
+                                    title="العودة لجميع الفئات"
+                                >
+                                    <ArrowRight :size="16" />
+                                    <span>العودة للفئات</span>
+                                </button>
+
+                                <div class="breadcrumb flex items-center gap-1.5 text-xs font-semibold text-surface-500">
+                                    <span class="cursor-pointer hover:text-primary-600 dark:hover:text-primary-400" @click="selectedCategory = null; searchQuery = ''">الفئات</span>
+                                    <ChevronLeft :size="13" class="text-surface-400" />
+                                    <span class="font-extrabold text-surface-900 dark:text-surface-100 bg-surface-100 dark:bg-surface-800 px-2 py-0.5 rounded text-xs border border-surface-200 dark:border-surface-700">
+                                        {{ searchQuery.trim() ? 'نتائج البحث' : selectedCategory }}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- Quick Cat Filter Pills -->
+                            <div class="categories-scroll-inline flex items-center gap-1.5 overflow-x-auto max-w-[50%]">
+                                <button
+                                    v-for="cat in categories"
+                                    :key="cat"
+                                    class="cat-pill-sm"
+                                    :class="{ active: selectedCategory === cat }"
+                                    @click="selectedCategory = cat"
+                                >
+                                    {{ cat }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Products Grid Wrap -->
+                        <div class="pos-grid-wrap flex-1 overflow-y-auto">
+                            <Transition name="fade" mode="out-in">
+                                <div v-if="filteredProducts.length === 0" class="pos-empty-state">
+                                    <Package :size="48" class="empty-icon" />
+                                    <span>لا توجد منتجات مطابقة</span>
+                                </div>
+                                <TransitionGroup v-else name="grid" tag="div" class="product-grid">
+                                    <div
+                                        v-for="prod in filteredProducts"
+                                        :key="prod.id"
+                                        class="p-card"
+                                        :class="{
+                                            'p-card-disabled': prod.isActive === false || getShelfStock(prod.id) === 0 || !posStore.isShiftOpen,
+                                            'p-card-oos': getShelfStock(prod.id) === 0 || prod.isActive === false,
+                                            'shake': shakingCardId === prod.id
+                                        }"
+                                        @click="handleProductClick(prod)"
+                                    >
+                                        <div class="p-card-cat-strip">
+                                            <span>{{ prod.category }}</span>
+                                        </div>
+                                        <div class="p-card-body">
+                                            <h4 class="p-card-name">{{ prod.name }}</h4>
+                                            <span class="p-card-sku">{{ prod.sku }}</span>
+                                        </div>
+                                        <div class="p-card-footer">
+                                            <span class="p-card-price">{{ formatCurrency(prod.price) }}</span>
+                                            <span class="p-card-stock" :class="prod.isActive === false ? 'stock-danger' : getStockClass(getShelfStock(prod.id))">
+                                                {{ prod.isActive === false ? 'غير نشط' : (getShelfStock(prod.id) > 0 ? getShelfStock(prod.id) : 'نفذ') }}
+                                            </span>
+                                        </div>
+                                        <div v-if="prod.isActive === false" class="p-card-oos-overlay" style="background: rgba(239, 68, 68, 0.15);">
+                                            <span style="background: #ef4444; color: white;">غير نشط</span>
+                                        </div>
+                                        <div v-else-if="getShelfStock(prod.id) === 0" class="p-card-oos-overlay">
+                                            <span>نفذ المخزون</span>
+                                        </div>
+                                    </div>
+                                </TransitionGroup>
+                            </Transition>
+                        </div>
+                    </div>
+                </Transition>
             </template>
 
             <!-- ═══ RETURNS MODE ═══ -->
@@ -2238,6 +2344,208 @@ const getStockClass = (stock) => {
 
 .return-dialog-summary-total {
     font-size: 1.15rem;
+}
+
+/* ══════════════════════════════════════════════
+   CATEGORY SELECTION GRID & UX
+   ══════════════════════════════════════════════ */
+.pos-category-selection-view {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.category-view-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: 0.25rem;
+}
+
+.category-count-badge {
+    font-size: 0.7rem;
+    font-weight: 800;
+    padding: 0.2rem 0.6rem;
+    border-radius: 9999px;
+    background: var(--p-primary-50);
+    color: var(--p-primary-600);
+    border: 1px solid var(--p-primary-200);
+}
+
+.dark .category-count-badge {
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--p-primary-400);
+    border-color: rgba(99, 102, 241, 0.3);
+}
+
+.category-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 1rem;
+}
+
+.cat-card {
+    background: var(--p-surface-0);
+    border: 1px solid var(--p-surface-200);
+    border-radius: 1rem;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    user-select: none;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    min-height: 140px;
+}
+
+.dark .cat-card {
+    background: var(--p-surface-900);
+    border-color: var(--p-surface-800);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.cat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px -4px rgba(0, 0, 0, 0.12), 0 0 0 2px var(--cat-accent, var(--p-primary-500));
+    border-color: transparent;
+}
+
+.dark .cat-card:hover {
+    box-shadow: 0 12px 24px -4px rgba(0, 0, 0, 0.4), 0 0 0 2px var(--cat-accent, var(--p-primary-500));
+}
+
+.cat-card:active {
+    transform: translateY(-1px) scale(0.98);
+}
+
+.cat-card-header {
+    height: 70px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.cat-card-icon-wrap {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 0.75rem;
+    background: rgba(255, 255, 255, 0.25);
+    backdrop-filter: blur(8px);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transition: transform 0.25s ease;
+}
+
+.cat-card:hover .cat-card-icon-wrap {
+    transform: scale(1.1);
+}
+
+.cat-card-body {
+    padding: 0.875rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    flex: 1;
+    justify-content: space-between;
+}
+
+.cat-card-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--p-surface-800);
+    margin: 0;
+    line-height: 1.3;
+}
+
+.dark .cat-card-title {
+    color: var(--p-surface-100);
+}
+
+.cat-card-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.cat-card-count {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--p-surface-500);
+}
+
+.dark .cat-card-count {
+    color: var(--p-surface-400);
+}
+
+.cat-card-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    background: var(--p-surface-100);
+    color: var(--p-surface-600);
+    transition: all 0.2s ease;
+}
+
+.dark .cat-card-arrow {
+    background: var(--p-surface-800);
+    color: var(--p-surface-300);
+}
+
+.cat-card:hover .cat-card-arrow {
+    background: var(--cat-accent, var(--p-primary-500));
+    color: white;
+    transform: translateX(-3px);
+}
+
+.cat-pill-sm {
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    border: 1px solid var(--p-surface-200);
+    background: var(--p-surface-0);
+    color: var(--p-surface-600);
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+}
+
+.dark .cat-pill-sm {
+    border-color: var(--p-surface-700);
+    background: var(--p-surface-800);
+    color: var(--p-surface-400);
+}
+
+.cat-pill-sm.active {
+    background: var(--p-primary-500);
+    color: white;
+    border-color: transparent;
+}
+
+/* Smooth Fade/Slide Transition */
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+    transition: all 0.25s ease-out;
+}
+
+.fade-slide-enter-from {
+    opacity: 0;
+    transform: translateY(10px);
+}
+
+.fade-slide-leave-to {
+    opacity: 0;
+    transform: translateY(-10px);
 }
 
 /* ══════════════════════════════════════════════
