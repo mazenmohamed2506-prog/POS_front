@@ -94,19 +94,19 @@ const exportReportCsv = () => {
 const showHelp = ref(false);
 const helpSections = [
     {
-        title: 'الذمم المدينة',
+        title: 'متابعة تحصيلات الذمم المدينة',
         icon: CreditCard,
         color: '#fce7f3',
         iconColor: '#db2777',
         steps: [
-            { title: 'قائمة العملاء', desc: 'عرض العملاء الذين عليهم مبالغ مستحقة للنشاط (مبيعات آجلة)' },
-            { title: 'تفاصيل الحساب', desc: 'اضغط على أيقونة العين لعرض الفواتير غير المسددة للعميل' },
-            { title: 'تسجيل دفعة', desc: 'يمكنك تسجيل دفعة من شاشة تفاصيل العميل لتسوية الفواتير' }
+            { title: 'كشف مديونيات العملاء', desc: 'عرض أسماء العملاء والمبالغ المستحقة على فواتير المبيعات الآجلة.' },
+            { title: 'تسجيل سندات القبض', desc: 'إدخال الدفعات المسددة من العملاء وتحديث رصيد المديونية فوراً.' },
         ]
     }
 ];
 const helpTips = [
-    'تسجيل الدفعات يخفض الرصيد المستحق تلقائياً'
+    'سجل الدفعات المحصلة فور استلامها لتحديث حساب العميل وتجنب المطالبات المكررة.',
+    'طباعة سند القبض يوفر إثباتاً مالياً موجهاً للعميل.'
 ];
 
 const filters = ref({ global: { value: "", matchMode: "contains" } });
@@ -305,8 +305,8 @@ const getPaymentStatusConfig = (status) => {
 
             <HelpDrawer
                 v-model="showHelp"
-                page-title="الذمم المدينة"
-                page-subtitle="المبالغ المستحقة للنشاط"
+                page-title="الذمم المدينة والديون"
+                page-subtitle="متابعة ديون العملاء وتسجيل التحصيلات المالية"
                 :page-icon="CreditCard"
                 header-gradient="linear-gradient(135deg, #ec4899 0%, #db2777 100%)"
                 :sections="helpSections"

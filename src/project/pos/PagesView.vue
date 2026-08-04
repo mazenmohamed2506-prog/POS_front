@@ -2,7 +2,8 @@
 import { ref, onMounted } from "vue";
 import { usePageStore } from "@/stores/pos/pageStore";
 import { useUserStore } from "@/stores/pos/userStore";
-import { FileText, Plus, Shield, Search } from "lucide-vue-next";
+import { FileText, Plus, Shield, Search, HelpCircle } from "lucide-vue-next";
+import HelpDrawer from "@/components/HelpDrawer.vue";
 
 const pageStore = usePageStore();
 const userStore = useUserStore();
@@ -21,6 +22,31 @@ const assignForm = ref({
 });
 
 const filters = ref({ global: { value: "", matchMode: "contains" } });
+
+// ── Help Drawer ──
+const showHelp = ref(false);
+const pagesHelpSections = [
+    {
+        title: 'تعريف مسارات وسجل الصفحات',
+        icon: FileText,
+        color: '#dbeafe',
+        iconColor: '#2563eb',
+        steps: [
+            { title: 'سجل المسارات', desc: 'استعرض جميع صفحات وشاشات النظام المسجلة ومساراتها البرمجية (Routes).' },
+            { title: 'إضافة صفحة جديدة', desc: 'انقر على "إضافة صفحة" لتسجيل شاشة جديدة في النظام وتحديد اسمها بالعربي والإنجليزي ومسارها.' },
+        ]
+    },
+    {
+        title: 'تخصيص صلاحيات المستخدمين',
+        icon: Shield,
+        color: '#fef3c7',
+        iconColor: '#d97706',
+        steps: [
+            { title: 'تعيين الصلاحيات الفردية', desc: 'اضغط على زر "تعيين صلاحيات" لفتح نافذة ربط المستخدمين بالصفحات المسموح لهم بفتحها.' },
+            { title: 'تطبيق مباشر', desc: 'اختر حساب المستخدم ثم حدد قائمة الصفحات المتاحة له؛ سينعكس ذلك فوراً على قائمة التنقل الخاصة به.' },
+        ]
+    }
+];
 
 onMounted(async () => {
     await Promise.all([
@@ -59,6 +85,11 @@ const saveAssign = async () => {
         // Error handled by store
     }
 };
+
+const pagesHelpTips = [
+    'هذه الشاشة مخصصة لإدارة الهيكلية البرمجية لمسارات الصفحات وتوجيه الصلاحيات.'
+];
+
 </script>
 
 <template>
@@ -74,7 +105,11 @@ const saveAssign = async () => {
                     <p class="pages-subtitle">تعريف صفحات النظام وتعيين صلاحيات الوصول للمستخدمين</p>
                 </div>
             </div>
-            <div class="flex gap-2">
+            <div class="flex items-center gap-2">
+                <button @click="showHelp = true" class="btn-help flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-primary-600 bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded-xl transition-all me-2">
+                    <HelpCircle :size="18" />
+                    <span>مساعدة</span>
+                </button>
                 <Button label="تعيين صلاحيات" severity="secondary" @click="openAssignDialog">
                     <template #icon>
                         <Shield :size="18" class="me-1" />
@@ -184,6 +219,17 @@ const saveAssign = async () => {
             </template>
         </Dialog>
 
+        <!-- Help Drawer -->
+        <HelpDrawer
+            v-model="showHelp"
+            page-title="إدارة مسارات الصلاحيات"
+            page-subtitle="سجل مسارات الصفحات البرمجية وتوجيه الصلاحيات"
+            :page-icon="FileText"
+            header-gradient="linear-gradient(135deg, #6366f1 0%, #4338ca 100%)"
+            :sections="pagesHelpSections"
+            :tips="pagesHelpTips"
+        />
+
         <!-- Assign Pages Dialog -->
         <Dialog
             v-model:visible="showAssignDialog"
@@ -224,6 +270,7 @@ const saveAssign = async () => {
                 </div>
             </template>
         </Dialog>
+
     </div>
 </template>
 

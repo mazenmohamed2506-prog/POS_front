@@ -198,6 +198,42 @@ export const useUserStore = defineStore("user", () => {
         }
     }
 
+    // ── Create Role ──
+    async function createRole(roleName, pageIds) {
+        loading.value = true;
+        error.value = null;
+        try {
+            await apiPost("/Roles", { name: roleName, pageIds: pageIds || [] }, false);
+            toastStore.addSuccessToast(`تم إنشاء الدور "${roleName}" بنجاح`, "إنشاء دور");
+            await fetchRoles();
+        } catch (err) {
+            console.error("Failed to create role:", err);
+            const detail = err.response?.data?.message || "حدث خطأ أثناء إنشاء الدور";
+            toastStore.addErrorToast(`السبب: ${detail}`, "فشل إنشاء الدور");
+            throw err;
+        } finally {
+            loading.value = false;
+        }
+    }
+
+    // ── Delete Role ──
+    async function deleteRole(id) {
+        loading.value = true;
+        error.value = null;
+        try {
+            await apiDelete(`/Roles/${id}`, {}, false);
+            toastStore.addSuccessToast("تم حذف الدور بنجاح", "حذف دور");
+            await fetchRoles();
+        } catch (err) {
+            console.error("Failed to delete role:", err);
+            const detail = err.response?.data?.message || "حدث خطأ أثناء حذف الدور";
+            toastStore.addErrorToast(`السبب: ${detail}`, "فشل حذف الدور");
+            throw err;
+        } finally {
+            loading.value = false;
+        }
+    }
+
     return {
         users,
         roles,
@@ -213,5 +249,7 @@ export const useUserStore = defineStore("user", () => {
         toggleUserActive,
         deleteUser,
         assignPagesToRole,
+        createRole,
+        deleteRole,
     };
 });

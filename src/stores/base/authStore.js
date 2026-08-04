@@ -43,7 +43,7 @@ export const useAuthStore = defineStore("auth", () => {
         const baseStore = useBaseStore();
         baseStore.setUser(null);
 
-        window.location.replace("/login");
+        window.location.hash = "/login";
     }
 
     async function getUserPages() {

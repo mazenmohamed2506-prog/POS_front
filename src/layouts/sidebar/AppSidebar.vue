@@ -8,6 +8,8 @@ import { useSidebar } from "./useSidebar";
 import { Settings, ShoppingCart, X } from "lucide-vue-next";
 
 // Use project's existing dark mode system
+const isDark = useDark({ initialValue: 'light' });
+
 const props = defineProps({
     isMobile: {
         type: Boolean,
@@ -25,10 +27,13 @@ const model = computed(() => {
 
     return baseStore.menuModel.map((group) => {
         const filteredItems = group.items ? group.items.filter((item) => {
-            // SuperAdmin can see everything regardless of the pages list (fail-safe)
-            if (role === "SuperAdmin") return true;
+            // Admin can see everything regardless of the pages list (fail-safe)
+            if (role === "Admin") return true;
             
             // Check if the item's path is in the authorized pages list
+            if (item.to === '/my-shift') {
+                return authorizedPages.includes('/shifts') || authorizedPages.includes('/pos');
+            }
             return authorizedPages.includes(item.to);
         }) : [];
 

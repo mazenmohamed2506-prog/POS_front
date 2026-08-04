@@ -91,10 +91,16 @@ export const useBaseStore = defineStore("base", () => {
             nameEn: "Administration & System",
             items: [
                 {
-                    nameAr: "الورديات",
-                    nameEn: "Shifts",
+                    nameAr: "متابعة الورديات",
+                    nameEn: "All Shifts",
                     icon: Clock,
                     to: "/shifts",
+                },
+                {
+                    nameAr: "ورديتي",
+                    nameEn: "My Shift",
+                    icon: Clock,
+                    to: "/my-shift",
                 },
                 {
                     nameAr: "المستخدمون والصلاحيات",

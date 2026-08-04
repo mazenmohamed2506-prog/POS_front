@@ -8,7 +8,7 @@ import {
     Package, Plus, Pencil, Trash2, Search, Star,
     PlusCircle, ArrowLeft, Eye, HelpCircle,
     LayoutGrid, CheckCircle2, XCircle, AlertCircle,
-    ChevronDown, Hash, Barcode, DollarSign, Tag as TagIcon, Layers, RefreshCw
+    ChevronDown, Hash, Barcode, DollarSign, Tag as TagIcon, Layers, RefreshCw, Printer
 } from "lucide-vue-next";
 import HelpDrawer from "@/components/HelpDrawer.vue";
 
@@ -20,44 +20,41 @@ const newCategoryName = ref("");
 const showHelp = ref(false);
 const productsHelpSections = [
     {
-        title: 'استعراض المنتجات',
+        title: 'استعراض وتصفية المنتجات',
         icon: Package,
         color: '#dbeafe',
         iconColor: '#2563eb',
         steps: [
-            { title: 'البحث السريع', desc: 'استخدم خانة البحث للعثور باسم المنتج أو الباركود أو الفئة' },
-            { title: 'عرض التفاصيل', desc: 'اضغط على أيقونة العين لمشاهدة تفاصيل المنتج كاملة' },
-            { title: 'ترتيب الأعمدة', desc: 'اضغط على رأس أي عمود لترتيب المنتجات تصاعدياً أو تنازلياً' },
+            { title: 'البحث الشامل', desc: 'استخدم خانة البحث للعثور على المنتجات باسم المنتج، الباركود، أو التكلفة وسعر البيع.' },
+            { title: 'التصفية حسب الفئة', desc: 'تصفية قائمة المنتجات بناءً على القسم أو الفئة التابعة لها لسهولة الوصول.' },
+            { title: 'حالة الصنف', desc: 'متابعة المنتجات النشطة وغير النشطة والتي بلغت حد إعادة الطلب.' },
         ]
     },
     {
-        title: 'إضافة وتعديل منتج',
+        title: 'إضافة وتعديل بيانات المنتج',
         icon: Plus,
         color: '#d1fae5',
         iconColor: '#059669',
         steps: [
-            { title: 'إضافة منتج جديد', desc: 'اضغط "إضافة منتج" واملأ بيانات المنتج والوحدات' },
-            { title: 'تعديل منتج موجود', desc: 'اضغط على أيقونة التعديل لتغيير بيانات أو سعر المنتج' },
-            { title: 'حذف منتج', desc: 'اضغط أيقونة الحذف وتأكد من الحذف في رسالة التأكيد' },
+            { title: 'بيانات المنتج والباركود', desc: 'أدخل الاسم، الباركود الفريد، الفئة، وحد إعادة الطلب لتلقي التنبيهات.' },
+            { title: 'التسعير والتكلفة', desc: 'حدد سعر الشراء وسعر البيع لحساب نسبة وتكلفة هامش الربح آلياً.' },
+            { title: 'حفظ والتعديل', desc: 'تحديث بيانات المنتج في أي وقت مع احتفاظ النظام بسجل الحركات التاريخية.' },
         ]
     },
     {
-        title: 'إدارة الفئات والوحدات',
-        icon: Layers,
-        color: '#fef3c7',
-        iconColor: '#d97706',
+        title: 'طباعة الباركود والبطاقات',
+        icon: Printer,
+        color: '#ede9fe',
+        iconColor: '#7c3aed',
         steps: [
-            { title: 'إدارة الفئات', desc: 'اضغط زر الفئات لإضافة أو تعديل فئات المنتجات' },
-            { title: 'إدارة الوحدات', desc: 'أضف وحدات متعددة لكل منتج (قطعة، علبة، كرتون)' },
-            { title: 'تحديد السعر', desc: 'حدد سعر لكل وحدة بشكل مستقل' },
+            { title: 'طباعة ملصقات الباركود', desc: 'توليد وطباعة باركود المنتجات لطابعات الملصقات الحرارية لاستخدامها في الكاشير.' },
         ]
-    },
+    }
 ];
 const productsHelpTips = [
-    'يمكنك إضافة وحدات متعددة لكل منتج (كرتون، قطعة، علبة)',
-    'الباركود فريد لكل وحدة على حدة',
-    'المنتجات غير النشطة لا تظهر في شاشة البيع',
-    'يمكنك تفعيل تتبع تاريخ الانتهاء للمنتجات المرتبطة بالصلاحية',
+    'تأكد من إضافة باركود فريد لكل صنف لضمان سرعة المسح في نقطة البيع.',
+    'تحديد حد إعادة الطلب يرسل لك تنبيهات آلياً قبل نفاد المخزون.',
+    'تعديل سعر الشراء لا تؤثر على الفواتير السابقة الصادرة في النظام.'
 ];
 
 const productStore = useProductStore();
@@ -470,7 +467,7 @@ const viewConversions = async (product) => {
                 <button class="help-icon-btn" @click="showHelp = true" title="دليل الاستخدام">
                     <HelpCircle :size="18" />
                 </button>
-                <Button v-if="posStore.role === 'Manager' || posStore.role === 'SuperAdmin'" label="إضافة منتج" @click="openNewProduct" class="add-product-btn">
+                <Button v-if="posStore.role === 'Manager' || posStore.role === 'Admin'" label="إضافة منتج" @click="openNewProduct" class="add-product-btn">
                     <template #icon><Plus :size="18" /></template>
                 </Button>
             </div>
@@ -479,8 +476,8 @@ const viewConversions = async (product) => {
         <!-- Help Drawer -->
         <HelpDrawer
             v-model="showHelp"
-            page-title="إدارة المنتجات"
-            page-subtitle="إضافة وتعديل وحذف المنتجات"
+            page-title="إدارة المنتجات والتصنيفات"
+            page-subtitle="إضافة وتعديل أصناف المنتجات، التسعير، والباركود"
             :page-icon="Package"
             header-gradient="linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)"
             :sections="productsHelpSections"

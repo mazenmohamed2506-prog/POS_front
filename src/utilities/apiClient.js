@@ -83,7 +83,10 @@ const apiClient = axios.create({
 
 apiClient.interceptors.request.use(
     async (config) => {
-        const token = await ensureFreshToken();
+        let token = await ensureFreshToken();
+        if (!token) {
+            token = localStorage.getItem("accessToken");
+        }
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
@@ -115,8 +118,23 @@ apiClient.interceptors.response.use(
         return response;
     },
     async (error) => {
-        const toastStore = useToastStore();
+        const config = error.config;
         const status = error?.response?.status ?? error.status ?? null;
+
+        // Automatic retry logic for network errors (e.g., ERR_CONNECTION_REFUSED) or 5xx server errors
+        const isNetworkOrServerError = !error.response || (status >= 500 && status < 600);
+        if (config && isNetworkOrServerError) {
+            config.__retryCount = config.__retryCount || 0;
+            if (config.__retryCount < 3) {
+                config.__retryCount += 1;
+                // Wait between 1000ms and 1500ms silently before retrying
+                const delay = Math.floor(Math.random() * (1500 - 1000 + 1)) + 1000;
+                await new Promise(resolve => setTimeout(resolve, delay));
+                return apiClient(config);
+            }
+        }
+
+        const toastStore = useToastStore();
 
         if (status === 300) {
             const data = error?.response?.data;
@@ -126,9 +144,10 @@ apiClient.interceptors.response.use(
         }
 
         if (status === 401) {
-            const onLoginPage = window.location.pathname === "/login" || window.location.pathname === "/";
+            const isLoginRequest = error.config?.url?.toLowerCase().includes("login");
+            const onLoginPage = window.location.hash.includes("/login") || window.location.pathname === "/login" || window.location.pathname === "/";
             const originalRequest = error.config || {};
-            if (onLoginPage) {
+            if (isLoginRequest || onLoginPage) {
                 return Promise.reject(error);
             }
             if (!originalRequest._retry) {
@@ -147,7 +166,7 @@ apiClient.interceptors.response.use(
                         "userCode", "userName", "userDesc",
                         "groupCode", "groupName", "role", "user",
                     ].forEach((k) => localStorage.removeItem(k));
-                    window.location.replace("/login");
+                    window.location.hash = "/login";
                     return Promise.reject(refreshErr);
                 }
             }
@@ -158,7 +177,7 @@ apiClient.interceptors.response.use(
                 "groupCode", "groupName", "role", "user",
             ].forEach((k) => localStorage.removeItem(k));
             console.warn("Unauthorized access – redirecting to login");
-            window.location.replace("/login");
+            window.location.hash = "/login";
         } else if (status === 403) {
             toastStore.addErrorToast("السبب: ليس لديك الصلاحيات الكافية لتنفيذ هذا الإجراء.", "غير مصرح بالعملية");
         } else if (status === 404) {

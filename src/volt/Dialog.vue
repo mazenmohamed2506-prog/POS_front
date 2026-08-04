@@ -22,7 +22,6 @@
                 variant="text"
                 class="!p-2 rounded-full !size-10 !bg-surface-50 dark:!bg-surface-800 hover:!bg-surface-100 dark:hover:!bg-surface-700 !border !border-surface-200 dark:!border-surface-700 !text-surface-500 dark:!text-surface-400"
                 @click="closeCallback"
-                autofocus
             >
                 <template #icon>
                     <X class="w-8 h-8" strokeWidth="2.7" />
@@ -34,7 +33,6 @@
                 variant="text"
                 rounded
                 @click="maximizeCallback"
-                autofocus
             >
                 <template #icon>
                     <WindowMinimizeIcon v-if="maximized" />

@@ -14,19 +14,19 @@ const reportStore = useReportStore();
 const showHelp = ref(false);
 const helpSections = [
     {
-        title: 'إدارة المصروفات',
+        title: 'تسجيل ونفقات المصروفات',
         icon: DollarSign,
         color: '#fef3c7',
         iconColor: '#d97706',
         steps: [
-            { title: 'تسجيل مصروف', desc: 'اضغط "إضافة مصروف جديد" وحدد الفئة والمبلغ' },
-            { title: 'الفئات', desc: 'يمكن تصنيف المصروفات تحت إيجار، رواتب، صيانة، فواتير، الخ' },
+            { title: 'إضافة مصروف جديد', desc: 'إدخال بيان المصروف (إيجار، صيانة، كهرباء) وتحديد المبلغ والتاريخ.' },
+            { title: 'تصنيف المصروف ومصدر الدفع', desc: 'تحديد فئة المصروف وما إذا كان مدفوعاً من صندوق الوردية الكاش أو البنك.' },
         ]
     }
 ];
 const helpTips = [
-    'تسجيل المصروفات بدقة يساعد في استخراج تقارير أرباح صحيحة',
-    'لا يمكن تعديل المصروف بعد تسجيله'
+    'تسجيل المصروفات أولاً بأول يضمن صحة صافي الربح في التقارير المالية.',
+    'المصروفات المدفوعة كاش من الدرج تظهر آلياً في تقرير إغلاق الوردية.'
 ];
 
 const filters = ref({ global: { value: "", matchMode: "contains" } });
@@ -198,8 +198,8 @@ const getCategoryLabel = (val) => {
 
         <HelpDrawer
             v-model="showHelp"
-            page-title="إدارة المصروفات"
-            page-subtitle="سجل المصروفات والنفقات التشغيلية"
+            page-title="إدارة المصروفات التشغيلية"
+            page-subtitle="تسجيل ونفقات المتجر التشغيلية والبحث"
             :page-icon="DollarSign"
             header-gradient="linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
             :sections="helpSections"

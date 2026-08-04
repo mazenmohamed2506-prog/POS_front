@@ -14,45 +14,30 @@ const userStore = useUserStore();
 const showHelp = ref(false);
 const usersHelpSections = [
     {
-        title: 'إدارة الحسابات',
+        title: "إدارة حسابات المستخدمين",
         icon: Users,
-        color: '#dbeafe',
-        iconColor: '#2563eb',
+        color: "#dbeafe",
+        iconColor: "#2563eb",
         steps: [
-            { title: 'قائمة المستخدمين', desc: 'تعرض جميع مستخدمي النظام مع أدوارهم وتواريخ الإنشاء' },
-            { title: 'البحث', desc: 'ابحث باسم المستخدم للبحث السريع' },
-            { title: 'تفعيل / تعطيل', desc: 'يمكنك تعطيل حساب مستخدم بدون حذفه' },
-        ]
+            { title: "إضافة حساب جديد", desc: "إدخال اسم المستخدم، كلمة السر، وتحديد الدور الوظيفي (مدير / كاشير)." },
+            { title: "تفعيل وإيقاف الحسابات", desc: "تغيير حالة الحساب (نشط / معطل) لمنع الدخول دون حذف الحساب." },
+        ],
     },
     {
-        title: 'إضافة وتعديل مستخدم',
-        icon: Plus,
-        color: '#d1fae5',
-        iconColor: '#059669',
-        steps: [
-            { title: 'إضافة مستخدم جديد', desc: 'اضغط "إضافة مستخدم" وحدد الاسم وكلمة المرور والدور' },
-            { title: 'تحديد الدور', desc: 'سوبر أدمن = جميع الصلاحيات، مدير = صلاحيات إدارية، كاشير = بيع فقط' },
-            { title: 'تعديل وحذف', desc: 'اضغط أيقونة التعديل أو الحذف لإدارة الحسابات' },
-        ]
-    },
-    {
-        title: 'إدارة صلاحيات الأدوار',
+        title: "تخصيص صلاحيات الأدوار",
         icon: Shield,
-        color: '#fef3c7',
-        iconColor: '#d97706',
+        color: "#fef3c7",
+        iconColor: "#d97706",
         steps: [
-            { title: 'تعيين صلاحيات', desc: 'اختر الدور ثم حدد الصفحات المسموح الوصول لها' },
-            { title: 'تطبيق فوري', desc: 'عند تغيير صلاحيات الدور يتأثر كل المستخدمين بهذا الدور' },
-        ]
-    },
+            { title: "تعيين صلاحيات الشاشات", desc: "تحديد الصفحات المسموح لكل دور الوصول إليها من جدول الصلاحيات." },
+            { title: "تطبيق التغيرات التلقائي", desc: "أي تعديل في صلاحيات الدور ينعكس فوراً على كل الموظفين المرتبطين به." },
+        ],
+    }
 ];
 const usersHelpTips = [
-    'المدير أو السوبر أدمن وحدهم يمكنهم إدارة المستخدمين',
-    'لا يمكن حذف حسابك الخاص بك',
-    'غيّر كلمات المرور بانتظام للحماية',
-    'صلاحيات الأدوار تؤثر على جميع مستخدمي الدور',
+    "صلاحيات حساب المدير كاملة ويجب حمايتها بكلمة مرور قوية.",
+    "تغيير صلاحيات أي دور يؤثر آلياً على كافة مستخدمي هذا الدور بالنظام.",
 ];
-
 // ── Tab State ──
 const activeTab = ref(0);
 
@@ -65,11 +50,12 @@ const userForm = ref({
     role: "Cashier",
 });
 
-const roleOptions = [
-    { label: "سوبر أدمن", value: "SuperAdmin" },
-    { label: "مدير", value: "Manager" },
-    { label: "كاشير", value: "Cashier" },
-];
+const roleOptions = computed(() => {
+    return userStore.roles.map(r => ({
+        label: roleNameAr(r.name),
+        value: r.name
+    }));
+});
 
 const filters = ref({ global: { value: "", matchMode: "contains" } });
 
@@ -78,23 +64,30 @@ const selectedRoleId = ref(null);
 const editingPageIds = ref([]);
 const savingPermissions = ref(false);
 
+// ── Add Role State ──
+const showRoleDialog = ref(false);
+const newRoleName = ref("");
+const newRolePageIds = ref([]);
+
 const selectedRole = computed(() => {
     return userStore.roles.find(r => r.id === selectedRoleId.value) || null;
 });
 
 const roleNameAr = (name) => {
-    const map = { SuperAdmin: 'سوبر أدمن', Manager: 'مدير', Cashier: 'كاشير' };
-    return map[name] || name;
+    const map = { admin: 'مدير', manager: 'مدير �داري', cashier: 'كاشير' };
+    return name ? (map[name.toLowerCase()] || name) : name;
 };
 
 const roleSeverity = (name) => {
-    const map = { SuperAdmin: 'warn', Manager: 'info', Cashier: 'success' };
-    return map[name] || 'secondary';
+    const map = { admin: 'warn', manager: 'info', cashier: 'success' };
+    return name ? (map[name.toLowerCase()] || 'secondary') : 'secondary';
 };
 
 const roleIcon = (name) => {
-    if (name === 'SuperAdmin') return ShieldAlert;
-    if (name === 'Manager') return ShieldCheck;
+    if (!name) return Shield;
+    const lowerName = name.toLowerCase();
+    if (lowerName === 'admin') return ShieldAlert;
+    if (lowerName === 'manager') return ShieldCheck;
     return Shield;
 };
 
@@ -134,7 +127,7 @@ const openEditUser = (user) => {
 const saveUser = async () => {
     // Basic frontend validation
     if (!userForm.value.username || userForm.value.username.trim() === '') {
-        useToastStore().addWarningToast("يرجى إدخال اسم المستخدم");
+        useToastStore().addWarningToast("يرجى �دخال اسم المستخدم");
         return;
     }
     
@@ -162,6 +155,45 @@ const confirmDelete = async (user) => {
             await userStore.deleteUser(user.id);
         } catch {
             // Error handled by store
+        }
+    }
+};
+
+const openNewRole = () => {
+    newRoleName.value = "";
+    newRolePageIds.value = [];
+    showRoleDialog.value = true;
+};
+
+const saveNewRole = async () => {
+    if (!newRoleName.value || newRoleName.value.trim() === "") {
+        useToastStore().addWarningToast("يرجى �دخال اسم الدور");
+        return;
+    }
+    try {
+        await userStore.createRole(newRoleName.value.trim(), newRolePageIds.value);
+        showRoleDialog.value = false;
+        // Select the newly created role
+        const newRole = userStore.roles.find(r => r.name.toLowerCase() === newRoleName.value.trim().toLowerCase());
+        if (newRole) selectRole(newRole.id);
+    } catch (e) {
+        // Handled in store
+    }
+};
+
+const deleteCustomRole = async (role) => {
+    if (confirm(`هل أنت متأكد من حذف الدور "${role.name}"؟\nلا يمكن التراجع عن هذا ال�جراء.`)) {
+        try {
+            await userStore.deleteRole(role.id);
+            if (selectedRoleId.value === role.id) {
+                if (userStore.roles.length > 0) {
+                    selectRole(userStore.roles[0].id);
+                } else {
+                    selectedRoleId.value = null;
+                }
+            }
+        } catch (e) {
+            // Handled in store
         }
     }
 };
@@ -234,15 +266,15 @@ const deselectAllPages = () => {
                     <Users :size="28" class="text-primary-500" />
                 </div>
                 <div>
-                    <h1 class="users-title">إدارة المستخدمين والصلاحيات</h1>
-                    <p class="users-subtitle">إدارة حسابات المستخدمين وتعيين صلاحيات الأدوار</p>
+                    <h1 class="users-title">�دارة المستخدمين والصلاحيات</h1>
+                    <p class="users-subtitle">�دارة حسابات المستخدمين وتعيين صلاحيات الأدوار</p>
                 </div>
             </div>
             <div class="flex items-center gap-2">
                 <button class="help-icon-btn" @click="showHelp = true" title="دليل الاستخدام">
                     <HelpCircle :size="18" />
                 </button>
-                <Button v-if="activeTab === 0" label="إضافة مستخدم" @click="openNewUser">
+                <Button v-if="activeTab === 0" label="�ضافة مستخدم" @click="openNewUser">
                     <template #icon>
                         <Plus :size="18" />
                     </template>
@@ -254,7 +286,7 @@ const deselectAllPages = () => {
         <HelpDrawer
             v-model="showHelp"
             page-title="إدارة المستخدمين والصلاحيات"
-            page-subtitle="إدارة الحسابات وتعيين صلاحيات الأدوار"
+            page-subtitle="إنشاء حسابات المستخدمين وتعيين صلاحيات الأدوار"
             :page-icon="Users"
             header-gradient="linear-gradient(135deg, #7c3aed 0%, #2563eb 100%)"
             :sections="usersHelpSections"
@@ -346,12 +378,12 @@ const deselectAllPages = () => {
                                 </button>
                             </template>
                         </Column>
-                        <Column field="createdAt" header="تاريخ الإنشاء" sortable style="min-width: 140px">
+                        <Column field="createdAt" header="تاريخ ال�نشاء" sortable style="min-width: 140px">
                             <template #body="{ data }">
                                 <span class="text-surface-500 text-sm">{{ formatDate(data.createdAt) }}</span>
                             </template>
                         </Column>
-                        <Column header="إجراءات" style="min-width: 120px; text-align: center">
+                        <Column header="�جراءات" style="min-width: 120px; text-align: center">
                             <template #body="{ data }">
                                 <div class="flex gap-1 justify-center">
                                     <button class="action-edit-btn" @click="openEditUser(data)" title="تعديل">
@@ -378,7 +410,10 @@ const deselectAllPages = () => {
                     <div class="permissions-container">
                         <!-- Role Selector -->
                         <div class="permissions-sidebar">
-                            <h3 class="permissions-sidebar-title">الأدوار</h3>
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="permissions-sidebar-title !mb-0">الأدوار</h3>
+                                <Button size="small" icon="pi pi-plus" label="�ضافة دور" outlined @click="openNewRole" />
+                            </div>
                             <div class="role-list">
                                 <button
                                     v-for="role in userStore.roles"
@@ -390,9 +425,15 @@ const deselectAllPages = () => {
                                     <div class="role-card-icon" :class="`role-icon-${role.name.toLowerCase()}`">
                                         <component :is="roleIcon(role.name)" :size="20" />
                                     </div>
-                                    <div class="role-card-info">
+                                    <div class="role-card-info flex-grow">
                                         <span class="role-card-name">{{ roleNameAr(role.name) }}</span>
                                         <span class="role-card-count">{{ role.pages.length }} صفحة</span>
+                                    </div>
+                                    <!-- Show specific pages only for custom roles -->
+                                    <div v-if="!role.name || !['admin', 'manager', 'cashier'].includes(role.name.toLowerCase())" class="ms-auto" @click.stop>
+                                        <button class="action-delete-btn" @click.stop="deleteCustomRole(role)" title="حذف الدور">
+                                            <Trash2 :size="15" />
+                                        </button>
                                     </div>
                                 </button>
                             </div>
@@ -410,7 +451,7 @@ const deselectAllPages = () => {
                                     </div>
                                     <div class="flex gap-2">
                                         <Button label="تحديد الكل" size="small" outlined severity="secondary" @click="selectAllPages" />
-                                        <Button label="إلغاء الكل" size="small" outlined severity="secondary" @click="deselectAllPages" />
+                                        <Button label="�لغاء الكل" size="small" outlined severity="secondary" @click="deselectAllPages" />
                                     </div>
                                 </div>
 
@@ -460,7 +501,7 @@ const deselectAllPages = () => {
         <!-- User Dialog -->
         <Dialog
             v-model:visible="showUserDialog"
-            :header="editingUser ? 'تعديل بيانات المستخدم' : 'إضافة مستخدم جديد'"
+            :header="editingUser ? 'تعديل بيانات المستخدم' : '�ضافة مستخدم جديد'"
             :style="{ width: '460px' }"
             modal
             dismissableMask
@@ -490,8 +531,40 @@ const deselectAllPages = () => {
             </div>
             <template #footer>
                 <div class="flex gap-2 justify-end w-full">
-                    <Button label="إلغاء" outlined severity="secondary" @click="showUserDialog = false" />
+                    <Button label="�لغاء" outlined severity="secondary" @click="showUserDialog = false" />
                     <Button label="حفظ المستخدم" @click="saveUser" :loading="userStore.loading" />
+                </div>
+            </template>
+        </Dialog>
+
+        <!-- Add Role Dialog -->
+        <Dialog
+            v-model:visible="showRoleDialog"
+            header="�ضافة دور جديد"
+            :style="{ width: '460px' }"
+            modal
+            dismissableMask
+        >
+            <div class="user-dialog-form">
+                <div class="form-field">
+                    <label class="required">اسم الدور</label>
+                    <InputText v-model="newRoleName" fluid placeholder="مثال: محاسب، مشرف مستودع" />
+                </div>
+                <div class="form-field">
+                    <label>صلاحيات مبدئية</label>
+                    <div style="max-height: 250px; overflow-y: auto; border: 1px solid var(--p-surface-200); border-radius: 0.375rem; padding: 0.5rem;" class="dark:border-surface-700">
+                        <div v-for="page in userStore.allPages" :key="page.id" class="flex items-center gap-2 mb-2 last:mb-0">
+                            <Checkbox v-model="newRolePageIds" :inputId="'page-' + page.id" name="pages" :value="page.id" />
+                            <label :for="'page-' + page.id" class="text-sm cursor-pointer">{{ page.name }}</label>
+                        </div>
+                        <div v-if="userStore.allPages.length === 0" class="text-surface-500 text-sm text-center">لا توجد صفحات متاحة</div>
+                    </div>
+                </div>
+            </div>
+            <template #footer>
+                <div class="flex gap-2 justify-end w-full">
+                    <Button label="�لغاء" outlined severity="secondary" @click="showRoleDialog = false" />
+                    <Button label="حفظ الدور" @click="saveNewRole" :loading="userStore.loading" />
                 </div>
             </template>
         </Dialog>
@@ -860,12 +933,12 @@ const deselectAllPages = () => {
     flex-shrink: 0;
 }
 
-.role-icon-superadmin {
+.role-icon-admin {
     background: #fef3c7;
     color: #d97706;
 }
 
-.dark .role-icon-superadmin {
+.dark .role-icon-admin {
     background: rgba(217, 119, 6, 0.15);
     color: #fbbf24;
 }

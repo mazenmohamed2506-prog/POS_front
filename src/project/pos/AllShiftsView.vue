@@ -5,7 +5,6 @@ import { useShiftStore } from "@/stores/pos/shiftStore";
 import {
     Clock,
     DoorOpen,
-    DoorClosed,
     Banknote,
     AlertTriangle,
     CheckCircle,
@@ -31,34 +30,65 @@ const shiftStore = useShiftStore();
 const showHelp = ref(false);
 const shiftHelpSections = [
     {
-        title: 'بدء وفتح الوردية الحالية',
-        icon: DoorOpen,
-        color: '#d1fae5',
-        iconColor: '#059669',
+        title: 'كشوفات وأرشيف الورديات',
+        icon: History,
+        color: '#dbeafe',
+        iconColor: '#2563eb',
         steps: [
-            { title: 'تسجيل عهدة الدرج', desc: 'إدخال رصيد النقدية الافتتاحي المتاح في الدرج لبدء استقبال المبيعات.' },
-            { title: 'بدء استقبال العمليات', desc: 'تفعيل الوردية لربط كافة الفواتير الصادرة باسم الكاشير الحالي.' },
-        ]
-    },
-    {
-        title: 'إغلاق الوردية وتسليم النقدية',
-        icon: DoorClosed,
-        color: '#fee2e2',
-        iconColor: '#dc2626',
-        steps: [
-            { title: 'جرد نقدية الدرج', desc: 'عد النقدية الفعلي في الصندوق وإدخال المبلغ عند إنهاء الوردية.' },
-            { title: 'مطابقة العجز أو الزيادة', desc: 'يحسب النظام الفارق بين الكاش المتوقع والفعلي آلياً لطباعة التقرير.' },
+            { title: 'سجل جميع الموظفين', desc: 'متابعة كافة الورديات التاريخية والنشطة لكافة الموظفين والكاشيرات.' },
+            { title: 'التصفية والتدقيق الإداري', desc: 'تصفية الكشوفات حسب الموظف أو التاريخ لمراجعة الفروقات والأداء.' },
+            { title: 'إعادة طباعة التقرير', desc: 'فتح تقرير ختام أي وردية سابقة وإعادة طباعته للتدقيق المحاسبي.' },
         ]
     }
 ];
 const shiftHelpTips = [
-    'عد النقدية بالدرج بدقة قبل حفظ إغلاق الوردية لضمان تطابق الحسابات.',
-    'يوضح تقرير ختام الوردية تفكيك المقبوضات بين كاش وشبكة والمصروفات المسحوبة.'
+    'تساعد شاشة الورديات الإدارة في اكتشاف أي عجز نقدية متكرر ومقارنة أداء الكاشيرات.',
+    'الوردية المفتوحة حالياً تظهر بحالة نشطة ومحدثة باستمرار.'
 ];
 
 const startingCash = ref(0);
 const actualCash = ref(0);
 const lastClosedShift = ref(null);
+const searchQuery = ref("");
+const statusFilter = ref("all"); // 'all' | 'Open' | 'Closed'
+
+const shiftDuration = computed(() => {
+    if (!shiftStore.currentShift?.openedAt) return "";
+    const start = new Date(shiftStore.currentShift.openedAt);
+    const now = new Date();
+    const diff = Math.max(0, Math.floor((now - start) / 1000));
+    const hours = Math.floor(diff / 3600);
+    const minutes = Math.floor((diff % 3600) / 60);
+    return `${hours} س ${minutes} د`;
+});
+
+const filteredShifts = computed(() => {
+    let result = shiftStore.shifts || [];
+    
+    // Status Filter
+    if (statusFilter.value !== "all") {
+        result = result.filter(s => s.status === statusFilter.value);
+    }
+
+    // Search Query
+    const q = searchQuery.value.trim().toLowerCase();
+    if (q) {
+        result = result.filter((s) =>
+            (s.cashier && s.cashier.toLowerCase().includes(q)) ||
+            (s.status && s.status.toLowerCase().includes(q))
+        );
+    }
+    return result;
+});
+
+const selectedShift = ref(null);
+const showDetailDialog = ref(false);
+
+const viewShiftDetails = (shift) => {
+    selectedShift.value = shift;
+    showDetailDialog.value = true;
+};
+
 const getShiftDuration = (shift) => {
     if (!shift?.openedAt) return "—";
     const start = new Date(shift.openedAt);
@@ -69,27 +99,8 @@ const getShiftDuration = (shift) => {
     return `${hours} ساعة ${minutes} دقيقة`;
 };
 
-const handleOpenShift = async () => {
-    if (startingCash.value < 0) return;
-    try {
-        await shiftStore.openShift(startingCash.value);
-        startingCash.value = 0;
-    } catch (err) {
-        console.error("Failed to open shift", err);
-    }
-};
-
-const handleCloseShift = async () => {
-    try {
-        const closed = await shiftStore.closeShift(actualCash.value);
-        if (closed) {
-            lastClosedShift.value = closed;
-            actualCash.value = 0;
-        }
-    } catch (err) {
-        console.error("Failed to close shift", err);
-    }
-};
+const handleOpenShift = async () => {};
+const handleCloseShift = async () => {};
 
 const setQuickCash = (amount, target = 'start') => {
     if (target === 'start') {
@@ -123,7 +134,7 @@ const formatTimeOnly = (dateStr) => {
 };
 
 onMounted(() => {
-    shiftStore.fetchCurrentShift();
+    shiftStore.fetchAllShifts();
 });
 </script>
 
@@ -136,8 +147,8 @@ onMounted(() => {
                     <Clock :size="24" class="text-primary-600 dark:text-primary-400" />
                 </div>
                 <div>
-                    <h1 class="shift-title">ورديتي</h1>
-                    <p class="shift-subtitle">فتح وإغلاق الوردية الحالية الخاصة بك</p>
+                    <h1 class="shift-title">متابعة الورديات</h1>
+                    <p class="shift-subtitle">متابعة سجل الورديات للفرع وتقاريرها المالية</p>
                 </div>
             </div>
             <button class="help-btn" @click="showHelp = true" title="دليل الاستخدام">
@@ -149,8 +160,8 @@ onMounted(() => {
         <!-- Help Drawer -->
         <HelpDrawer
             v-model="showHelp"
-            page-title="الوردية الحالية"
-            page-subtitle="متابعة الصندوق والعهدة وإغلاق الوردية الحالية"
+            page-title="إدارة كشوفات الورديات"
+            page-subtitle="كشوفات كافة ورديات الموظفين والتقرير التفصيلي"
             :page-icon="Clock"
             header-gradient="linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)"
             :sections="shiftHelpSections"
@@ -159,152 +170,301 @@ onMounted(() => {
 
         <!-- Layout Wrapper -->
         <div class="shift-grid">
-            <!-- Sidebar: Action Panel -->
-            <aside class="shift-sidebar">
-                <!-- ═══ OPEN SHIFT FORM ═══ -->
-                <div v-if="!shiftStore.currentShift" class="shift-card open-card">
-                    <div class="card-header border-emerald-100 dark:border-emerald-950 bg-emerald-50/50 dark:bg-emerald-950/20">
-                        <div class="flex items-center gap-2.5 text-emerald-700 dark:text-emerald-400">
-                            <DoorOpen :size="20" />
-                            <span class="font-bold text-base">فتح وردية جديدة</span>
+            <!-- Main Panel: Shift Analytics & Compact Table -->
+            <main class="shift-main" style="width: 100%;">
+                <!-- Metric Cards -->
+                <div class="metrics-grid" v-if="shiftStore.shifts.length > 0">
+                    <div class="metric-card">
+                        <div class="metric-icon purple">
+                            <Clock :size="20" />
+                        </div>
+                        <div class="metric-content">
+                            <span class="metric-label">إجمالي الورديات</span>
+                            <span class="metric-val">{{ shiftStore.shifts.length }}</span>
                         </div>
                     </div>
-                    <div class="card-body">
-                        <div class="shift-field">
-                            <label class="field-label">المبلغ الافتتاحي في الدرج (كاش)</label>
-                            <InputNumber
-                                v-model="startingCash"
-                                :min="0"
-                                :minFractionDigits="2"
-                                :maxFractionDigits="2"
-                                fluid
-                                placeholder="0.00"
-                                class="modern-input"
-                            />
-                        </div>
-                        
-                        <!-- Quick Cash Pills -->
-                        <div class="quick-cash-row">
-                            <button type="button" class="quick-chip" @click="setQuickCash(100, 'start')">+100</button>
-                            <button type="button" class="quick-chip" @click="setQuickCash(200, 'start')">+200</button>
-                            <button type="button" class="quick-chip" @click="setQuickCash(500, 'start')">+500</button>
-                            <button type="button" class="quick-chip danger" @click="startingCash = 0">تصفير</button>
-                        </div>
 
-                        <Button
-                            label="فتح الوردية الآن"
-                            icon="pi pi-check"
-                            class="w-full mt-4 open-shift-btn"
-                            @click="handleOpenShift"
-                            :loading="shiftStore.loading"
-                        />
-                    </div>
-                </div>
-
-                <!-- ═══ ACTIVE SHIFT CARD ═══ -->
-                <div v-if="shiftStore.currentShift" class="shift-card active-card">
-                    <div class="card-header border-green-200 dark:border-green-900 bg-green-50/80 dark:bg-green-950/40 justify-between">
-                        <div class="flex items-center gap-2 text-green-700 dark:text-green-400">
-                            <Clock :size="18" />
-                            <span class="font-bold">الوردية الحالية النشطة</span>
+                    <div class="metric-card">
+                        <div class="metric-icon green">
+                            <TrendingUp :size="20" />
                         </div>
-                        <div class="active-badge">
-                            <span class="pulse-dot"></span>
-                            <span>مفتوحة</span>
+                        <div class="metric-content">
+                            <span class="metric-label">إجمالي مبيعات الورديات</span>
+                            <span class="metric-val text-emerald-600 dark:text-emerald-400">
+                                {{ formatCurrency(shiftStore.shifts.reduce((sum, s) => sum + (s.totalSales || 0), 0)) }}
+                            </span>
                         </div>
                     </div>
-                    <div class="card-body">
-                        <div class="active-shift-details">
-                            <div class="info-row">
-                                <span class="info-label">الكاشير:</span>
-                                <span class="info-val font-bold text-surface-900 dark:text-surface-50 flex items-center gap-1.5">
-                                    <User :size="14" class="text-primary-500" />
-                                    {{ shiftStore.currentShift?.cashier }}
-                                </span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">وقت الفتح:</span>
-                                <span class="info-val dir-ltr font-mono text-xs">
-                                    {{ formatTimeOnly(shiftStore.currentShift?.openedAt) }}
-                                </span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">مدة الوردية:</span>
-                                <span class="info-val font-bold text-primary-600 dark:text-primary-400">
-                                    {{ getShiftDuration(shiftStore.currentShift) }}
-                                </span>
-                            </div>
-                            <div class="info-row highlight-box">
-                                <span class="info-label">المبلغ الافتتاحي:</span>
-                                <span class="info-val font-black text-primary-700 dark:text-primary-300">
-                                    {{ formatCurrency(shiftStore.currentShift?.startingCash) }}
-                                </span>
-                            </div>
-                        </div>
 
-                        <div class="shift-close-form">
-                            <div class="shift-field">
-                                <label class="field-label text-rose-700 dark:text-rose-400">المبلغ الفعلي بالدرج للإغلاق</label>
-                                <InputNumber
-                                    v-model="actualCash"
-                                    :min="0"
-                                    :minFractionDigits="2"
-                                    :maxFractionDigits="2"
-                                    fluid
-                                    placeholder="0.00"
-                                    class="modern-input"
-                                />
-                            </div>
-
-                            <div class="quick-cash-row">
-                                <button type="button" class="quick-chip" @click="setQuickCash(100, 'actual')">+100</button>
-                                <button type="button" class="quick-chip" @click="setQuickCash(500, 'actual')">+500</button>
-                                <button type="button" class="quick-chip" @click="setQuickCash(1000, 'actual')">+1000</button>
-                                <button type="button" class="quick-chip danger" @click="actualCash = 0">تصفير</button>
-                            </div>
-
-                            <Button
-                                label="إغلاق الوردية"
-                                severity="danger"
-                                icon="pi pi-power-off"
-                                class="w-full mt-4 close-shift-btn"
-                                @click="handleCloseShift"
-                                :loading="shiftStore.loading"
-                            />
+                    <div class="metric-card">
+                        <div class="metric-icon amber">
+                            <AlertTriangle :size="20" />
                         </div>
-                    </div>
-                </div>
-
-                <!-- ═══ LAST CLOSED SUMMARY ═══ -->
-                <div v-if="lastClosedShift" class="shift-card summary-card">
-                    <div class="card-header border-amber-200 dark:border-amber-900 bg-amber-50/70 dark:bg-amber-950/30">
-                        <div class="flex items-center gap-2 text-amber-800 dark:text-amber-300">
-                            <Banknote :size="18" />
-                            <span class="font-bold">ملخص آخر وردية تم إغلاقها</span>
-                        </div>
-                    </div>
-                    <div class="card-body text-sm space-y-2.5">
-                        <div class="flex justify-between items-center">
-                            <span class="text-surface-500">المبيعات النقدية:</span>
-                            <span class="font-bold text-surface-900 dark:text-surface-100">{{ formatCurrency(lastClosedShift.totalSales) }}</span>
-                        </div>
-                        <div class="flex justify-between items-center">
-                            <span class="text-surface-500">النقد الفعلي:</span>
-                            <span class="font-bold text-surface-900 dark:text-surface-100">{{ formatCurrency(lastClosedShift.actualCash) }}</span>
-                        </div>
-                        <div class="flex justify-between items-center pt-2 border-t border-surface-200 dark:border-surface-800">
-                            <span class="font-bold text-surface-700 dark:text-surface-300">الفارق / العجز:</span>
+                        <div class="metric-content">
+                            <span class="metric-label">إجمالي الفروقات</span>
                             <span
-                                class="font-black"
-                                :class="lastClosedShift.variance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'"
+                                class="metric-val"
+                                :class="shiftStore.shifts.reduce((sum, s) => sum + (s.variance || 0), 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'"
                             >
-                                {{ formatCurrency(lastClosedShift.variance) }}
+                                {{ formatCurrency(shiftStore.shifts.reduce((sum, s) => sum + (s.variance || 0), 0)) }}
                             </span>
                         </div>
                     </div>
                 </div>
-            </aside>
+
+                <!-- Shift History Table Card -->
+                <div class="shift-card history-card">
+                    <!-- Table Toolbar -->
+                    <div class="table-toolbar">
+                        <div class="toolbar-title">
+                            <History :size="20" class="text-primary-500" />
+                            <span>سجل الورديات</span>
+                            <span class="badge-count">{{ filteredShifts.length }}</span>
+                        </div>
+
+                        <div class="toolbar-actions">
+                            <!-- Status Filter Buttons -->
+                            <div class="status-filter-pills">
+                                <button
+                                    type="button"
+                                    class="pill-btn"
+                                    :class="{ active: statusFilter === 'all' }"
+                                    @click="statusFilter = 'all'"
+                                >
+                                    الكل
+                                </button>
+                                <button
+                                    type="button"
+                                    class="pill-btn green"
+                                    :class="{ active: statusFilter === 'Open' }"
+                                    @click="statusFilter = 'Open'"
+                                >
+                                    مفتوحة
+                                </button>
+                                <button
+                                    type="button"
+                                    class="pill-btn gray"
+                                    :class="{ active: statusFilter === 'Closed' }"
+                                    @click="statusFilter = 'Closed'"
+                                >
+                                    مغلقة
+                                </button>
+                            </div>
+
+                            <!-- Search Input -->
+                            <div class="search-box">
+                                <Search :size="16" class="search-box-icon" />
+                                <input
+                                    v-model="searchQuery"
+                                    type="text"
+                                    placeholder="بحث بالكاشير..."
+                                    class="search-box-input"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Clean Responsive Table without horizontal overflow -->
+                    <div class="table-wrapper">
+                        <table class="compact-table">
+                            <thead>
+                                <tr>
+                                    <th>الكاشير</th>
+                                    <th>التاريخ والبداية</th>
+                                    <th>المبيعات النقدية</th>
+                                    <th>الفرق</th>
+                                    <th>الحالة</th>
+                                    <th class="text-center">التفاصيل</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-if="shiftStore.loading">
+                                    <td colspan="6" class="text-center py-8 text-surface-400">
+                                        <i class="pi pi-spin pi-spinner text-2xl mb-2 block"></i>
+                                        جاري تحميل البيانات...
+                                    </td>
+                                </tr>
+                                <tr v-else-if="filteredShifts.length === 0">
+                                    <td colspan="6" class="text-center py-8 text-surface-400">
+                                        لا توجد ورديات تطابق البحث
+                                    </td>
+                                </tr>
+                                <tr v-for="shift in filteredShifts" :key="shift.id" class="table-row-hover">
+                                    <!-- Cashier -->
+                                    <td>
+                                        <div class="cashier-cell">
+                                            <div class="avatar-mini">
+                                                {{ shift.cashier ? shift.cashier.charAt(0).toUpperCase() : 'U' }}
+                                            </div>
+                                            <span class="cashier-name">{{ shift.cashier }}</span>
+                                        </div>
+                                    </td>
+
+                                    <!-- Start date / time -->
+                                    <td>
+                                        <div class="date-cell">
+                                            <span class="main-date">{{ formatDate(shift.openedAt) }}</span>
+                                            <span class="sub-duration text-xs text-surface-400 flex items-center gap-1">
+                                                <Clock :size="12" />
+                                                {{ getShiftDuration(shift) }}
+                                            </span>
+                                        </div>
+                                    </td>
+
+                                    <!-- Total Sales -->
+                                    <td>
+                                        <span class="font-bold text-surface-900 dark:text-surface-100">
+                                            {{ formatCurrency(shift.totalSales) }}
+                                        </span>
+                                    </td>
+
+                                    <!-- Variance -->
+                                    <td>
+                                        <span
+                                            class="variance-tag"
+                                            :class="shift.variance >= 0 ? 'pos' : 'neg'"
+                                        >
+                                            {{ formatCurrency(shift.variance) }}
+                                        </span>
+                                    </td>
+
+                                    <!-- Status -->
+                                    <td>
+                                        <span
+                                            class="status-chip"
+                                            :class="shift.status === 'Open' ? 'status-open' : 'status-closed'"
+                                        >
+                                            <span class="chip-dot"></span>
+                                            {{ shift.status === 'Open' ? 'مفتوحة' : 'مغلقة' }}
+                                        </span>
+                                    </td>
+
+                                    <!-- Actions -->
+                                    <td class="text-center">
+                                        <button
+                                            class="detail-icon-btn"
+                                            @click="viewShiftDetails(shift)"
+                                            title="عرض التفاصيل الكاملة"
+                                        >
+                                            <Eye :size="16" />
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </main>
         </div>
+
+        <!-- ═══ DETAILED SHIFT DIALOG ═══ -->
+        <Dialog
+            v-model:visible="showDetailDialog"
+            header="تقرير تفاصيل الوردية"
+            :style="{ width: '560px', maxWidth: '95vw' }"
+            modal
+            dismissableMask
+            class="shift-dialog-custom"
+        >
+            <div class="shift-detail-modal" v-if="selectedShift">
+                <!-- Modal Top Card -->
+                <div class="modal-top-card">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="cashier-avatar-large">
+                                {{ selectedShift.cashier ? selectedShift.cashier.charAt(0).toUpperCase() : 'U' }}
+                            </div>
+                            <div>
+                                <h3 class="font-black text-lg text-surface-900 dark:text-surface-0">{{ selectedShift.cashier }}</h3>
+                                <p class="text-xs text-surface-500">معرف الوردية: #{{ selectedShift.id }}</p>
+                            </div>
+                        </div>
+                        <Tag
+                            :value="selectedShift.status === 'Open' ? 'وردية مفتوحة' : 'وردية مغلقة'"
+                            :severity="selectedShift.status === 'Open' ? 'success' : 'secondary'"
+                        />
+                    </div>
+                </div>
+
+                <!-- Timings Section -->
+                <div class="detail-block">
+                    <h4 class="block-title">
+                        <Calendar :size="16" />
+                        التوقيت والمدة الزمنية
+                    </h4>
+                    <div class="detail-grid-2">
+                        <div class="detail-box">
+                            <span class="box-label">وقت الفتح</span>
+                            <span class="box-val">{{ formatDate(selectedShift.openedAt) }}</span>
+                        </div>
+                        <div class="detail-box">
+                            <span class="box-label">وقت الإغلاق</span>
+                            <span class="box-val">{{ formatDate(selectedShift.closedAt) }}</span>
+                        </div>
+                        <div class="detail-box col-span-2 highlight font-bold">
+                            <span class="box-label">مدة الوردية الإجمالية</span>
+                            <span class="box-val text-primary-600 dark:text-primary-400">{{ getShiftDuration(selectedShift) }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detailed Financial Report -->
+                <div class="detail-block">
+                    <h4 class="block-title">
+                        <FileText :size="16" />
+                        التقرير المالي للدرج والصندوق
+                    </h4>
+                    <div class="ledger-list">
+                        <div class="ledger-row">
+                            <span>المبلغ الافتتاحي (بداية الوردية):</span>
+                            <span class="font-semibold">{{ formatCurrency(selectedShift.startingCash) }}</span>
+                        </div>
+                        <div class="ledger-row text-emerald-600 dark:text-emerald-400 font-medium">
+                            <span>+ مبيعات الكاش النقدي:</span>
+                            <span class="font-bold">{{ formatCurrency(selectedShift.totalSales) }}</span>
+                        </div>
+                        <div class="ledger-row text-emerald-600 dark:text-emerald-400 font-medium" v-if="selectedShift.totalCollections > 0">
+                            <span>+ تحصيلات ديون عملاء (كاش):</span>
+                            <span class="font-bold">{{ formatCurrency(selectedShift.totalCollections) }}</span>
+                        </div>
+                        <div class="ledger-row text-rose-600 dark:text-rose-400 font-medium" v-if="selectedShift.totalExpenses > 0">
+                            <span>- المصروفات النقدية الخارجية:</span>
+                            <span class="font-bold">{{ formatCurrency(selectedShift.totalExpenses) }}</span>
+                        </div>
+
+                        <div class="ledger-row total-expected">
+                            <span>النقد المتوقع تواجده بالدرج:</span>
+                            <span class="font-bold text-surface-900 dark:text-surface-100 text-base">
+                                {{ formatCurrency(selectedShift.expectedCash) }}
+                            </span>
+                        </div>
+
+                        <div class="ledger-row">
+                            <span>النقد الفعلي الجردي المُستلم:</span>
+                            <span class="font-bold text-surface-900 dark:text-surface-100 text-base">
+                                {{ formatCurrency(selectedShift.actualCash) }}
+                            </span>
+                        </div>
+
+                        <div
+                            class="ledger-row final-variance"
+                            :class="selectedShift.variance >= 0 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300'"
+                        >
+                            <span class="font-black text-base flex items-center gap-1">
+                                <AlertTriangle v-if="selectedShift.variance < 0" :size="18" />
+                                الفارق والنتيجة (عجز / زيادة):
+                            </span>
+                            <span class="font-black text-lg">
+                                {{ formatCurrency(selectedShift.variance) }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <template #footer>
+                <Button label="إغلاق التقرير" outlined severity="secondary" @click="showDetailDialog = false" class="w-full" />
+            </template>
+        </Dialog>
     </div>
 </template>
 
@@ -419,8 +579,7 @@ onMounted(() => {
 @media (min-width: 1024px) {
     .shift-grid {
         grid-template-columns: 1fr;
-        max-width: 600px;
-        margin: 0 auto;
+        align-items: start;
     }
 }
 

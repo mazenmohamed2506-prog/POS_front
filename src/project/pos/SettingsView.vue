@@ -1,13 +1,31 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import { usePosStore } from "@/stores/pos/posStore";
-import { Settings, Save, RefreshCw, AlertTriangle } from "lucide-vue-next";
+import { Settings, Save, RefreshCw, AlertTriangle, HelpCircle } from "lucide-vue-next";
+import HelpDrawer from "@/components/HelpDrawer.vue";
 
 const posStore = usePosStore();
 
 const form = ref({ ...posStore.settings });
 const saved = ref(false);
 const resetSuccess = ref(false);
+
+// ── Help Drawer ──
+const showHelp = ref(false);
+const settingsHelpSections = [
+    {
+        title: 'تهيأة الإعدادات العامة',
+        icon: Settings,
+        color: '#dbeafe',
+        iconColor: '#2563eb',
+        steps: [
+            { title: 'بيانات المنشأة', desc: 'أدخل اسم المتجر والعنوان والرقم الضريبي ورقم الهاتف لظهورها آلياً في ترويسة الفواتير المطبوعة.' },
+            { title: 'نسبة الضريبة', desc: 'حدد نسبة ضريبة القيمة المضافة (VAT) المطبقة لتتم إضافتها وتطبيقها آلياً على فواتير المبيعات والمشتريات.' },
+            { title: 'بيان الفاتورة السفلي', desc: 'اكتب الشروط أو ملاحظات الشكر المطبوعة في ترويسة الإيصال السفلى (مثل: البضاعة المباعة لا ترد ولا تستبدل بعد 14 يوم).' },
+            { title: 'حفظ الإعدادات', desc: 'انقر على "حفظ الإعدادات" لتطبيق التغييرات فوراً على مستوى النظام بأكمله.' },
+        ]
+    }
+];
 
 onMounted(() => {
     posStore.fetchSettings();
@@ -33,7 +51,7 @@ const handleReset = () => {
 <template>
     <div class="settings-page">
         <!-- Header -->
-        <div class="settings-header">
+        <div class="settings-header flex items-center justify-between">
             <div class="flex items-center gap-3">
                 <div class="header-icon-wrap">
                     <Settings :size="28" class="text-primary-500" />
@@ -43,6 +61,10 @@ const handleReset = () => {
                     <p class="settings-subtitle">تهيئة بيانات المتجر، نسب الضرائب وتفاصيل الفاتورة</p>
                 </div>
             </div>
+            <button @click="showHelp = true" class="btn-help flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-primary-600 bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded-xl transition-all">
+                <HelpCircle :size="18" />
+                <span>تعليمات والمساعدة</span>
+            </button>
         </div>
 
         <div class="settings-content-wrap">
@@ -111,6 +133,17 @@ const handleReset = () => {
                 </div>
             </div>
         </div>
+
+        <!-- Help Drawer -->
+        <HelpDrawer
+            v-model="showHelp"
+            page-title="إعدادات النظام والطباعة"
+            page-subtitle="تخصيص بيانات المنشأة، الفاتورة، والتفضيلات"
+            :page-icon="Settings"
+            header-gradient="linear-gradient(135deg, #475569 0%, #1e293b 100%)"
+            :sections="settingsHelpSections"
+            :tips="settingsHelpTips"
+        />
     </div>
 </template>
 

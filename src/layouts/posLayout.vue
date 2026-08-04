@@ -39,7 +39,7 @@ import ThemeSwitch from "@/components/themeSwitch.vue";
 import { Store, User, Clock, LogOut } from "lucide-vue-next";
 
 const posStore = usePosStore();
-const isDark = useDark();
+const isDark = useDark({ initialValue: 'light' });
 
 const currentTime = ref("");
 let timeInterval = null;

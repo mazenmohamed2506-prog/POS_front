@@ -97,31 +97,29 @@ const exportReportCsv = () => {
 const showHelp = ref(false);
 const suppliersHelpSections = [
     {
-        title: 'إدارة الموردين',
+        title: 'إدارة ملفات الموردين',
         icon: Truck,
         color: '#dbeafe',
         iconColor: '#2563eb',
         steps: [
-            { title: 'قائمة الموردين', desc: 'تعرض جميع الموردين مع بيانات التواصل والرقم الضريبي' },
-            { title: 'بحث سريع', desc: 'اكتب اسم المورد للبحث السريع في الجدول' },
+            { title: 'تسجيل بيانات المورد', desc: 'إدخال اسم الشركة، المسؤول، رقم الجوال، والبريد الإلكتروني.' },
+            { title: 'الرقم الضريبي والعنوان', desc: 'حفظ الرقم الضريبي للمورد للظهور في تقارير الإقرار الضريبي.' },
         ]
     },
     {
-        title: 'إضافة وتعديل مورد',
-        icon: Plus,
+        title: 'كشوفات الحساب والديون',
+        icon: DollarSign,
         color: '#d1fae5',
         iconColor: '#059669',
         steps: [
-            { title: 'إضافة مورد جديد', desc: 'اضغط "إضافة مورد" واملأ بيانات المورد' },
-            { title: 'تعديل بيانات', desc: 'اضغط أيقونة التعديل لتحديث بيانات المورد' },
-            { title: 'حذف مورد', desc: 'اضغط أيقونة الحذف وقم بتأكيد الحذف' },
+            { title: 'متابعة مستحقات الموردين', desc: 'معرفة الديون المستحقة لكل مورد بناءً على فواتير الشراء الآجلة.' },
+            { title: 'تسجيل سندات الصرف', desc: 'تسجيل الدفعات السديدة للمورد وخصمها من رصيد حسابه بالنظام.' },
         ]
-    },
+    }
 ];
 const suppliersHelpTips = [
-    'احتفظ بتحديث بيانات الموردين دورياً',
-    'الرقم الضريبي مهم لاحتساب ضريبة الشراء',
-    'لا يمكن حذف مورد مرتبط بفواتير شراء',
+    'احتفظ ببيانات الاتصال الدقيقة للموردين لسرعة طلب البضائع وتسهيل التواصل.',
+    'تسجيل سندات الصرف فور السداد يضمن دقة كشف الحساب وعدم تكرار المبالغ.'
 ];
 
 const showSupplierDialog = ref(false);
@@ -304,8 +302,8 @@ const confirmDelete = async (supplier) => {
         <!-- Help Drawer -->
         <HelpDrawer
             v-model="showHelp"
-            page-title="إدارة الموردين"
-            page-subtitle="إضافة وتعديل بيانات الموردين"
+            page-title="إدارة الموردين والحسابات"
+            page-subtitle="دليل الموردين، الاتصال، وكشوفات الحسابات"
             :page-icon="Truck"
             header-gradient="linear-gradient(135deg, #10b981 0%, #0ea5e9 100%)"
             :sections="suppliersHelpSections"
@@ -426,7 +424,7 @@ const confirmDelete = async (supplier) => {
                             <button class="act-btn act-edit" @click="openEditSupplier(data)" title="تعديل">
                                 <Pencil :size="15" />
                             </button>
-                            <button v-if="posStore.role === 'Manager' || posStore.role === 'SuperAdmin'" class="act-btn act-delete" @click="confirmDelete(data)" title="حذف">
+                            <button v-if="posStore.role === 'Manager' || posStore.role === 'Admin'" class="act-btn act-delete" @click="confirmDelete(data)" title="حذف">
                                 <Trash2 :size="15" />
                             </button>
                         </div>

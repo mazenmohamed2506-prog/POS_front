@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import { apiGet, apiPost, apiPut } from "@/utilities/fetchApi";
 import { useBaseStore } from "@/stores/base/baseStore";
 import { useAuthStore } from "@/stores/base/authStore";
@@ -51,7 +51,10 @@ export const usePosStore = defineStore("pos", () => {
     // ═══════════════════════════════════════════
     //  POS CART STATE
     // ═══════════════════════════════════════════
-    const cart = ref([]);
+    const cart = ref(getLocal("posCart", []));
+    watch(cart, (newVal) => {
+        localStorage.setItem("posCart", JSON.stringify(newVal));
+    }, { deep: true });
     const settings = ref(getLocal("posSettings", initialSettings));
     const taxRate = ref((settings.value.taxRate || 14) / 100);
 
@@ -114,6 +117,9 @@ export const usePosStore = defineStore("pos", () => {
             localStorage.setItem("posRole", userData.role);
             localStorage.setItem("posPages", JSON.stringify(pages.value));
             localStorage.setItem("accessToken", data.token);
+            if (data.refreshToken) {
+                localStorage.setItem("refreshToken", data.refreshToken);
+            }
 
             // Sync with base and auth stores
             try {
@@ -121,7 +127,11 @@ export const usePosStore = defineStore("pos", () => {
                 baseStore.setUser(userData);
 
                 const authStore = useAuthStore();
-                authStore.login({ token: data.token, userName: userData.name });
+                authStore.login({ 
+                    token: data.token, 
+                    refreshToken: data.refreshToken,
+                    userName: userData.name 
+                });
             } catch (e) {
                 console.error("Failed to sync auth stores", e);
             }
@@ -158,7 +168,7 @@ export const usePosStore = defineStore("pos", () => {
             const authStore = useAuthStore();
             authStore.logout();
         } catch (e) {
-            window.location.replace("/login");
+            window.location.hash = "/login";
         }
     }
 

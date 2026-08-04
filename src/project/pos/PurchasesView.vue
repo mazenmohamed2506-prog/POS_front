@@ -7,7 +7,7 @@ import {
     Receipt, Plus, Trash2, Eye, Search, HelpCircle,
     ShoppingBag, Hash, Calendar, Package,
     Layers, CheckCircle2, DollarSign, Truck,
-    ClipboardList
+    ClipboardList, CreditCard
 } from "lucide-vue-next";
 import HelpDrawer from "@/components/HelpDrawer.vue";
 
@@ -19,44 +19,31 @@ const supplierStore = useSupplierStore();
 const showHelp = ref(false);
 const purchasesHelpSections = [
     {
-        title: 'عرض المشتريات',
-        icon: ClipboardList,
+        title: 'إصدار وتعديل فواتير المشتريات',
+        icon: Receipt,
         color: '#dbeafe',
         iconColor: '#2563eb',
         steps: [
-            { title: 'قائمة الفواتير', desc: 'تعرض جميع فواتير الشراء مرتبة من الأحدث إلى الأقدم' },
-            { title: 'البحث', desc: 'ابحث برقم الفاتورة أو اسم المورد' },
-            { title: 'عرض التفاصيل', desc: 'اضغط على أيقونة العين لرؤية محتويات الفاتورة كاملة' },
+            { title: 'اختيار المورد والرقم المرجعي', desc: 'تحديد المورد المسجل وإدخال رقم فاتورة الشراء الواردة منه.' },
+            { title: 'إضافة أصناف البضائع', desc: 'إدراج المنتجات وتحديد كمية الشراء وسعر التكلفة لكل صنف.' },
+            { title: 'احتساب الضريبة والخصم', desc: 'تطبيق ضريبة القيمة المضافة والخصومات الممنوحة من المورد.' },
         ]
     },
     {
-        title: 'إضافة فاتورة شراء',
-        icon: Plus,
+        title: 'طرق السداد والمستحقات',
+        icon: CreditCard,
         color: '#d1fae5',
         iconColor: '#059669',
         steps: [
-            { title: 'فاتورة جديدة', desc: 'اضغط "فاتورة جديدة" واملأ بيانات المورد والأصناف' },
-            { title: 'إضافة أصناف', desc: 'اضغط "إضافة صنف" لإضافة منتجات متعددة للفاتورة' },
-            { title: 'حفظ الفاتورة', desc: 'بعد مراجعة البيانات اضغط حفظ لتسجيل الفاتورة وتحديث المخزون' },
+            { title: 'تحديد طريقة الدفع', desc: 'اختيار السداد (نقدي، تحويل بنكي، أو آجل على حساب المورد).' },
+            { title: 'تحديث المخزون الفوري', desc: 'اعتماد الفاتورة يضيف البضائع فوراً لرصيد المستودع الرئيسي.' },
         ]
-    },
-    {
-        title: 'تتبع تفاصيل الصنف',
-        icon: Package,
-        color: '#fef3c7',
-        iconColor: '#d97706',
-        steps: [
-            { title: 'الفئة والمنتج', desc: 'حدد الفئة أولاً ثم اختر المنتج من القائمة المفلترة' },
-            { title: 'الوحدة والكمية', desc: 'اختر وحدة الشراء وأدخل الكمية وسعر التكلفة' },
-            { title: 'الدفعة والصلاحية', desc: 'أدخل رقم الدفعة وتاريخ الصلاحية لتتبع المخزون بشكل متكامل' },
-        ]
-    },
+    }
 ];
 const purchasesHelpTips = [
-    'فاتورة الشراء تضيف المخزون تلقائياً بعد الحفظ',
-    'يمكنك إضافة أكثر من صنف في نفس الفاتورة',
-    'تأكد من صحة الوحدة ومعامل التحويل قبل الحفظ',
-    'سعر التكلفة يتحدد تلقائياً من بيانات الوحدة',
+    'تحديث تكلفة شراء المنتج في الفاتورة يعيد حساب هامش ربحك آلياً.',
+    'الفواتير الآجلة ترحل تلقائياً إلى كشف حساب المورد والمستحقات المالية.',
+    'تأكد من فحص الشحنة ومطابقتها مع الكميات المدخلة بالفاتورة قبل الحفظ.'
 ];
 
 const showPurchaseDialog = ref(false);
@@ -254,7 +241,7 @@ const getPaymentStatusConfig = (status) => {
         <HelpDrawer
             v-model="showHelp"
             page-title="فواتير المشتريات"
-            page-subtitle="تسجيل ومتابعة فواتير الشراء"
+            page-subtitle="تسجيل مشتريات البضائع من الموردين وتحديث المخزون"
             :page-icon="Receipt"
             header-gradient="linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)"
             :sections="purchasesHelpSections"

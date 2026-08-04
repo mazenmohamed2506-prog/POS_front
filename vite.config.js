@@ -11,7 +11,7 @@ import Components from "unplugin-vue-components/vite";
 
 // https://vite.dev/config/
 export default defineConfig({
-    base: process.env.VITE_BASE_PATH || "/", // Use relative paths for Electron
+    base: "./", // Use relative paths for Electron
     plugins: [
         vue(),
         vueDevTools(),
