@@ -1,14 +1,95 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import { usePosStore } from "@/stores/pos/posStore";
-import { Settings, Save, RefreshCw, AlertTriangle, HelpCircle } from "lucide-vue-next";
+import { useToastStore } from "@/stores/base/toastStore";
+import { Settings, Save, RefreshCw, AlertTriangle, HelpCircle, Printer, Wifi, WifiOff, Zap } from "lucide-vue-next";
 import HelpDrawer from "@/components/HelpDrawer.vue";
+import QZService from "@/utilities/qzService";
 
 const posStore = usePosStore();
+const toastStore = useToastStore();
 
 const form = ref({ ...posStore.settings });
 const saved = ref(false);
 const resetSuccess = ref(false);
+
+// QZ Tray Status & State
+const qzConnected = ref(false);
+const qzPrinters = ref([]);
+const isQzTestingConnection = ref(false);
+const isQzTestingPrint = ref(false);
+const isQzTestingPulse = ref(false);
+
+const checkQZConnection = async () => {
+    isQzTestingConnection.value = true;
+    try {
+        const connected = await QZService.connect();
+        qzConnected.value = connected;
+        if (connected) {
+            qzPrinters.value = await QZService.getPrinters();
+            // Fallback default printer assignment if none selected
+            if (qzPrinters.value.length > 0 && (!posStore.qzPrinterName || !qzPrinters.value.includes(posStore.qzPrinterName))) {
+                posStore.qzPrinterName = qzPrinters.value[0];
+            }
+        } else {
+            qzPrinters.value = [];
+        }
+    } catch (e) {
+        console.error("QZ connection check error:", e);
+        qzConnected.value = false;
+        qzPrinters.value = [];
+    } finally {
+        isQzTestingConnection.value = false;
+    }
+};
+
+const handleTestPrint = async () => {
+    if (!posStore.qzPrinterName) {
+        toastStore.addWarningToast("الرجاء اختيار طابعة أولاً");
+        return;
+    }
+    isQzTestingPrint.value = true;
+    try {
+        const dummyOrder = {
+            orderNumber: "TEST-0001",
+            date: new Date().toISOString(),
+            items: [
+                { name: "صنف تجريبي 1 - قز تراي", qty: 2, price: 15.00, total: 30.00 },
+                { name: "صنف تجريبي 2 - اختبار نبضة الدرج", qty: 1, price: 45.00, total: 45.00 }
+            ],
+            subtotal: 75.00,
+            discount: 5.00,
+            tax: 9.80,
+            total: 79.80,
+            paymentMethod: "cash"
+        };
+        const htmlContent = QZService.generateReceiptHTML(dummyOrder, posStore.settings);
+        await QZService.printReceipt(posStore.qzPrinterName, htmlContent, false);
+        toastStore.addSuccessToast("تم إرسال أمر الطباعة التجريبي بنجاح");
+    } catch (err) {
+        console.error(err);
+        toastStore.addErrorToast("فشلت طباعة الإيصال التجريبي: " + (err.message || err));
+    } finally {
+        isQzTestingPrint.value = false;
+    }
+};
+
+const handleTestPulse = async () => {
+    if (!posStore.qzPrinterName) {
+        toastStore.addWarningToast("الرجاء اختيار طابعة أولاً");
+        return;
+    }
+    isQzTestingPulse.value = true;
+    try {
+        await QZService.kickDrawer(posStore.qzPrinterName, 2);
+        toastStore.addSuccessToast("تم إرسال نبضة فتح درج النقدية");
+    } catch (err) {
+        console.error(err);
+        toastStore.addErrorToast("فشل إرسال نبضة درج النقدية: " + (err.message || err));
+    } finally {
+        isQzTestingPulse.value = false;
+    }
+};
 
 // ── Help Drawer ──
 const showHelp = ref(false);
@@ -24,12 +105,33 @@ const settingsHelpSections = [
             { title: 'بيان الفاتورة السفلي', desc: 'اكتب الشروط أو ملاحظات الشكر المطبوعة في ترويسة الإيصال السفلى (مثل: البضاعة المباعة لا ترد ولا تستبدل بعد 14 يوم).' },
             { title: 'حفظ الإعدادات', desc: 'انقر على "حفظ الإعدادات" لتطبيق التغييرات فوراً على مستوى النظام بأكمله.' },
         ]
+    },
+    {
+        title: 'إعدادات طباعة QZ Tray',
+        icon: Printer,
+        color: '#fef3c7',
+        iconColor: '#d97706',
+        steps: [
+            { title: 'تفعيل QZ Tray', desc: 'قم بتشغيل الخيار لتجاوز نافذة معاينة المتصفح المزعجة والطباعة بصمت تام وسرعة عالية.' },
+            { title: 'اختيار الطابعة', desc: 'قم بتشغيل تطبيق QZ Tray على جهاز الكمبيوتر الخاص بك، ثم اختر الطابعة الحرارية المعرفة في النظام من القائمة المنسدلة.' },
+            { title: 'درج الكاش التلقائي', desc: 'فعل خيار فتح درج النقدية ليرسل النظام نبضة فتح الدرج الكهربائية فور تأكيد إتمام المعاملة بنجاح.' },
+            { title: 'اختبار الهاردوير', desc: 'اضغط على زر تجربة الطباعة أو تجربة نبضة الدرج للتأكد من ربط الأجهزة بشكل صحيح.' }
+        ]
     }
 ];
 
-onMounted(() => {
+const settingsHelpTips = [
+    'تأكد من تشغيل تطبيق QZ Tray على نظام التشغيل لديك (يظهر كأيقونة بجوار الساعة في شريط المهام).',
+    'يجب تثبيت برنامج Java JRE للتمكن من تشغيل تطبيق QZ Tray بشكل سليم على جهازك.',
+    'عند تشغيل ميزة QZ Tray لأول مرة، قد يظهر تنبيه أمان يسألك السماح للموقع بالاتصال، اختر "تذكر هذا القرار دائماً".'
+];
+
+onMounted(async () => {
     posStore.fetchSettings();
     form.value = { ...posStore.settings };
+    
+    // Check QZ Tray connection on load
+    await checkQZConnection();
 });
 
 const handleSave = async () => {
@@ -130,6 +232,97 @@ const handleReset = () => {
                             </Transition>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- QZ Tray Printer Settings Card -->
+            <div class="settings-card mt-6">
+                <div class="flex items-center gap-3 mb-4 pb-3 border-b border-surface-200 dark:border-surface-800">
+                    <div class="p-2 bg-primary-50 dark:bg-primary-950/20 text-primary-600 dark:text-primary-400 rounded-lg">
+                        <Printer :size="20" />
+                    </div>
+                    <div>
+                        <h3 class="text-base font-extrabold text-surface-900 dark:text-surface-0 m-0">إعدادات طابعة الفواتير ودرج النقدية</h3>
+                        <p class="text-xs text-surface-500 m-0">تفعيل الطباعة التلقائية الصامتة والتحكم في درج النقدية عبر QZ Tray</p>
+                    </div>
+                </div>
+
+                <div class="settings-form-grid">
+                    <!-- Enable QZ Tray -->
+                    <div class="flex items-center justify-between py-2">
+                        <div class="flex flex-col gap-1">
+                            <label class="font-bold text-sm text-surface-700 dark:text-surface-200">تفعيل نظام طباعة QZ Tray</label>
+                            <p class="text-xs text-surface-500 m-0">استخدام اتصال WebSocket لطباعة الفواتير وفتح درج الكاش بصمت دون إظهار نافذة المتصفح</p>
+                        </div>
+                        <ToggleSwitch v-model="posStore.useQZTray" />
+                    </div>
+
+                    <!-- Connection Status & Detection (Only shown when QZ Tray is enabled) -->
+                    <Transition name="fade">
+                        <div v-if="posStore.useQZTray" class="flex flex-col gap-4 p-4 bg-surface-50 dark:bg-surface-950/40 rounded-xl border border-surface-200 dark:border-surface-800">
+                            <!-- Connection Status -->
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-sm font-bold">حالة الاتصال ببرنامج QZ Tray:</span>
+                                    <span v-if="qzConnected" class="inline-flex items-center gap-1 text-xs font-bold text-green-600 dark:text-green-400 px-2 py-0.5 rounded-full bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800/30">
+                                        <Wifi :size="12" /> متصل
+                                    </span>
+                                    <span v-else class="inline-flex items-center gap-1 text-xs font-bold text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/30">
+                                        <WifiOff :size="12" /> غير متصل
+                                    </span>
+                                </div>
+                                <Button label="تحديث الاتصال" text size="small" @click="checkQZConnection" :loading="isQzTestingConnection">
+                                    <template #icon><RefreshCw :size="14" class="me-1" /></template>
+                                </Button>
+                            </div>
+
+                            <!-- Printer Select -->
+                            <div class="form-field">
+                                <label class="required">طابعة الفواتير المحددة</label>
+                                <div class="flex gap-2">
+                                    <Select 
+                                        v-model="posStore.qzPrinterName" 
+                                        :options="qzPrinters" 
+                                        placeholder="اختر طابعة من القائمة المكتشفة" 
+                                        class="flex-1"
+                                        :disabled="!qzConnected"
+                                        fluid
+                                    />
+                                    <Button 
+                                        v-tooltip.top="'تحديث قائمة الطابعات المكتشفة'"
+                                        outlined 
+                                        severity="secondary"
+                                        @click="checkQZConnection"
+                                        :disabled="!qzConnected"
+                                    >
+                                        <template #icon><RefreshCw :size="16" /></template>
+                                    </Button>
+                                </div>
+                                <p class="text-xs text-surface-500 m-0" v-if="qzPrinters.length === 0 && qzConnected">
+                                    لم يتم الكشف عن طابعات. تأكد من تعريف طابعتك في لوحة تحكم ويندوز.
+                                </p>
+                            </div>
+
+                            <!-- Auto Drawer Kick -->
+                            <div class="flex items-center justify-between py-2 border-t border-surface-200 dark:border-surface-800 pt-3">
+                                <div class="flex flex-col gap-1">
+                                    <label class="font-bold text-sm text-surface-700 dark:text-surface-200">فتح درج الكاش تلقائياً</label>
+                                    <p class="text-xs text-surface-500 m-0">إرسال نبضة فتح الدرج (ESC/POS Pin 2) فور إتمام عملية البيع</p>
+                                </div>
+                                <ToggleSwitch v-model="posStore.autoOpenDrawer" :disabled="!qzConnected" />
+                            </div>
+
+                            <!-- Hardware Test Actions -->
+                            <div class="flex gap-3 pt-3 border-t border-surface-200 dark:border-surface-800" v-if="qzConnected">
+                                <Button label="تجربة فتح الدرج" severity="secondary" outlined class="flex-1" @click="handleTestPulse" :loading="isQzTestingPulse">
+                                    <template #icon><Zap :size="15" class="me-1 text-amber-500" /></template>
+                                </Button>
+                                <Button label="طباعة ورقة تجريبية" severity="secondary" outlined class="flex-1" @click="handleTestPrint" :loading="isQzTestingPrint">
+                                    <template #icon><Printer :size="15" class="me-1" /></template>
+                                </Button>
+                            </div>
+                        </div>
+                    </Transition>
                 </div>
             </div>
         </div>

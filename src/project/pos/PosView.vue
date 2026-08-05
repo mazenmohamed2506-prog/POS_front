@@ -6,6 +6,7 @@ import { usePaymentMethodStore } from "@/stores/pos/paymentMethodStore";
 import { Barcode, Trash2, Plus, Minus, CreditCard, Banknote, ShoppingCart, XCircle, Search, RotateCcw, Receipt, Package, AlertTriangle, HelpCircle, User, Wallet, Printer, CheckCircle, UserPlus, ArrowRightLeft, ArrowRight, LayoutGrid, Layers, ChevronLeft, ChevronRight, Tag } from "lucide-vue-next";
 import HelpDrawer from "@/components/HelpDrawer.vue";
 import { apiGet, apiPost } from "@/utilities/fetchApi";
+import QZService from "@/utilities/qzService";
 
 const posStore = ref(null);
 posStore.value = usePosStore();
@@ -55,8 +56,30 @@ const handleCreateCustomer = async () => {
     }
 };
 
-const printReceipt = () => {
+const triggerPrintFlow = async (order) => {
+    if (posStore.value.useQZTray) {
+        try {
+            const htmlContent = QZService.generateReceiptHTML(order, posStore.value.settings);
+            await QZService.printReceipt(posStore.value.qzPrinterName, htmlContent, posStore.value.autoOpenDrawer);
+            toastStore.addSuccessToast("تمت طباعة الإيصال عبر QZ Tray بنجاح");
+            return;
+        } catch (err) {
+            console.error("QZ Tray print failed, falling back to browser print:", err);
+            toastStore.addWarningToast("خطأ في الاتصال بـ QZ Tray. جاري التحويل للطباعة عبر المتصفح...");
+        }
+    }
+
+    // Fallback: browser print modal
+    await nextTick();
     window.print();
+};
+
+const printReceipt = async () => {
+    if (completedOrder.value) {
+        await triggerPrintFlow(completedOrder.value);
+    } else {
+        window.print();
+    }
 };
 
 // ── Help Drawer ──
@@ -367,6 +390,9 @@ const handleCheckout = async (methodCode) => {
             showReceiptModal.value = true;
             selectedCustomerId.value = null;
             focusBarcode();
+
+            // Trigger automatic printing flow with fallback
+            await triggerPrintFlow(order);
         }
     } catch (err) {
         console.error("Checkout failed", err);

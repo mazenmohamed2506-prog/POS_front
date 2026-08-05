@@ -58,6 +58,20 @@ export const usePosStore = defineStore("pos", () => {
     const settings = ref(getLocal("posSettings", initialSettings));
     const taxRate = ref((settings.value.taxRate || 14) / 100);
 
+    const useQZTray = ref(getLocal("useQZTray", false));
+    const qzPrinterName = ref(getLocal("qzPrinterName", "Thermal Printer"));
+    const autoOpenDrawer = ref(getLocal("autoOpenDrawer", true));
+
+    watch(useQZTray, (newVal) => {
+        localStorage.setItem("useQZTray", JSON.stringify(newVal));
+    });
+    watch(qzPrinterName, (newVal) => {
+        localStorage.setItem("qzPrinterName", JSON.stringify(newVal));
+    });
+    watch(autoOpenDrawer, (newVal) => {
+        localStorage.setItem("autoOpenDrawer", JSON.stringify(newVal));
+    });
+
     const cartSubtotal = computed(() =>
         cart.value.reduce((sum, item) => sum + item.price * item.qty, 0)
     );
@@ -544,6 +558,8 @@ export const usePosStore = defineStore("pos", () => {
         addPurchase,
         fetchOrders, processReturn,
         fetchSettings, updateSettings,
+        // QZ Tray settings
+        useQZTray, qzPrinterName, autoOpenDrawer,
         // Data
         products, inventory, orders, purchases, settings, loading, pages,
         // Demo

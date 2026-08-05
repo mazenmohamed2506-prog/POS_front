@@ -72,6 +72,7 @@ declare global {
   const processFiles: typeof import('./src/utilities/fileProcessor.js').processFiles
   const provide: typeof import('vue').provide
   const ptViewMerge: typeof import('./src/volt/utils').ptViewMerge
+  const qzService: typeof import('./src/utilities/qzService.js').default
   const reactive: typeof import('vue').reactive
   const readonly: typeof import('vue').readonly
   const ref: typeof import('vue').ref
