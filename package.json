@@ -1,6 +1,6 @@
 {
-    "name": "empty",
-    "version": "0.0.0",
+    "name": "pos",
+    "version": "1.0.0",
     "description": "POS system",
     "author": "Mazen",
     "private": true,
@@ -31,6 +31,7 @@
         "files": [
             "dist/**/*",
             "public/**/*",
+            "scripts/**/*",
             "main.js",
             "splash.html",
             "package.json",

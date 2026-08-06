@@ -3,10 +3,30 @@ import path from 'path';
 import fs from 'fs';
 import http from 'http';
 import { spawn, execSync } from 'child_process';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+function resolvePrereqCheckerPath() {
+  if (app.isPackaged) {
+    const asarPath = path.join(__dirname, 'scripts', 'prereqChecker.js');
+    if (fs.existsSync(asarPath)) {
+      return asarPath;
+    }
+    const resPath = path.join(process.resourcesPath, 'scripts', 'prereqChecker.js');
+    if (fs.existsSync(resPath)) {
+      return resPath;
+    }
+  }
+  return path.join(__dirname, 'scripts', 'prereqChecker.js');
+}
+
+async function loadPrereqChecker() {
+  const scriptPath = resolvePrereqCheckerPath();
+  const scriptUrl = pathToFileURL(scriptPath).href;
+  return await import(scriptUrl);
+}
 
 let mainWindow = null;
 let splashWindow = null;
@@ -100,22 +120,48 @@ function stopBackend() {
   }
 }
 
-function waitForBackend(url = 'http://localhost:5000/api/health', retries = 60, intervalMs = 500) {
+/**
+ * Polls backend health endpoint with strict 20-second timeout (40 attempts * 500ms).
+ * Verifies both HTTP 200 OK and response JSON body status.
+ */
+function waitForBackend(url = 'http://localhost:5000/api/health', retries = 40, intervalMs = 500) {
   return new Promise((resolve) => {
     let attempts = 0;
     const check = () => {
       attempts++;
       const req = http.get(url, (res) => {
-        req.destroy();
-        console.log(`[Main] Backend responsive after ${attempts} attempts (HTTP status: ${res.statusCode})`);
-        resolve(true);
+        let body = '';
+        res.on('data', (chunk) => { body += chunk; });
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            try {
+              const json = JSON.parse(body);
+              if (json.status === 'ok' && json.database !== false) {
+                console.log(`[Main] Backend & DB fully healthy after ${attempts} attempts`);
+                resolve({ success: true, message: 'جاهز' });
+                return;
+              }
+            } catch (e) {
+              // Plain 200 OK fallback
+              resolve({ success: true, message: 'جاهز' });
+              return;
+            }
+          }
+
+          if (attempts >= retries) {
+            console.warn(`[Main] Backend returned HTTP ${res.statusCode} (Unhealthy) after ${retries} attempts.`);
+            resolve({ success: false, message: 'فشل الاتصال بقاعدة البيانات أو الخادم المحلي.' });
+          } else {
+            setTimeout(check, intervalMs);
+          }
+        });
       });
 
       req.on('error', () => {
         req.destroy();
         if (attempts >= retries) {
           console.warn(`[Main] Backend health check timed out after ${retries} attempts.`);
-          resolve(false);
+          resolve({ success: false, message: 'انتهت مهلة الاتصال بالخادم المحلي (20 ثانية).' });
         } else {
           setTimeout(check, intervalMs);
         }
@@ -134,8 +180,8 @@ function createSplashWindow() {
     : path.join(__dirname, 'public', 'icon.png');
 
   splashWindow = new BrowserWindow({
-    width: 420,
-    height: 380,
+    width: 440,
+    height: 400,
     frame: false,
     transparent: false,
     resizable: false,
@@ -226,17 +272,28 @@ function createWindow() {
 //  Startup Sequence
 // ──────────────────────────────────────────────────────────────
 async function bootSequence() {
-  sendSplashStatus('loading', 'جاري تشغيل الخادم...');
+  sendSplashStatus('loading', 'فحص المتطلبات وخدمة قواعد البيانات...');
+
+  // Step 1: Ensure SQL Server service is running
+  const { ensureSqlServerRunning } = await loadPrereqChecker();
+  const prereqResult = await ensureSqlServerRunning();
+  if (!prereqResult.success) {
+    console.warn('[Main] Prerequisite check failed:', prereqResult.message);
+  }
+
+  sendSplashStatus('loading', 'جاري تشغيل الخادم المحلي...');
   startBackend();
 
-  sendSplashStatus('loading', 'جاري الاتصال بالخادم...');
-  const backendReady = await waitForBackend();
+  sendSplashStatus('loading', 'جاري فحص الاتصال بقاعدة البيانات...');
+  const healthCheck = await waitForBackend();
 
-  if (backendReady) {
-    sendSplashStatus('loading', 'جاري تحميل الواجهة...');
+  if (healthCheck.success) {
+    sendSplashStatus('loading', 'جاري تحميل الواجهة الرئيسية...');
     createWindow();
   } else {
-    sendSplashStatus('error', 'لم يتمكن النظام من الاتصال بالخادم المحلي. تأكد من تشغيل قاعدة البيانات وأعد المحاولة.');
+    console.error('[Main] Backend failed to reach ready state. Aborting boot sequence.');
+    stopBackend();
+    sendSplashStatus('error', healthCheck.message || 'تعذر الاتصال بالخادم المحلي. يرجى التحقق من خدمة SQL Server.');
   }
 }
 
@@ -249,6 +306,25 @@ app.whenReady().then(async () => {
     console.log('[Main] Retry requested from splash screen');
     stopBackend();
     await bootSequence();
+  });
+
+  // Handle auto-fix from splash screen
+  ipcMain.on('splash-autofix', async () => {
+    console.log('[Main] Auto-Fix requested from splash screen');
+    sendSplashStatus('loading', 'جاري إشعار نظام التشغيل وإصلاح خدمة SQL Server...');
+    stopBackend();
+
+    const { autoFixSqlServer } = await loadPrereqChecker();
+    const fixResult = await autoFixSqlServer((msg) => {
+      sendSplashStatus('loading', msg);
+    });
+
+    if (fixResult.success) {
+      console.log('[Main] Auto-fix succeeded, rebooting sequence...');
+      await bootSequence();
+    } else {
+      sendSplashStatus('error', fixResult.message || 'فشل الإصلاح التلقائي. يرجى تشغيل خدمة MSSQL$SQLEXPRESS يدوياً.');
+    }
   });
 
   app.on('activate', () => {

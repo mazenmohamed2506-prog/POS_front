@@ -16,6 +16,7 @@ declare module 'vue' {
     Button: typeof import('./src/volt/Button.vue')['default']
     Checkbox: typeof import('./src/volt/Checkbox.vue')['default']
     CheckboxValid: typeof import('./src/components/validationFields/CheckboxValid.vue')['default']
+    ConnectionLostOverlay: typeof import('./src/components/ConnectionLostOverlay.vue')['default']
     ContrastButton: typeof import('./src/volt/ContrastButton.vue')['default']
     DataTable: typeof import('./src/volt/DataTable.vue')['default']
     DatePicker: typeof import('./src/volt/DatePicker.vue')['default']

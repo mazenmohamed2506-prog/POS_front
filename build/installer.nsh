@@ -2,6 +2,8 @@
 ;  POS Installer — Silent SQL Server Express Detection & Install
 ; ──────────────────────────────────────────────────────────────
 
+!define SQLEXPRESS_SERVICE "MSSQL$$SQLEXPRESS"
+
 !macro customInstall
   ; Check if SQL Server Express instance already exists
   ReadRegStr $0 HKLM "SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL" "SQLEXPRESS"
@@ -28,11 +30,11 @@
   ${EndIf}
 
   ; Ensure SQL Server service is set to auto-start
-  nsExec::ExecToLog 'sc config "MSSQL$SQLEXPRESS" start= auto'
+  nsExec::ExecToLog 'sc config `${SQLEXPRESS_SERVICE}` start= auto'
   Pop $1
 
   ; Start the SQL Server service if not running
-  nsExec::ExecToLog 'net start "MSSQL$SQLEXPRESS"'
+  nsExec::ExecToLog 'net start `${SQLEXPRESS_SERVICE}`'
   Pop $1
 
 !macroend

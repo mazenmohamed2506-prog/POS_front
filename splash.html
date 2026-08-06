@@ -128,32 +128,48 @@
 
         .error-message {
             color: #94a3b8;
-            font-size: 14px;
-            max-width: 320px;
-            line-height: 1.6;
-            margin-bottom: 24px;
+            font-size: 13px;
+            max-width: 340px;
+            line-height: 1.5;
+            margin-bottom: 20px;
         }
 
-        .retry-btn {
+        .btn-group {
+            display: flex;
+            gap: 10px;
             -webkit-app-region: no-drag;
-            background: linear-gradient(135deg, #6366f1, #4f46e5);
-            color: #fff;
+        }
+
+        .retry-btn, .autofix-btn {
+            -webkit-app-region: no-drag;
             border: none;
-            padding: 10px 32px;
+            padding: 10px 20px;
             border-radius: 10px;
             font-family: 'Cairo', sans-serif;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s ease;
+        }
+
+        .retry-btn {
+            background: rgba(148, 163, 184, 0.15);
+            color: #e2e8f0;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .retry-btn:hover { background: rgba(148, 163, 184, 0.25); }
+
+        .autofix-btn {
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            color: #fff;
             box-shadow: 0 4px 16px rgba(99, 102, 241, 0.25);
         }
-        .retry-btn:hover {
+        .autofix-btn:hover {
             transform: translateY(-1px);
             box-shadow: 0 6px 24px rgba(99, 102, 241, 0.35);
         }
-        .retry-btn:active { transform: translateY(0); }
-        .retry-btn:disabled {
+
+        .retry-btn:disabled, .autofix-btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
             transform: none;
@@ -200,7 +216,10 @@
             <div class="error-message" id="error-message">
                 لم يتمكن النظام من الاتصال بالخادم المحلي. تأكد من تشغيل قاعدة البيانات وأعد المحاولة.
             </div>
-            <button class="retry-btn" id="retry-btn" onclick="handleRetry()">إعادة المحاولة</button>
+            <div class="btn-group">
+                <button class="autofix-btn" id="autofix-btn" onclick="handleAutoFix()">إصلاح وتغذية الخدمة تلقائياً</button>
+                <button class="retry-btn" id="retry-btn" onclick="handleRetry()">إعادة المحاولة</button>
+            </div>
         </div>
     </div>
 
@@ -230,20 +249,31 @@
         }
 
         function handleRetry() {
-            const btn = document.getElementById('retry-btn');
-            btn.disabled = true;
-            btn.textContent = 'جاري إعادة المحاولة...';
-            showLoading('جاري إعادة الاتصال...');
-
+            disableButtons();
+            showLoading('جاري إعادة الاتصال بالخادم...');
             if (ipcRenderer) {
                 ipcRenderer.send('splash-retry');
             }
+            setTimeout(enableButtons, 15000);
+        }
 
-            // Fallback timeout if no IPC response
-            setTimeout(() => {
-                btn.disabled = false;
-                btn.textContent = 'إعادة المحاولة';
-            }, 15000);
+        function handleAutoFix() {
+            disableButtons();
+            showLoading('جاري الإصلاح التلقائي وإعادة تشغيل خدمة قواعد البيانات...');
+            if (ipcRenderer) {
+                ipcRenderer.send('splash-autofix');
+            }
+            setTimeout(enableButtons, 20000);
+        }
+
+        function disableButtons() {
+            document.getElementById('retry-btn').disabled = true;
+            document.getElementById('autofix-btn').disabled = true;
+        }
+
+        function enableButtons() {
+            document.getElementById('retry-btn').disabled = false;
+            document.getElementById('autofix-btn').disabled = false;
         }
 
         // Listen for state changes from the main process
@@ -253,9 +283,7 @@
                     showLoading(data.message);
                 } else if (data.state === 'error') {
                     showError(data.message);
-                    const btn = document.getElementById('retry-btn');
-                    btn.disabled = false;
-                    btn.textContent = 'إعادة المحاولة';
+                    enableButtons();
                 }
             });
         }
