@@ -15,7 +15,7 @@
         @keydown="keydownCallback"
       >
         <template #icon>
-          <ChevronLeftIcon />
+          <ChevronLeftIcon class="rtl:rotate-180" />
         </template>
       </SecondaryButton>
     </template>
@@ -27,7 +27,7 @@
         @keydown="keydownCallback"
       >
         <template #icon>
-          <ChevronRightIcon />
+          <ChevronRightIcon class="rtl:rotate-180" />
         </template>
       </SecondaryButton>
     </template>

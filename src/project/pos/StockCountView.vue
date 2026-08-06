@@ -17,6 +17,7 @@ const toastStore = useToastStore();
 const reportStore = useReportStore();
 
 const canManageStock = computed(() => {
+    const hasWritePermission = posStore.pages?.includes("/stock-count/write");
     const r = (
         posStore.role || 
         posStore.user?.role || 
@@ -25,7 +26,7 @@ const canManageStock = computed(() => {
         ""
     ).toString().toLowerCase();
 
-    return ["manager", "admin", "المدير", "مدير النظام"].includes(r);
+    return ["manager", "superadmin", "admin", "المدير", "مدير النظام"].includes(r) || hasWritePermission;
 });
 
 const reportForm = ref({

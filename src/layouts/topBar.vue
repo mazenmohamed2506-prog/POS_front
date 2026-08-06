@@ -37,7 +37,7 @@
             <!-- Language Selector -->
             <ThemeSwitch />
             <!-- Notifications -->
-            <!-- <NotificationMenu /> -->
+            <NotificationMenu />
 
             <!-- User Profile -->
             <div class="user-avatar" @click="toggleUserMenu">
@@ -98,6 +98,7 @@
 
 <script setup>
 import ThemeSwitch from "../components/themeSwitch.vue";
+import NotificationMenu from "../components/NotificationMenu.vue";
 import Breadcrumb from "../components/Breadcrumb.vue";
 import Popover from "../volt/Popover.vue";
 import { Calendar, Clock, Menu, UserCog, LogOut } from "lucide-vue-next";

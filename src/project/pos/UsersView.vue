@@ -74,8 +74,60 @@ const selectedRole = computed(() => {
 });
 
 const roleNameAr = (name) => {
-    const map = { admin: 'مدير', manager: 'مدير �داري', cashier: 'كاشير' };
+    const map = { admin: 'مدير', manager: 'مدير إداري', cashier: 'كاشير' };
     return name ? (map[name.toLowerCase()] || name) : name;
+};
+
+const pageNameAr = (page) => {
+    if (!page) return "";
+    const name = typeof page === "string" ? page : page.name;
+    const path = typeof page === "object" ? page.path : null;
+
+    const map = {
+        'dashboard': 'لوحة التحكم',
+        'pos / sales': 'نقطة البيع',
+        'pos': 'نقطة البيع',
+        'products': 'المنتجات',
+        'inventory': 'المخزون',
+        'purchases': 'المشتريات',
+        'suppliers': 'الموردون',
+        'returns': 'المرتجعات',
+        'orders': 'الطلبات',
+        'stock count': 'الجرد',
+        'stock-count': 'الجرد',
+        'stockcount': 'الجرد',
+        'damages': 'التلفيات',
+        'receivables': 'العملاء (ذمم مدينة)',
+        'cashier shifts': 'متابعة الورديات',
+        'all shifts': 'متابعة الورديات',
+        'shifts': 'متابعة الورديات',
+        'my shift': 'ورديتي',
+        'myshift': 'ورديتي',
+        'user management': 'المستخدمون والصلاحيات',
+        'users & permissions': 'المستخدمون والصلاحيات',
+        'users': 'المستخدمون والصلاحيات',
+        'pages management': 'إدارة الصفحات',
+        'pages': 'إدارة الصفحات',
+        'settings': 'الإعدادات',
+        'expenses': 'المصروفات',
+        'payroll': 'المرتبات',
+        'reports': 'التقارير المالية',
+        'categories': 'الأقسام',
+        'units': 'الوحدات',
+        'rbac': 'إدارة الصلاحيات (RBAC)'
+    };
+
+    if (name) {
+        const lowerName = name.toLowerCase().trim();
+        if (map[lowerName]) return map[lowerName];
+    }
+
+    if (path) {
+        const cleanPath = path.replace(/^\//, '').toLowerCase().trim();
+        if (map[cleanPath]) return map[cleanPath];
+    }
+
+    return name || path || "";
 };
 
 const roleSeverity = (name) => {
@@ -119,6 +171,10 @@ const openNewUser = () => {
 };
 
 const openEditUser = (user) => {
+    if (isSuperAdmin(user)) {
+        useToastStore().addWarningToast("لا يمكن تعديل بيانات حساب مدير النظام الرئيسي (SuperAdmin)");
+        return;
+    }
     editingUser.value = user;
     userForm.value = { username: user.username, password: "", role: user.role };
     showUserDialog.value = true;
@@ -127,12 +183,18 @@ const openEditUser = (user) => {
 const saveUser = async () => {
     // Basic frontend validation
     if (!userForm.value.username || userForm.value.username.trim() === '') {
-        useToastStore().addWarningToast("يرجى �دخال اسم المستخدم");
+        useToastStore().addWarningToast("يرجى إدخال اسم المستخدم");
         return;
     }
     
     if (!editingUser.value && (!userForm.value.password || userForm.value.password.length < 4)) {
         useToastStore().addWarningToast("كلمة المرور يجب أن تكون 4 أحرف على الأقل");
+        return;
+    }
+
+    if (editingUser.value && isSuperAdmin(editingUser.value) && userForm.value.password) {
+        useToastStore().addWarningToast("لا يمكن تغيير كلمة مرور حساب مدير النظام الرئيسي (SuperAdmin)");
+        userForm.value.password = "";
         return;
     }
 
@@ -149,7 +211,18 @@ const saveUser = async () => {
     }
 };
 
+const isSuperAdmin = (user) => {
+    if (!user) return false;
+    const uName = user.username ? String(user.username).toLowerCase().trim() : '';
+    const uRole = user.role ? String(user.role).toLowerCase().trim() : '';
+    return user.id === 1 || uName === 'superadmin' || uRole === 'superadmin';
+};
+
 const confirmDelete = async (user) => {
+    if (isSuperAdmin(user)) {
+        useToastStore().addWarningToast("لا يمكن حذف حساب مدير النظام الرئيسي (SuperAdmin)");
+        return;
+    }
     if (confirm(`هل أنت متأكد من حذف المستخدم "${user.username}"؟`)) {
         try {
             await userStore.deleteUser(user.id);
@@ -167,7 +240,7 @@ const openNewRole = () => {
 
 const saveNewRole = async () => {
     if (!newRoleName.value || newRoleName.value.trim() === "") {
-        useToastStore().addWarningToast("يرجى �دخال اسم الدور");
+        useToastStore().addWarningToast("يرجى إدخال اسم الدور");
         return;
     }
     try {
@@ -182,7 +255,7 @@ const saveNewRole = async () => {
 };
 
 const deleteCustomRole = async (role) => {
-    if (confirm(`هل أنت متأكد من حذف الدور "${role.name}"؟\nلا يمكن التراجع عن هذا ال�جراء.`)) {
+    if (confirm(`هل أنت متأكد من حذف الدور "${role.name}"؟\nلا يمكن التراجع عن هذا الإجراء.`)) {
         try {
             await userStore.deleteRole(role.id);
             if (selectedRoleId.value === role.id) {
@@ -199,6 +272,10 @@ const deleteCustomRole = async (role) => {
 };
 
 const toggleActive = async (user) => {
+    if (isSuperAdmin(user)) {
+        useToastStore().addWarningToast("لا يمكن تعطيل حساب مدير النظام الرئيسي (SuperAdmin)");
+        return;
+    }
     try {
         await userStore.toggleUserActive(user.id);
     } catch {
@@ -266,15 +343,15 @@ const deselectAllPages = () => {
                     <Users :size="28" class="text-primary-500" />
                 </div>
                 <div>
-                    <h1 class="users-title">�دارة المستخدمين والصلاحيات</h1>
-                    <p class="users-subtitle">�دارة حسابات المستخدمين وتعيين صلاحيات الأدوار</p>
+                    <h1 class="users-title">إدارة المستخدمين والصلاحيات</h1>
+                    <p class="users-subtitle">إدارة حسابات المستخدمين وتعيين صلاحيات الأدوار</p>
                 </div>
             </div>
             <div class="flex items-center gap-2">
                 <button class="help-icon-btn" @click="showHelp = true" title="دليل الاستخدام">
                     <HelpCircle :size="18" />
                 </button>
-                <Button v-if="activeTab === 0" label="�ضافة مستخدم" @click="openNewUser">
+                <Button v-if="activeTab === 0" label="إضافة مستخدم" @click="openNewUser">
                     <template #icon>
                         <Plus :size="18" />
                     </template>
@@ -367,7 +444,9 @@ const deselectAllPages = () => {
                         </Column>
                         <Column field="isActive" header="الحالة" style="min-width: 130px">
                             <template #body="{ data }">
+                                <Tag v-if="isSuperAdmin(data)" value="نشط دائماً" severity="success" class="font-medium" title="حساب مدير النظام الرئيسي نشط دائماً ولا يمكن تعطيله" />
                                 <button
+                                    v-else
                                     class="status-toggle-btn"
                                     :class="{ 'status-active': data.isActive, 'status-inactive': !data.isActive }"
                                     @click="toggleActive(data)"
@@ -378,14 +457,14 @@ const deselectAllPages = () => {
                                 </button>
                             </template>
                         </Column>
-                        <Column field="createdAt" header="تاريخ ال�نشاء" sortable style="min-width: 140px">
+                        <Column field="createdAt" header="تاريخ الإنشاء" sortable style="min-width: 140px">
                             <template #body="{ data }">
                                 <span class="text-surface-500 text-sm">{{ formatDate(data.createdAt) }}</span>
                             </template>
                         </Column>
-                        <Column header="�جراءات" style="min-width: 120px; text-align: center">
+                        <Column header="إجراءات" style="min-width: 120px; text-align: center">
                             <template #body="{ data }">
-                                <div class="flex gap-1 justify-center">
+                                <div v-if="!isSuperAdmin(data)" class="flex gap-1 justify-center">
                                     <button class="action-edit-btn" @click="openEditUser(data)" title="تعديل">
                                         <Pencil :size="15" />
                                     </button>
@@ -393,6 +472,7 @@ const deselectAllPages = () => {
                                         <Trash2 :size="15" />
                                     </button>
                                 </div>
+                                <span v-else class="text-surface-400 text-sm font-semibold">—</span>
                             </template>
                         </Column>
                     </DataTable>
@@ -412,7 +492,7 @@ const deselectAllPages = () => {
                         <div class="permissions-sidebar">
                             <div class="flex justify-between items-center mb-4">
                                 <h3 class="permissions-sidebar-title !mb-0">الأدوار</h3>
-                                <Button size="small" icon="pi pi-plus" label="�ضافة دور" outlined @click="openNewRole" />
+                                <Button size="small" icon="pi pi-plus" label="إضافة دور" outlined @click="openNewRole" />
                             </div>
                             <div class="role-list">
                                 <button
@@ -451,7 +531,7 @@ const deselectAllPages = () => {
                                     </div>
                                     <div class="flex gap-2">
                                         <Button label="تحديد الكل" size="small" outlined severity="secondary" @click="selectAllPages" />
-                                        <Button label="�لغاء الكل" size="small" outlined severity="secondary" @click="deselectAllPages" />
+                                        <Button label="إلغاء الكل" size="small" outlined severity="secondary" @click="deselectAllPages" />
                                     </div>
                                 </div>
 
@@ -467,7 +547,7 @@ const deselectAllPages = () => {
                                             <Check v-if="isPageSelected(page.id)" :size="14" />
                                         </div>
                                         <div class="page-check-info">
-                                            <span class="page-check-name">{{ page.name }}</span>
+                                            <span class="page-check-name">{{ pageNameAr(page) }}</span>
                                             <code class="page-check-path">{{ page.path }}</code>
                                         </div>
                                     </button>
@@ -501,7 +581,7 @@ const deselectAllPages = () => {
         <!-- User Dialog -->
         <Dialog
             v-model:visible="showUserDialog"
-            :header="editingUser ? 'تعديل بيانات المستخدم' : '�ضافة مستخدم جديد'"
+            :header="editingUser ? 'تعديل بيانات المستخدم' : 'إضافة مستخدم جديد'"
             :style="{ width: '460px' }"
             modal
             dismissableMask
@@ -515,7 +595,16 @@ const deselectAllPages = () => {
                     <label :class="{ 'required': !editingUser }">
                         {{ editingUser ? 'كلمة المرور الجديدة (اتركها فارغة لعدم التغيير)' : 'كلمة المرور' }}
                     </label>
-                    <InputText v-model="userForm.password" type="password" fluid placeholder="أدخل كلمة المرور" />
+                    <InputText
+                        v-model="userForm.password"
+                        type="password"
+                        fluid
+                        :disabled="editingUser && isSuperAdmin(editingUser)"
+                        :placeholder="editingUser && isSuperAdmin(editingUser) ? 'لا يمكن تعديل كلمة مرور SuperAdmin' : 'أدخل كلمة المرور'"
+                    />
+                    <small v-if="editingUser && isSuperAdmin(editingUser)" class="text-amber-600 dark:text-amber-400 text-xs mt-1 block">
+                        كلمات المرور مشفرة ولا يمكن كشفها أو تعديل كلمة مرور SuperAdmin من هنا.
+                    </small>
                 </div>
                 <div class="form-field">
                     <label class="required">الدور</label>
@@ -531,7 +620,7 @@ const deselectAllPages = () => {
             </div>
             <template #footer>
                 <div class="flex gap-2 justify-end w-full">
-                    <Button label="�لغاء" outlined severity="secondary" @click="showUserDialog = false" />
+                    <Button label="إلغاء" outlined severity="secondary" @click="showUserDialog = false" />
                     <Button label="حفظ المستخدم" @click="saveUser" :loading="userStore.loading" />
                 </div>
             </template>
@@ -540,7 +629,7 @@ const deselectAllPages = () => {
         <!-- Add Role Dialog -->
         <Dialog
             v-model:visible="showRoleDialog"
-            header="�ضافة دور جديد"
+            header="إضافة دور جديد"
             :style="{ width: '460px' }"
             modal
             dismissableMask
@@ -555,7 +644,7 @@ const deselectAllPages = () => {
                     <div style="max-height: 250px; overflow-y: auto; border: 1px solid var(--p-surface-200); border-radius: 0.375rem; padding: 0.5rem;" class="dark:border-surface-700">
                         <div v-for="page in userStore.allPages" :key="page.id" class="flex items-center gap-2 mb-2 last:mb-0">
                             <Checkbox v-model="newRolePageIds" :inputId="'page-' + page.id" name="pages" :value="page.id" />
-                            <label :for="'page-' + page.id" class="text-sm cursor-pointer">{{ page.name }}</label>
+                            <label :for="'page-' + page.id" class="text-sm cursor-pointer">{{ pageNameAr(page) }}</label>
                         </div>
                         <div v-if="userStore.allPages.length === 0" class="text-surface-500 text-sm text-center">لا توجد صفحات متاحة</div>
                     </div>
@@ -563,7 +652,7 @@ const deselectAllPages = () => {
             </div>
             <template #footer>
                 <div class="flex gap-2 justify-end w-full">
-                    <Button label="�لغاء" outlined severity="secondary" @click="showRoleDialog = false" />
+                    <Button label="إلغاء" outlined severity="secondary" @click="showRoleDialog = false" />
                     <Button label="حفظ الدور" @click="saveNewRole" :loading="userStore.loading" />
                 </div>
             </template>

@@ -32,6 +32,7 @@
             "dist/**/*",
             "public/**/*",
             "main.js",
+            "splash.html",
             "package.json",
             "!node_modules/**/*"
         ],
@@ -46,8 +47,11 @@
                 ]
             },
             {
-                "from": "../../backend/POS/POS/install_db.bat",
-                "to": "install_db.bat"
+                "from": "scripts",
+                "to": "scripts",
+                "filter": [
+                    "**/*"
+                ]
             }
         ],
         "win": {

@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>POS — جاري التشغيل</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+            color: #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
+            -webkit-app-region: drag;
+        }
+
+        .splash-container {
+            text-align: center;
+            animation: fadeIn 0.6s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ─── Logo ─── */
+        .logo-wrapper {
+            width: 96px; height: 96px;
+            margin: 0 auto 28px;
+            border-radius: 24px;
+            background: rgba(99, 102, 241, 0.12);
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 0 40px rgba(99, 102, 241, 0.15);
+        }
+        .logo-wrapper img {
+            width: 64px; height: 64px;
+            filter: drop-shadow(0 2px 8px rgba(99, 102, 241, 0.3));
+        }
+
+        .app-name {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #818cf8, #6366f1, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        .app-subtitle {
+            color: #94a3b8;
+            font-size: 14px;
+            margin-bottom: 36px;
+        }
+
+        /* ─── Loading state ─── */
+        #loading-state { display: flex; flex-direction: column; align-items: center; }
+
+        .spinner {
+            width: 40px; height: 40px;
+            border: 3px solid rgba(99, 102, 241, 0.15);
+            border-top-color: #6366f1;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-text {
+            color: #94a3b8;
+            font-size: 15px;
+            animation: pulse 1.8s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 0.6; }
+            50%      { opacity: 1; }
+        }
+
+        .progress-bar-track {
+            width: 220px;
+            height: 4px;
+            background: rgba(99, 102, 241, 0.12);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 18px;
+        }
+        .progress-bar-fill {
+            width: 30%;
+            height: 100%;
+            background: linear-gradient(90deg, #6366f1, #a78bfa);
+            border-radius: 4px;
+            animation: progress 2s ease-in-out infinite;
+        }
+        @keyframes progress {
+            0%   { width: 10%; margin-right: auto; }
+            50%  { width: 70%; margin-right: auto; }
+            100% { width: 10%; margin-right: 0; margin-left: auto; }
+        }
+
+        /* ─── Error state ─── */
+        #error-state { display: none; flex-direction: column; align-items: center; }
+
+        .error-icon {
+            width: 56px; height: 56px;
+            border-radius: 50%;
+            background: rgba(239, 68, 68, 0.12);
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 18px;
+        }
+        .error-icon svg { width: 28px; height: 28px; color: #ef4444; }
+
+        .error-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #f87171;
+            margin-bottom: 8px;
+        }
+
+        .error-message {
+            color: #94a3b8;
+            font-size: 14px;
+            max-width: 320px;
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+
+        .retry-btn {
+            -webkit-app-region: no-drag;
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            color: #fff;
+            border: none;
+            padding: 10px 32px;
+            border-radius: 10px;
+            font-family: 'Cairo', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 16px rgba(99, 102, 241, 0.25);
+        }
+        .retry-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 24px rgba(99, 102, 241, 0.35);
+        }
+        .retry-btn:active { transform: translateY(0); }
+        .retry-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* ─── Version tag ─── */
+        .version {
+            position: fixed;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #475569;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <div class="splash-container">
+        <div class="logo-wrapper">
+            <img src="icon.png" alt="POS" onerror="this.style.display='none'" />
+        </div>
+        <div class="app-name">نظام نقاط البيع</div>
+        <div class="app-subtitle">POS System</div>
+
+        <!-- Loading State -->
+        <div id="loading-state">
+            <div class="spinner"></div>
+            <div class="loading-text" id="loading-text">جاري تشغيل النظام...</div>
+            <div class="progress-bar-track">
+                <div class="progress-bar-fill"></div>
+            </div>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-state">
+            <div class="error-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+            </div>
+            <div class="error-title">تعذر الاتصال بالخادم</div>
+            <div class="error-message" id="error-message">
+                لم يتمكن النظام من الاتصال بالخادم المحلي. تأكد من تشغيل قاعدة البيانات وأعد المحاولة.
+            </div>
+            <button class="retry-btn" id="retry-btn" onclick="handleRetry()">إعادة المحاولة</button>
+        </div>
+    </div>
+
+    <div class="version" id="version-tag">POS v1.0</div>
+
+    <script>
+        // Electron IPC communication
+        const { ipcRenderer } = (() => {
+            try { return require('electron'); }
+            catch { return { ipcRenderer: null }; }
+        })();
+
+        function showLoading(message) {
+            document.getElementById('loading-state').style.display = 'flex';
+            document.getElementById('error-state').style.display = 'none';
+            if (message) {
+                document.getElementById('loading-text').textContent = message;
+            }
+        }
+
+        function showError(message) {
+            document.getElementById('loading-state').style.display = 'none';
+            document.getElementById('error-state').style.display = 'flex';
+            if (message) {
+                document.getElementById('error-message').textContent = message;
+            }
+        }
+
+        function handleRetry() {
+            const btn = document.getElementById('retry-btn');
+            btn.disabled = true;
+            btn.textContent = 'جاري إعادة المحاولة...';
+            showLoading('جاري إعادة الاتصال...');
+
+            if (ipcRenderer) {
+                ipcRenderer.send('splash-retry');
+            }
+
+            // Fallback timeout if no IPC response
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.textContent = 'إعادة المحاولة';
+            }, 15000);
+        }
+
+        // Listen for state changes from the main process
+        if (ipcRenderer) {
+            ipcRenderer.on('splash-status', (_event, data) => {
+                if (data.state === 'loading') {
+                    showLoading(data.message);
+                } else if (data.state === 'error') {
+                    showError(data.message);
+                    const btn = document.getElementById('retry-btn');
+                    btn.disabled = false;
+                    btn.textContent = 'إعادة المحاولة';
+                }
+            });
+        }
+    </script>
+</body>
+</html>

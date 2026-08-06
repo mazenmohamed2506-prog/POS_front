@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import { LayoutDashboard, Package, Warehouse, Receipt, ShoppingCart, RotateCcw, ClipboardList, Clock, Settings, Users, Truck, ClipboardCheck, AlertTriangle, Wallet, Briefcase, Landmark, PieChart } from "lucide-vue-next";
+import { LayoutDashboard, Package, Warehouse, Receipt, ShoppingCart, RotateCcw, ClipboardList, Clock, Settings, Users, Truck, ClipboardCheck, AlertTriangle, Wallet, Briefcase, Landmark, PieChart, Bell } from "lucide-vue-next";
 
 export const useBaseStore = defineStore("base", () => {
     // ── State ──
@@ -113,6 +113,12 @@ export const useBaseStore = defineStore("base", () => {
                     nameEn: "Settings",
                     icon: Settings,
                     to: "/settings",
+                },
+                {
+                    nameAr: "مركز التنبيهات",
+                    nameEn: "Notifications Center",
+                    icon: Bell,
+                    to: "/notifications",
                 },
                 {
                     nameAr: "المصروفات",

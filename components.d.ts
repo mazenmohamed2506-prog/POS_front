@@ -39,6 +39,7 @@ declare module 'vue' {
     Listbox: typeof import('./src/volt/Listbox.vue')['default']
     LoadingSection: typeof import('./src/components/loadingSection.vue')['default']
     MultiSelect: typeof import('./src/volt/MultiSelect.vue')['default']
+    NotificationMenu: typeof import('./src/components/NotificationMenu.vue')['default']
     OrganizationChart: typeof import('./src/volt/OrganizationChart.vue')['default']
     Paginator: typeof import('./src/components/paginator.vue')['default']
     Popover: typeof import('./src/volt/Popover.vue')['default']

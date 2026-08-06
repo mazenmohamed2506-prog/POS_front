@@ -62,6 +62,13 @@ const unitStore = useUnitStore();
 const toastStore = useToastStore();
 const posStore = usePosStore();
 
+const canWriteProducts = computed(() => {
+    const hasWritePermission = posStore.pages?.includes("/products/write");
+    const roleLower = (posStore.role || "").toString().toLowerCase();
+    const isAdminOrManager = ["admin", "superadmin", "manager", "المدير", "مدير النظام"].includes(roleLower);
+    return isAdminOrManager || hasWritePermission;
+});
+
 const showManageCategoriesDialog = ref(false);
 const editingCategory = ref(null);
 const categoryForm = ref({ name: "" });
@@ -467,7 +474,7 @@ const viewConversions = async (product) => {
                 <button class="help-icon-btn" @click="showHelp = true" title="دليل الاستخدام">
                     <HelpCircle :size="18" />
                 </button>
-                <Button v-if="posStore.role === 'Manager' || posStore.role === 'Admin'" label="إضافة منتج" @click="openNewProduct" class="add-product-btn">
+                <Button v-if="canWriteProducts" label="إضافة منتج" @click="openNewProduct" class="add-product-btn">
                     <template #icon><Plus :size="18" /></template>
                 </Button>
             </div>
@@ -567,7 +574,7 @@ const viewConversions = async (product) => {
                         size="small"
                     />
                 </div> -->
-                <div class="filter-actions">
+                <div v-if="canWriteProducts" class="filter-actions">
                     <Button label="إدارة الفئات" size="small" outlined severity="secondary" @click="openManageCategories">
                         <template #icon><LayoutGrid :size="14" /></template>
                     </Button>
@@ -662,10 +669,10 @@ const viewConversions = async (product) => {
                             <button class="act-btn act-view" @click="openProductDetails(data)" title="عرض التفاصيل">
                                 <Eye :size="15" />
                             </button>
-                            <button class="act-btn act-edit" @click="openEditProduct(data)" title="تعديل">
+                            <button v-if="canWriteProducts" class="act-btn act-edit" @click="openEditProduct(data)" title="تعديل">
                                 <Pencil :size="15" />
                             </button>
-                            <button class="act-btn act-delete" @click="deleteProduct(data)" title="حذف">
+                            <button v-if="canWriteProducts" class="act-btn act-delete" @click="deleteProduct(data)" title="حذف">
                                 <Trash2 :size="15" />
                             </button>
                         </div>

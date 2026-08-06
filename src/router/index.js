@@ -138,6 +138,12 @@ const router = createRouter({
                     component: () => import("@/project/pos/ReportsView.vue"),
                     meta: { roles: ["Manager", "Admin"] },
                 },
+                {
+                    path: "notifications",
+                    name: "Notifications",
+                    component: () => import("@/project/pos/NotificationsView.vue"),
+                    meta: { roles: ["Manager", "Cashier", "Admin"] },
+                },
             ],
         },
         // ── 404 ──

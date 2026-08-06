@@ -11,12 +11,12 @@
             <div class="flex flex-wrap gap-2 items-center justify-center">
                 <SecondaryButton text rounded @click="firstPageCallback" :disabled="page === 0">
                     <template #icon>
-                        <AngleDoubleLeftIcon />
+                        <AngleDoubleLeftIcon class="rtl:rotate-180" />
                     </template>
                 </SecondaryButton>
                 <SecondaryButton text rounded @click="prevPageCallback" :disabled="page === 0">
                     <template #icon>
-                        <AngleLeftIcon />
+                        <AngleLeftIcon class="rtl:rotate-180" />
                     </template>
                 </SecondaryButton>
                 <div class="items-center justify-center gap-2 hidden sm:flex">
@@ -26,12 +26,12 @@
                 </div>
                 <SecondaryButton text rounded @click="nextPageCallback" :disabled="page === pageCount! - 1">
                     <template #icon>
-                        <AngleRightIcon />
+                        <AngleRightIcon class="rtl:rotate-180" />
                     </template>
                 </SecondaryButton>
                 <SecondaryButton text rounded @click="lastPageCallback" :disabled="page === pageCount! - 1">
                     <template #icon>
-                        <AngleDoubleRightIcon />
+                        <AngleDoubleRightIcon class="rtl:rotate-180" />
                     </template>
                 </SecondaryButton>
             </div>
